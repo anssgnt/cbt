@@ -1056,16 +1056,18 @@ h1, h2, h3, h4 { font-weight: 700; letter-spacing: -0.3px; }
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  padding: 14px 12px;
-  border-radius: 12px;
-  font-family: var(--font);
-  font-size: 0.9rem;
-  font-weight: 700;
+  padding: 12px;
+  border-radius: 14px;
   border: none;
   cursor: pointer;
   transition: all 0.2s;
   flex: 1;
+  min-height: 52px;
+}
+
+.btn-footer svg {
+  width: 24px;
+  height: 24px;
 }
 
 .btn-footer-outline {
@@ -1077,6 +1079,16 @@ h1, h2, h3, h4 { font-weight: 700; letter-spacing: -0.3px; }
 .btn-footer-soft {
   background: #F3F4F6;
   color: #3b82f6;
+}
+
+.btn-footer-warning {
+  background: #FEF3C7;
+  color: #D97706;
+}
+
+.btn-footer-warning.active {
+  background: #FBBF24;
+  color: #92400E;
 }
 
 .btn-footer-primary {
