@@ -1,9 +1,4 @@
 
-/**
- * CBT Client SPA Logic
- * Minimalist, mobile-first, and high performance.
- */
-
 // --- Dynamic PWA Manifest for Google Apps Script ---
 (function() {
   const manifestData = {
@@ -33,6 +28,33 @@
   const manifestURL = 'data:application/manifest+json;charset=utf-8,' + encodedManifest;
   document.getElementById('pwa-manifest').setAttribute('href', manifestURL);
 })();
+
+// --- MODAL PANDUAN ---
+window.openGuideModal = function() {
+  const overlay = document.getElementById('guide-overlay');
+  const modal = document.getElementById('guide-modal');
+  if(!overlay || !modal) return;
+  overlay.style.display = 'block';
+  modal.style.display = 'flex';
+  setTimeout(() => {
+    overlay.style.opacity = '1';
+    modal.style.opacity = '1';
+    modal.style.transform = 'translate(-50%, -50%) scale(1)';
+  }, 10);
+};
+
+window.closeGuideModal = function() {
+  const overlay = document.getElementById('guide-overlay');
+  const modal = document.getElementById('guide-modal');
+  if(!overlay || !modal) return;
+  overlay.style.opacity = '0';
+  modal.style.opacity = '0';
+  modal.style.transform = 'translate(-50%, -50%) scale(0.95)';
+  setTimeout(() => {
+    overlay.style.display = 'none';
+    modal.style.display = 'none';
+  }, 300);
+};
 
 // --- Global State ---
 const State = {
