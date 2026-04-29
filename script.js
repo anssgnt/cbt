@@ -77,6 +77,16 @@ function showView(viewId) {
   document.getElementById(viewId).classList.add('active');
 }
 
+function safeAddListener(id, event, callback) {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener(event, callback);
+}
+
+function safeSetText(id, text) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = text;
+}
+
 function showAlert(msg, type = 'danger') {
   const alertEl = document.getElementById('login-alert');
   alertEl.textContent = msg;
@@ -593,21 +603,22 @@ let tempSelectedUser = null;
 let cachedPeserta = null;
 let fetchPesertaPromise = null;
 
-userNameInput.addEventListener('focus', () => {
-    // Memastikan posisi form naik saat keyboard HP muncul
-    setTimeout(() => {
-       userNameInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 350);
+if (userNameInput) {
+  userNameInput.addEventListener('focus', () => {
+      // Memastikan posisi form naik saat keyboard HP muncul
+      setTimeout(() => {
+         userNameInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 350);
 
-    if (!cachedPeserta && !fetchPesertaPromise) {
-        fetchPesertaPromise = gasRun('getAllPeserta').then(data => {
-            cachedPeserta = data;
-        }).catch(()=> { fetchPesertaPromise = null; });
-    }
-});
+      if (!cachedPeserta && !fetchPesertaPromise) {
+          fetchPesertaPromise = gasRun('getAllPeserta').then(data => {
+              cachedPeserta = data;
+          }).catch(()=> { fetchPesertaPromise = null; });
+      }
+  });
 
-userNameInput.addEventListener('input', async (e) => {
-  const val = e.target.value.trim().toLowerCase();
+  userNameInput.addEventListener('input', async (e) => {
+    const val = e.target.value.trim().toLowerCase();
   autoList.innerHTML = '';
   autoList.classList.remove('show');
   
@@ -669,21 +680,22 @@ userNameInput.addEventListener('input', async (e) => {
     }
     autoList.classList.add('show');
   }, 100); // Sangat responsif (100ms) karena filtrasinya lokal
-});
+  });
+}
 
 // Tutup list jika klik di luar
 document.addEventListener('click', (e) => {
-  if (e.target !== userNameInput) {
-    autoList.classList.remove('show');
+  if (userNameInput && e.target !== userNameInput) {
+    if (autoList) autoList.classList.remove('show');
   }
 });
 
-document.getElementById('btnCancelLogin').addEventListener('click', () => {
+safeAddListener('btnCancelLogin', 'click', () => {
   tempSelectedUser = null;
   showView('login-view');
 });
 
-document.getElementById('btnConfirmLogin').addEventListener('click', () => {
+safeAddListener('btnConfirmLogin', 'click', () => {
   if (tempSelectedUser) {
     State.user = tempSelectedUser;
     loadSchedules();
@@ -833,7 +845,7 @@ function closeTokenModal() {
   }, 300);
 }
 
-document.getElementById('btnScheduleLogout').addEventListener('click', () => {
+safeAddListener('btnScheduleLogout', 'click', () => {
   State.user = null;
   document.getElementById('userName').value = '';
   document.getElementById('autocomplete-list').innerHTML = '';
@@ -908,7 +920,7 @@ async function loadDashboard(examId, token) {
 }
 
 // --- Exam Flow ---
-document.getElementById('btnStartExam').addEventListener('click', () => {
+safeAddListener('btnStartExam', 'click', () => {
   State.examActive = true;
   document.getElementById('exam-title').textContent = State.config.nama_ujian;
   
@@ -972,7 +984,7 @@ function updateTimerDisplay() {
 let lastForceRefresh = 0;
 const REFRESH_COOLDOWN_MS = 15 * 60 * 1000; // 15 menit
 
-document.getElementById('btnRefreshExam').addEventListener('click', async () => {
+safeAddListener('btnRefreshExam', 'click', async () => {
   if (!State.examActive) return;
   const now = Date.now();
   
@@ -1207,20 +1219,20 @@ function renderOptions(q) {
 }
 
 // --- Navigation ---
-document.getElementById('btnNext').addEventListener('click', () => {
+safeAddListener('btnNext', 'click', () => {
   if (State.currentIndex < State.questions.length - 1) {
     if (isAnswered(State.currentIndex)) removeFromDoubt(State.currentIndex);
     renderQuestion(State.currentIndex + 1);
   }
 });
 
-document.getElementById('btnPrev').addEventListener('click', () => {
+safeAddListener('btnPrev', 'click', () => {
   if (State.currentIndex > 0) {
     renderQuestion(State.currentIndex - 1);
   }
 });
 
-document.getElementById('btnDoubt').addEventListener('click', () => {
+safeAddListener('btnDoubt', 'click', () => {
   const qId = State.questions[State.currentIndex].id;
   if (State.doubts.has(qId)) {
     State.doubts.delete(qId);
@@ -1293,21 +1305,17 @@ function updateGridUI() {
 const overlay = document.getElementById('overlay');
 const qGridContainer = document.getElementById('qGridContainer');
 
-document.getElementById('btnGrid').addEventListener('click', () => {
+safeAddListener('btnGrid', 'click', () => {
   updateGridUI();
-  overlay.classList.add('active');
-  qGridContainer.classList.add('open');
+  if (overlay) overlay.classList.add('active');
+  if (qGridContainer) qGridContainer.classList.add('open');
 });
 
-function closeGrid() {
-  overlay.classList.remove('active');
-  qGridContainer.classList.remove('open');
-}
-document.getElementById('btnCloseGrid').addEventListener('click', closeGrid);
-overlay.addEventListener('click', closeGrid);
+safeAddListener('btnCloseGrid', 'click', closeGrid);
+if (overlay) overlay.addEventListener('click', closeGrid);
 
 // --- Submit ---
-document.getElementById('btnSubmit').addEventListener('click', () => {
+safeAddListener('btnSubmit', 'click', () => {
   // Aturan Waktu Minimal Mengerjakan (Dinamis dari Sheet Jadwal)
   const elapsedSeconds = (State.config.durasi * 60) - State.timeRemaining;
   const minLockMinutes = (State.security && State.security.minTime) ? State.security.minTime : (State.config.min_selesai || 0);
@@ -1409,7 +1417,7 @@ async function submitExam(isAutoSubmit) {
       // Bersihkan localStorage setelah berhasil
       const lsKey = `CBT_${State.user.id}_${State.config.id_ujian}`;
       localStorage.removeItem(lsKey);
-      document.getElementById('result-score').textContent = res.score;
+      safeSetText('result-score', res.score);
       showView('result-view');
     } else {
       // Gagal logis dari server (misal: sudah pernah submit)
@@ -1417,7 +1425,7 @@ async function submitExam(isAutoSubmit) {
       showView('result-view');
       // Jika sudah submit sebelumnya, tetap tampilkan halaman hasil
       if (errMsg.includes('sudah')) {
-        document.getElementById('result-score').textContent = '✓';
+        safeSetText('result-score', '✓');
       } else {
         alert('Gagal mengirim jawaban: ' + errMsg);
         showView('exam-view');
@@ -1456,7 +1464,7 @@ window.closeZoomModal = function() {
   }
 };
 
-document.getElementById('btnLogout').addEventListener('click', () => {
+safeAddListener('btnLogout', 'click', () => {
   // Refresh SPA without GAS reload
   State.user = null;
   State.answers = {};
@@ -1469,9 +1477,11 @@ document.getElementById('btnLogout').addEventListener('click', () => {
   if(scheduleTimer) clearInterval(scheduleTimer);
   
   // Clear UI
-  document.getElementById('userName').value = '';
-  document.getElementById('autocomplete-list').innerHTML = '';
-  document.getElementById('confirm-name-text').textContent = '-';
+  const userInp = document.getElementById('userName');
+  if(userInp) userInp.value = '';
+  const autoList = document.getElementById('autocomplete-list');
+  if(autoList) autoList.innerHTML = '';
+  safeSetText('confirm-name-text', '-');
   
   // Switch to Login View
   showView('login-view');
@@ -1625,13 +1635,13 @@ function hideAdminAuthModal() {
   }, 300);
 }
 
-document.getElementById('btnCancelAdmin').addEventListener('click', hideAdminAuthModal);
+safeAddListener('btnCancelAdmin', 'click', hideAdminAuthModal);
 
-document.getElementById('btnSubmitAdmin').addEventListener('click', async () => {
+safeAddListener('btnSubmitAdmin', 'click', async () => {
   const pwd = document.getElementById('adminTokenInput').value.trim();
   if(!pwd) return;
   const btn = document.getElementById('btnSubmitAdmin');
-  btn.textContent = '...';
+  if(btn) btn.textContent = '...';
   try {
      const res = await gasRun('validateAdmin', pwd);
      if(res) {
@@ -1641,10 +1651,10 @@ document.getElementById('btnSubmitAdmin').addEventListener('click', async () => 
        alert("Sandi Proktor Ditolak!");
      }
   } catch(e) { alert("Network Error"); }
-  btn.textContent = 'Verifikasi';
+  if(btn) btn.textContent = 'Verifikasi';
 });
 
-document.getElementById('btnAdminLogout').addEventListener('click', () => {
+safeAddListener('btnAdminLogout', 'click', () => {
   showView('login-view');
   initPortal();
 });
@@ -3065,27 +3075,27 @@ window.executePrint = async function() {
         // Fill Berita Acara
         const days = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
         const today = new Date();
-        document.getElementById('pb-hari').textContent = days[today.getDay()];
-        document.getElementById('pb-tanggal').textContent = tanggal;
-        document.getElementById('pb-mapel').textContent = examName;
-        document.getElementById('pb-kelas').textContent = selectedKelas === 'ALL' ? 'Semua Kelas' : selectedKelas;
-        document.getElementById('pb-ruang').textContent = ruang;
+        safeSetText('pb-hari', days[today.getDay()]);
+        safeSetText('pb-tanggal', tanggal);
+        safeSetText('pb-mapel', examName);
+        safeSetText('pb-kelas', selectedKelas === 'ALL' ? 'Semua Kelas' : selectedKelas);
+        safeSetText('pb-ruang', ruang);
         
-        document.getElementById('pb-jml-total').textContent = targetStudents.length;
-        document.getElementById('pb-jml-hadir').textContent = '...';
-        document.getElementById('pb-jml-absen').textContent = '...';
+        safeSetText('pb-jml-total', targetStudents.length);
+        safeSetText('pb-jml-hadir', '...');
+        safeSetText('pb-jml-absen', '...');
         
-        document.getElementById('pb-ttd-proktor').textContent = proktor;
-        document.getElementById('pb-ttd-pengawas').textContent = pengawas;
+        safeSetText('pb-ttd-proktor', proktor);
+        safeSetText('pb-ttd-pengawas', pengawas);
         
         // Fill Daftar Hadir
-        document.getElementById('pd-mapel').textContent = examName;
-        document.getElementById('pd-tanggal').textContent = tanggal;
-        document.getElementById('pd-kelas').textContent = selectedKelas === 'ALL' ? 'Semua Kelas' : selectedKelas;
-        document.getElementById('pd-ruang').textContent = ruang;
+        safeSetText('pd-mapel', examName);
+        safeSetText('pd-tanggal', tanggal);
+        safeSetText('pd-kelas', selectedKelas === 'ALL' ? 'Semua Kelas' : selectedKelas);
+        safeSetText('pd-ruang', ruang);
         
-        document.getElementById('pd-ttd-proktor').textContent = proktor;
-        document.getElementById('pd-ttd-pengawas').textContent = pengawas;
+        safeSetText('pd-ttd-proktor', proktor);
+        safeSetText('pd-ttd-pengawas', pengawas);
         
         let tbodyHTML = '';
         if(targetStudents.length === 0) {
@@ -3143,13 +3153,19 @@ window.addEventListener('beforeinstallprompt', (e) => {
   }
 });
 // Hamburger Menu Logic
-document.getElementById('btnOpenMenu').addEventListener('click', () => {
-  const menu = document.getElementById('hamburger-menu');
-  if(menu) menu.classList.add('open');
-});
+const btnOpenMenu = document.getElementById('btnOpenMenu');
+if (btnOpenMenu) {
+  btnOpenMenu.addEventListener('click', () => {
+    const menu = document.getElementById('hamburger-menu');
+    if(menu) menu.classList.add('open');
+  });
+}
 
-document.getElementById('btnCloseMenu').addEventListener('click', () => {
-  const menu = document.getElementById('hamburger-menu');
-  if(menu) menu.classList.remove('open');
-});
+const btnCloseMenu = document.getElementById('btnCloseMenu');
+if (btnCloseMenu) {
+  btnCloseMenu.addEventListener('click', () => {
+    const menu = document.getElementById('hamburger-menu');
+    if(menu) menu.classList.remove('open');
+  });
+}
 
