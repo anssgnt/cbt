@@ -1034,8 +1034,7 @@ function renderQuestion(index) {
   State.currentIndex = index;
   const q = State.questions[index];
   
-  // Progressive Preload: Hanya auto-download gambar untuk 2 soal berikutnya ke depan
-  // agar bandwidth sekolah tidak jebol.
+  // Progressive Preload
   for (let i = 1; i <= 2; i++) {
     const nextQ = State.questions[index + i];
     if (nextQ && nextQ.gambar && nextQ.gambar.trim() !== '') {
@@ -1043,15 +1042,48 @@ function renderQuestion(index) {
        img.src = nextQ.gambar;
     }
   }
-  
-  document.getElementById('q-number').textContent = `SOAL ${index + 1} / ${State.questions.length} (${q.tipe})`;
-  
-  // Basic markdown format parsing if needed, but innerText prevents XSS. 
-  // If HTML format is from sheet, use innerHTML with caution. 
-  // Let's assume plain text or safe simple text from Sheets.
-  document.getElementById('q-text').textContent = q.pertanyaan;
 
-  // Render Image feature
+  // Modern Progress Area
+  const total = State.questions.length;
+  const percent = Math.round(((index + 1) / total) * 100);
+  safeSetText('q-progress-text', `SOAL ${index + 1} / ${total} (${q.tipe})`);
+  safeSetText('q-percentage', `${percent}%`);
+  const pb = document.getElementById('q-progress-bar');
+  if (pb) pb.style.width = `${percent}%`;
+
+  // Type Badge & Instruction
+  const badge = document.getElementById('q-type-badge');
+  const instruction = document.getElementById('q-instruction');
+  
+  let typeLabel = 'SOAL PILIHAN GANDA';
+  let instrText = 'Pilih salah satu jawaban yang menurut Anda paling benar.';
+  let typeIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
+
+  if (q.tipe === 'ISIAN') {
+    typeLabel = 'SOAL ISIAN';
+    instrText = 'Ketik jawaban berupa angka tanpa spasi atau tanda baca.';
+    typeIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 113 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+  } else if (q.tipe === 'KOMPLEKS') {
+    typeLabel = 'PILIHAN GANDA KOMPLEKS';
+    instrText = 'Pilih satu atau lebih jawaban yang menurut Anda benar.';
+    typeIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 002-2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>';
+  } else if (q.tipe === 'BS') {
+    typeLabel = 'BENAR / SALAH';
+    instrText = 'Tentukan apakah pernyataan berikut Benar atau Salah.';
+  } else if (q.tipe === 'JODOH') {
+    typeLabel = 'MENJODOHKAN';
+    instrText = 'Pasangkan item di sebelah kiri dengan pilihan yang sesuai di sebelah kanan.';
+  }
+
+  if (badge) badge.innerHTML = `${typeIcon}<span>${typeLabel}</span>`;
+  if (instruction) {
+    instruction.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><p>${instrText}</p>`;
+  }
+
+  // Question Text
+  safeSetText('q-text', q.pertanyaan);
+
+  // Render Image
   const imgContainer = document.getElementById('q-image-container');
   if (q.gambar && q.gambar.trim() !== '') {
      imgContainer.innerHTML = `<img src="${q.gambar.trim()}" class="q-image" onclick="openZoomModal('${q.gambar.trim()}')" alt="Gambar Soal" />`;
@@ -1065,24 +1097,8 @@ function renderQuestion(index) {
   updateNavButtons();
   updateGridUI();
 
-  const svgDoubt = `<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>`;
-
-  // Reset Doubt Button style
-  const isDoubt = State.doubts.has(q.id);
-  const btnDoubt = document.getElementById('btnDoubt');
-  if (isDoubt) {
-    btnDoubt.classList.remove('btn-warning');
-    btnDoubt.classList.add('btn-outline');
-    btnDoubt.innerHTML = svgDoubt;
-    btnDoubt.style.borderColor = 'var(--warning)';
-    btnDoubt.style.color = 'var(--warning)';
-  } else {
-    btnDoubt.classList.remove('btn-outline');
-    btnDoubt.classList.add('btn-warning');
-    btnDoubt.innerHTML = svgDoubt;
-    btnDoubt.style.color = 'white';
-    btnDoubt.style.borderColor = 'transparent';
-  }
+  // Highlight Doubt state in Grid/Badge if needed, 
+  // currently we use updateGridUI for bubbles.
 }
 
 function renderOptions(q) {
@@ -1094,12 +1110,11 @@ function renderOptions(q) {
   if (q.tipe === 'PG' || q.tipe === 'BS') {
     const labels = ['A', 'B', 'C', 'D', 'E'];
     q.opsi.forEach((opt, idx) => {
-      // Allow backwards compatibility: match by ID or Text
       const isSelected = currentAnswer === opt.id || currentAnswer === opt.text;
       const displayLabel = labels[idx] || (idx + 1);
       
       const div = document.createElement('div');
-      div.className = `option-item ${isSelected ? 'selected' : ''}`;
+      div.className = `modern-option ${isSelected ? 'selected' : ''}`;
       
       let imgHTML = '';
       if (opt.gambar) {
@@ -1107,19 +1122,17 @@ function renderOptions(q) {
       }
       
       div.innerHTML = `
-        <div style="display:flex; align-items:flex-start; width:100%;">
-          <input type="radio" name="ans" value="${opt.id}" ${isSelected ? 'checked' : ''} style="margin-top:4px;">
-          <div style="margin-left:10px; width:100%;">
-            <div class="option-text" style="font-weight:600; display:inline-block; margin-right:6px;">${displayLabel}.</div>
-            <div class="option-text" style="display:inline-block;">${opt.text}</div>
-            ${imgHTML}
-          </div>
+        <div class="option-circle"></div>
+        <div class="option-label">${displayLabel}.</div>
+        <div class="option-text-container" style="flex:1;">
+           <div class="option-text">${opt.text}</div>
+           ${imgHTML}
         </div>
       `;
       div.onclick = () => {
-        State.answers[q.id] = opt.id; // Save ID instead of Text for robust image-only options
-        renderOptions(q); // Re-render to update UI class
-        saveStateLocal(); // Auto-save
+        State.answers[q.id] = opt.id;
+        renderOptions(q);
+        saveStateLocal();
       };
       container.appendChild(div);
     });
@@ -1131,7 +1144,7 @@ function renderOptions(q) {
       const isSelected = selectedArr.includes(opt.id) || selectedArr.includes(opt.text);
       const displayLabel = labels[idx] || (idx + 1);
       const div = document.createElement('div');
-      div.className = `option-item ${isSelected ? 'selected' : ''}`;
+      div.className = `modern-option ${isSelected ? 'selected' : ''}`;
       
       let imgHTML = '';
       if (opt.gambar) {
@@ -1139,19 +1152,16 @@ function renderOptions(q) {
       }
       
       div.innerHTML = `
-        <div style="display:flex; align-items:flex-start; width:100%;">
-          <input type="checkbox" value="${opt.id}" ${isSelected ? 'checked' : ''} style="margin-top:4px;">
-          <div style="margin-left:10px; width:100%;">
-            <div class="option-text" style="font-weight:600; display:inline-block; margin-right:6px;">${displayLabel}.</div>
-            <div class="option-text" style="display:inline-block;">${opt.text}</div>
-            ${imgHTML}
-          </div>
+        <div class="option-circle" style="border-radius: 4px;"></div>
+        <div class="option-label">${displayLabel}.</div>
+        <div class="option-text-container" style="flex:1;">
+           <div class="option-text">${opt.text}</div>
+           ${imgHTML}
         </div>
       `;
       div.onclick = (e) => {
         e.preventDefault();
         let arr = State.answers[q.id] || [];
-        // Support backward compat text check too
         if (arr.includes(opt.id) || arr.includes(opt.text)) {
           arr = arr.filter(x => x !== opt.id && x !== opt.text);
         } else {
@@ -1160,7 +1170,7 @@ function renderOptions(q) {
         if (arr.length === 0) delete State.answers[q.id];
         else State.answers[q.id] = arr;
         renderOptions(q);
-        saveStateLocal(); // Auto-save
+        saveStateLocal();
       };
       container.appendChild(div);
     });
@@ -1168,15 +1178,14 @@ function renderOptions(q) {
   else if (q.tipe === 'ISIAN') {
     const div = document.createElement('div');
     div.innerHTML = `
-      <input type="text" class="form-control" style="font-size: 1.1rem; padding: 12px;" 
-             placeholder="Ketik jawaban Anda..." value="${currentAnswer || ''}">
+      <textarea class="essay-textarea" placeholder="Ketik jawaban Anda...">${currentAnswer || ''}</textarea>
     `;
-    const input = div.querySelector('input');
-    input.oninput = (e) => {
+    const textarea = div.querySelector('textarea');
+    textarea.oninput = (e) => {
       const val = e.target.value.trim();
       if (val) State.answers[q.id] = val;
       else delete State.answers[q.id];
-      saveStateLocal(); // Auto-save
+      saveStateLocal();
     };
     container.appendChild(div);
   }
@@ -3169,3 +3178,11 @@ if (btnCloseMenu) {
   });
 }
 
+// --- Menu Button ---
+safeAddListener('btnOpenMenu', 'click', () => {
+  updateGridUI();
+  const overlay = document.getElementById('overlay');
+  const qGridContainer = document.getElementById('qGridContainer');
+  if (overlay) overlay.classList.add('active');
+  if (qGridContainer) qGridContainer.classList.add('open');
+});
