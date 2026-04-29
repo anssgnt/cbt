@@ -1097,8 +1097,15 @@ function renderQuestion(index) {
   updateNavButtons();
   updateGridUI();
 
-  // Highlight Doubt state in Grid/Badge if needed, 
-  // currently we use updateGridUI for bubbles.
+  // Update Doubt Button State
+  const btnDoubt = document.getElementById('btnDoubt');
+  if (btnDoubt) {
+    if (State.doubts.has(q.id)) {
+      btnDoubt.classList.add('active');
+    } else {
+      btnDoubt.classList.remove('active');
+    }
+  }
 }
 
 function renderOptions(q) {
@@ -1278,9 +1285,24 @@ function updateNavButtons() {
   }
 }
 
+function closeGrid() {
+  const overlay = document.getElementById('overlay');
+  const qGridContainer = document.getElementById('qGridContainer');
+  if (overlay) overlay.classList.remove('active');
+  if (qGridContainer) qGridContainer.classList.remove('open');
+}
+
+function closeGrid() {
+  const overlay = document.getElementById('overlay');
+  const qGridContainer = document.getElementById('qGridContainer');
+  if (overlay) overlay.classList.remove('active');
+  if (qGridContainer) qGridContainer.classList.remove('open');
+}
+
 // --- Grid UI ---
 function initGrid() {
   const grid = document.getElementById('qGrid');
+  if (!grid) return;
   grid.innerHTML = '';
   State.questions.forEach((q, idx) => {
     const b = document.createElement('div');
@@ -1335,7 +1357,7 @@ safeAddListener('btnSubmit', 'click', () => {
       const sisaTunggu = MINIMUM_TIME_SECONDS - elapsedSeconds;
       const m = Math.floor(sisaTunggu / 60);
       const s = sisaTunggu % 60;
-      alert(`Tombol Selesai masih dikunci!\nAnda baru bisa mengakhiri ujian setelah minimal ${minLockMinutes} menit mengerjakan.\n\nMohon tunggu ${m} menit ${s} detik lagi.`);
+      showCustomAlert('Tombol Selesai Terkunci', `Anda baru bisa mengakhiri ujian setelah minimal ${minLockMinutes} menit mengerjakan. Mohon tunggu ${m} menit ${s} detik lagi.`, '🔒');
       return;
     }
   }
@@ -3161,28 +3183,16 @@ window.addEventListener('beforeinstallprompt', (e) => {
       });
   }
 });
-// Hamburger Menu Logic
-const btnOpenMenu = document.getElementById('btnOpenMenu');
-if (btnOpenMenu) {
-  btnOpenMenu.addEventListener('click', () => {
-    const menu = document.getElementById('hamburger-menu');
-    if(menu) menu.classList.add('open');
-  });
+function showCustomAlert(title, message, icon = '⚠️') {
+    const modal = document.getElementById('custom-alert-modal');
+    if (!modal) return;
+    document.getElementById('custom-alert-title').textContent = title;
+    document.getElementById('custom-alert-message').textContent = message;
+    document.getElementById('custom-alert-icon').textContent = icon;
+    modal.style.display = 'flex';
 }
 
-const btnCloseMenu = document.getElementById('btnCloseMenu');
-if (btnCloseMenu) {
-  btnCloseMenu.addEventListener('click', () => {
-    const menu = document.getElementById('hamburger-menu');
-    if(menu) menu.classList.remove('open');
-  });
+function closeCustomAlert() {
+    const modal = document.getElementById('custom-alert-modal');
+    if (modal) modal.style.display = 'none';
 }
-
-// --- Menu Button ---
-safeAddListener('btnOpenMenu', 'click', () => {
-  updateGridUI();
-  const overlay = document.getElementById('overlay');
-  const qGridContainer = document.getElementById('qGridContainer');
-  if (overlay) overlay.classList.add('active');
-  if (qGridContainer) qGridContainer.classList.add('open');
-});
