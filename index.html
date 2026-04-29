@@ -282,26 +282,26 @@
       <!-- Modern Bottom Navigation -->
       <div class="modern-footer">
         <div class="footer-actions">
-          <button id="btnPrev" class="btn-footer btn-footer-outline">
+          <button id="btnPrev" class="btn-footer btn-footer-outline" aria-label="Soal Sebelumnya" title="Sebelumnya">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
-            Sebelumnya
           </button>
           
-          <button id="btnGrid" class="btn-footer btn-footer-soft">
+          <button id="btnGrid" class="btn-footer btn-footer-soft" aria-label="Daftar Soal" title="Daftar Soal">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
               <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
             </svg>
-            Daftar Soal
+          </button>
+
+          <button id="btnDoubt" class="btn-footer btn-footer-warning" aria-label="Ragu-ragu" title="Ragu-ragu">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           </button>
           
-          <button id="btnNext" class="btn-footer btn-footer-primary">
-            Selanjutnya
+          <button id="btnNext" class="btn-footer btn-footer-primary" aria-label="Soal Selanjutnya" title="Selanjutnya">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
 
-          <button id="btnSubmit" class="btn-footer btn-footer-success" style="display:none;">
-            Selesai
+          <button id="btnSubmit" class="btn-footer btn-footer-success" style="display:none;" aria-label="Selesai Ujian" title="Selesai">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
           </button>
         </div>
@@ -1143,7 +1143,7 @@
   <div id="qGridContainer" class="grid-container">
     <div class="grid-header">
       <h3>Daftar Soal</h3>
-      <button class="btn-close" onclick="closeGrid()">×</button>
+      <button id="btnCloseGrid" class="btn-close" onclick="closeGrid()">×</button>
     </div>
     <div id="qGrid" class="grid-body"></div>
   </div>
@@ -1191,6 +1191,16 @@
           <h2 style="font-weight:800; color:#1e293b; margin-bottom:12px;">Wajib Gunakan Aplikasi</h2>
           <p style="color:#64748b; line-height:1.6; margin-bottom:24px;">Silakan install/tambahkan halaman ini ke layar utama (Add to Home Screen) untuk memulai ujian.</p>
           <button class="btn btn-primary btn-block" onclick="window.location.reload()">Saya Sudah Install, Muat Ulang</button>
+      </div>
+  </div>
+
+  <div id="custom-alert-modal" style="display:none; position:fixed; inset:0; z-index:9999; align-items:center; justify-content:center; padding:20px;">
+      <div class="overlay active" onclick="closeCustomAlert()"></div>
+      <div class="card modal-card" style="max-width:400px; padding:32px; border-radius:24px; position:relative; z-index:10000; text-align:center;">
+          <div id="custom-alert-icon" style="font-size:3rem; margin-bottom:16px;">⚠️</div>
+          <h3 id="custom-alert-title" style="font-weight:800; margin-bottom:12px;">Peringatan</h3>
+          <p id="custom-alert-message" style="color:#64748b; line-height:1.6; margin-bottom:24px;"></p>
+          <button class="btn btn-primary btn-block" onclick="closeCustomAlert()">Mengerti</button>
       </div>
   </div>
 
