@@ -2976,7 +2976,7 @@ async function importSoalExcel(jsonData, bankId, imageMapping = {}, stats = { ra
         let gambarSoal = String(row[2] || '').trim();
         if (!gambarSoal) {
             // Fuzzy match: check current row and row-1 (in case image is slightly high)
-            gambarSoal = imageMapping[`${i}:2`] || imageMapping[`${i-1}:2`];
+            gambarSoal = imageMapping[`${i}:2`] || imageMapping[`${i-1}:2`] || "";
         }
         
         let opsi = [];
@@ -2986,7 +2986,7 @@ async function importSoalExcel(jsonData, bankId, imageMapping = {}, stats = { ra
             if (idxMap.imgIdx !== -1) {
                 gmb = row[idxMap.imgIdx] !== undefined ? String(row[idxMap.imgIdx]).trim() : '';
                 if (!gmb) {
-                    gmb = imageMapping[`${i}:${idxMap.imgIdx}`] || imageMapping[`${i-1}:${idxMap.imgIdx}`];
+                    gmb = imageMapping[`${i}:${idxMap.imgIdx}`] || imageMapping[`${i-1}:${idxMap.imgIdx}`] || "";
                 }
             }
             if(teks || gmb) {
