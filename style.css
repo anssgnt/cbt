@@ -2598,6 +2598,104 @@ h4 {
 
 /* "?"?"? Print Styles "?"?"? */
 /* ══════════════════════════════════════
+   DASHBOARD VIEW (Informasi Ujian)
+══════════════════════════════════════ */
+#dashboard-view {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px 16px;
+  min-height: 100%;
+}
+
+.dash-wrap {
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.dash-page-header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  padding: 18px 20px;
+}
+
+.dash-page-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  background: #fef9c3;
+  color: #ca8a04;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.dash-page-icon svg {
+  width: 24px;
+  height: 24px;
+}
+
+.dash-page-title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #1e293b;
+  margin: 0 0 2px;
+}
+
+.dash-page-sub {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin: 0;
+}
+
+.dash-info-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  overflow: hidden;
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.info-row:last-child {
+  border-bottom: none;
+}
+
+.info-label {
+  font-size: 0.9rem;
+  color: #64748b;
+}
+
+.info-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #1e293b;
+  text-align: right;
+}
+
+.dash-start-btn {
+  width: 100%;
+  padding: 18px;
+  font-size: 1.05rem;
+  border-radius: 14px;
+}
+
+/* ══════════════════════════════════════
    QUESTION GRID (Nomor Soal)
 ══════════════════════════════════════ */
 #qGridContainer {
