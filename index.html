@@ -25,11 +25,11 @@
         <div class="wave-content">
           <div class="centric-header stagger-1">
             <div class="centric-logo" id="school-logo-container">
-              <svg id="default-school-icon" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <img id="school-logo-img" src="" style="display:none; max-width:100%; max-height:100%; object-fit:contain;">
+              <svg id="default-logo-svg" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12 2L2 7L12 12L22 7L12 2Z" />
                 <path d="M2 9V14C2 14 7.5 17.5 12 19.5C16.5 17.5 22 14 22 14V9L12 14L2 9Z" />
               </svg>
-              <img id="school-logo-img" style="display:none; width:100%; height:100%; object-fit:contain;" alt="Logo Sekolah">
             </div>
             <div class="centric-identity">
               <h1 id="portal-school-sub">SMP Negeri 7</h1>
@@ -283,26 +283,26 @@
       <!-- Modern Bottom Navigation -->
       <div class="modern-footer">
         <div class="footer-actions">
-          <button id="btnPrev" class="btn-footer btn-footer-outline" aria-label="Soal Sebelumnya" title="Sebelumnya">
+          <button id="btnPrev" class="btn-footer btn-footer-outline">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
           
-          <button id="btnGrid" class="btn-footer btn-footer-soft" aria-label="Daftar Soal" title="Daftar Soal">
+          <button id="btnGrid" class="btn-footer btn-footer-soft">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
               <rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/>
             </svg>
           </button>
 
-          <button id="btnDoubt" class="btn-footer btn-footer-warning" aria-label="Ragu-ragu" title="Ragu-ragu">
+          <button id="btnDoubt" class="btn-footer btn-footer-warning">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
           </button>
           
-          <button id="btnNext" class="btn-footer btn-footer-primary" aria-label="Soal Selanjutnya" title="Selanjutnya">
+          <button id="btnNext" class="btn-footer btn-footer-primary">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
 
-          <button id="btnSubmit" class="btn-footer btn-footer-success" style="display:none;" aria-label="Selesai Ujian" title="Selesai">
+          <button id="btnSubmit" class="btn-footer btn-footer-success" style="display:none;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>
           </button>
         </div>
@@ -577,13 +577,15 @@
                    <input type="text" id="cfgSchoolSub" class="form-control" placeholder="Contoh: MGMP INF/KKA BJN" value="MGMP INF/KKA BJN">
                 </div>
                 <div class="form-group">
-                   <label>Logo Sekolah (.png, .jpg, .webp)</label>
-                   <div style="display:flex; align-items:center; gap:12px; margin-top:8px;">
-                      <div id="admin-logo-preview-wrap" style="width:60px; height:60px; border:1px solid var(--border); border-radius:8px; display:flex; align-items:center; justify-content:center; background:#f9fafb; overflow:hidden;">
-                         <img id="admin-logo-preview" style="max-width:100%; max-height:100%; object-fit:contain; display:none;">
-                         <span id="admin-logo-placeholder" style="font-size:0.7rem; color:var(--text-muted);">No Logo</span>
-                      </div>
-                      <input type="file" id="cfgSchoolLogo" accept="image/*" style="font-size:0.85rem;">
+                   <label>Logo Sekolah (Format Gambar, ukuran ideal persegi)</label>
+                   <div style="display:flex; gap:16px; align-items:center; margin-top:8px;">
+                       <div id="cfgLogoPreview" style="width:80px; height:80px; border:2px dashed var(--border); border-radius:12px; display:flex; align-items:center; justify-content:center; overflow:hidden; background:#f8fafc;">
+                           <span style="font-size:0.7rem; color:var(--text-muted);">No Logo</span>
+                       </div>
+                       <div style="flex:1;">
+                           <input type="file" id="cfgLogoInput" accept="image/*" class="form-control" style="font-size:0.8rem; padding:8px;">
+                           <p style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">File akan dikonversi ke Base64 (Maks 1MB disarankan)</p>
+                       </div>
                    </div>
                 </div>
              </div>
@@ -1206,7 +1208,7 @@
   </div>
 
   <div id="custom-alert-modal" style="display:none; position:fixed; inset:0; z-index:9999; align-items:center; justify-content:center; padding:20px;">
-      <div class="overlay active" onclick="closeCustomAlert()"></div>
+      <div class="overlay" onclick="closeCustomAlert()"></div>
       <div class="card modal-card" style="max-width:400px; padding:32px; border-radius:24px; position:relative; z-index:10000; text-align:center;">
           <div id="custom-alert-icon" style="font-size:3rem; margin-bottom:16px;">⚠️</div>
           <h3 id="custom-alert-title" style="font-weight:800; margin-bottom:12px;">Peringatan</h3>
@@ -1215,8 +1217,40 @@
       </div>
   </div>
 
-  <script src="script.js"></script>
+  <!-- Guide Modal -->
+  <div class="overlay" id="guide-overlay" onclick="closeGuideModal()"></div>
+  <div class="card modal-card" id="guide-modal" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.95);z-index:1001;display:none;flex-direction:column;width:90%;max-width:500px;opacity:0;transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);padding:0;overflow:hidden;max-height:85vh;">
+      <div style="padding:24px; background:var(--primary); color:white; display:flex; justify-content:space-between; align-items:center;">
+          <h3 style="margin:0;">Panduan Ujian</h3>
+          <button onclick="closeGuideModal()" style="background:none; border:none; color:white; font-size:1.5rem; cursor:pointer;">&times;</button>
+      </div>
+      <div style="padding:24px; overflow-y:auto; flex:1;">
+          <div style="margin-bottom:20px;">
+              <h4 style="color:var(--primary); margin-bottom:8px;">1. Masuk ke Sistem</h4>
+              <p style="font-size:0.9rem; color:var(--text-muted);">Cari nama lengkap Anda di kotak pencarian pada halaman utama, lalu konfirmasi identitas Anda.</p>
+          </div>
+          <div style="margin-bottom:20px;">
+              <h4 style="color:var(--primary); margin-bottom:8px;">2. Memulai Ujian</h4>
+              <p style="font-size:0.9rem; color:var(--text-muted);">Pilih jadwal ujian yang sedang aktif, masukkan token yang diberikan pengawas, lalu klik "Mulai Ujian".</p>
+          </div>
+          <div style="margin-bottom:20px;">
+              <h4 style="color:var(--primary); margin-bottom:8px;">3. Selama Ujian</h4>
+              <p style="font-size:0.9rem; color:var(--text-muted);">Dilarang keluar dari tab/aplikasi atau berpindah ke aplikasi lain. Sistem akan mencatat pelanggaran secara otomatis.</p>
+          </div>
+          <div style="margin-bottom:20px;">
+              <h4 style="color:var(--primary); margin-bottom:8px;">4. Mengirim Jawaban</h4>
+              <p style="font-size:0.9rem; color:var(--text-muted);">Setelah selesai menjawab semua soal, klik tombol "Selesai" di navigasi soal atau di bawah soal terakhir untuk mengirim jawaban.</p>
+          </div>
+          <div style="background:var(--primary-soft); padding:12px; border-radius:8px; border-left:4px solid var(--primary);">
+              <p style="font-size:0.85rem; color:var(--primary-hover); margin:0;">Pastikan koneksi internet Anda stabil selama proses pengiriman jawaban.</p>
+          </div>
+      </div>
+      <div style="padding:16px 24px; border-top:1px solid var(--border); background:var(--surface-1); text-align:right;">
+          <button class="btn btn-primary" onclick="closeGuideModal()">Saya Mengerti</button>
+      </div>
+  </div>
 
+  <script src="script.js"></script>
 </body>
 
 </html>
