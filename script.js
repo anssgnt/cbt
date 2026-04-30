@@ -342,11 +342,15 @@ async function gasRun(funcName, ...args) {
       const [userId, kelas] = args;
       const snap = await db.ref('/jadwal').once('value');
       const data = snap.val() || {};
-      const hSnap = await db.ref('/hasil').orderByChild('userId').equalTo(userId).once('value');
-      const hData = hSnap.val() || {};
+      const hSnap = await db.ref('/hasil').once('value');
+      const allHasil = hSnap.val() || {};
       const completedSet = new Set();
-      for(let k in hData) completedSet.add(hData[k].examId);
-      
+      for (let k in allHasil) {
+        if (allHasil[k].userId === userId) {
+          completedSet.add(allHasil[k].examId);
+        }
+      }
+
       const schedules = [];
       const nowMs = Date.now();
       for (let id in data) {
