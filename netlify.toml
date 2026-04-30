@@ -5,3 +5,52 @@
   from = "/*"
   to = "/index.html"
   status = 200
+
+# ─── Cache Headers ────────────────────────────────────────────────────────────
+# HTML: no-cache agar konten terbaru selalu diambil
+[[headers]]
+  for = "/*.html"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+
+# CSS: cache 1 tahun (ubah nama file kalau mau bust cache)
+[[headers]]
+  for = "/*.css"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# JS: cache 1 tahun (ubah nama file kalau mau bust cache)
+[[headers]]
+  for = "/*.js"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# Gambar & aset lainnya: cache 30 hari
+[[headers]]
+  for = "/*.png"
+  [headers.values]
+    Cache-Control = "public, max-age=2592000"
+
+[[headers]]
+  for = "/*.jpg"
+  [headers.values]
+    Cache-Control = "public, max-age=2592000"
+
+[[headers]]
+  for = "/*.svg"
+  [headers.values]
+    Cache-Control = "public, max-age=2592000"
+
+[[headers]]
+  for = "/*.ico"
+  [headers.values]
+    Cache-Control = "public, max-age=2592000"
+
+# PWA Manifest: no-cache agar perubahan langsung terdeteksi
+[[headers]]
+  for = "/*.webmanifest"
+  [headers.values]
+    Cache-Control = "no-cache"
+    Content-Type = "application/manifest+json"
