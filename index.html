@@ -586,7 +586,7 @@
                    <label>Nama Sekolah (Digunakan di Kop Berita Acara & Judul Browser)</label>
                    <input type="text" id="cfgSchoolName" class="form-control" placeholder="Contoh: SMP Negeri 1 Dander" value="SMP Negeri 1 Dander">
                 </div>
-                <div class="form-group">
+<div class="form-group">
                    <label>Sub-Judul / Nama Instansi (Digunakan di Layar Utama / Login)</label>
                    <input type="text" id="cfgSchoolSub" class="form-control" placeholder="Contoh: MGMP INF/KKA BJN" value="MGMP INF/KKA BJN">
                 </div>
@@ -602,7 +602,15 @@
                        </div>
                    </div>
                 </div>
-             </div>
+              </div>
+
+              <div class="card" style="display:flex; flex-direction:column; gap:16px; margin-bottom:16px; border: 1px dashed var(--accent);">
+                 <div style="font-weight:600; color:var(--accent);">Pemeliharaan Sistem</div>
+                 <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <div style="font-size:0.8rem; color:var(--text-muted);">Nama siswa tidak muncul saat login? Klik ini untuk memperbaiki database.</div>
+                    <button class="btn btn-outline" onclick="fixPesertaIndex()" style="padding:8px 12px; font-size:0.75rem; border-color:var(--accent); color:var(--accent);">🔧 Fix Search Index</button>
+                 </div>
+              </div>
 
              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
                 <h3 style="font-size:1.1rem;margin:0;">Pengaturan Keamanan CBT</h3>
