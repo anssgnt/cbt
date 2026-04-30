@@ -2478,10 +2478,6 @@ function renderPreviewOptions(q) {
            div.className = `option-item ${isCorrect ? 'answer-correct' : ''}`;
 
            let imgHTML = '';
-
-
-
-
            if (opt.gambar) {
                imgHTML = `<img src="${opt.gambar}" class="q-image" style="max-height:140px; margin-top:8px; display:block;" onclick="openZoomModal('${opt.gambar}'); event.stopPropagation();" />`;
            }
@@ -2755,8 +2751,7 @@ async function extractImagesFromXLSX(arrayBuffer) {
     if (typeof JSZip === 'undefined') return {};
     const zip = await JSZip.loadAsync(arrayBuffer);
     
-    // 1. Get all images in xl/media/ and convert to Base64
-    const imageMap = {}; // { "xl/media/image1.png": base64 }
+    const imageMap = {}; 
     const mediaFiles = Object.keys(zip.files).filter(path => path.startsWith("xl/media/"));
     
     for (const path of mediaFiles) {
@@ -2773,9 +2768,8 @@ async function extractImagesFromXLSX(arrayBuffer) {
         }
     }
 
-    // 2. Parse drawings to find cell mapping
     const drawingFiles = Object.keys(zip.files).filter(path => path.startsWith("xl/drawings/") && path.endsWith(".xml") && !path.includes("_rels"));
-    const cellImageMap = {}; // { "row:col": base64 }
+    const cellImageMap = {}; 
 
     for (const drawingPath of drawingFiles) {
         const relsPath = drawingPath.replace("xl/drawings/", "xl/drawings/_rels/") + ".rels";
@@ -2783,27 +2777,39 @@ async function extractImagesFromXLSX(arrayBuffer) {
         if (!relsFile) continue;
 
         const relsXml = await relsFile.async("string");
-        const relsParser = new DOMParser();
-        const relsDoc = relsParser.parseFromString(relsXml, "text/xml");
+        const relsDoc = new DOMParser().parseFromString(relsXml, "text/xml");
         const rels = {};
-        relsDoc.querySelectorAll("Relationship").forEach(rel => {
+        const relTags = relsDoc.getElementsByTagNameNS("*", "Relationship");
+        for (let rel of relTags) {
             rels[rel.getAttribute("Id")] = rel.getAttribute("Target").replace("../media/", "xl/media/");
-        });
+        }
 
         const drawingXml = await zip.file(drawingPath).async("string");
         const drawingDoc = new DOMParser().parseFromString(drawingXml, "text/xml");
         
-        // Handle twoCellAnchor and oneCellAnchor
-        drawingDoc.querySelectorAll("twoCellAnchor, oneCellAnchor").forEach(anchor => {
-            const from = anchor.querySelector("from");
-            if (from) {
-                const col = parseInt(from.querySelector("col")?.textContent || "0");
-                const row = parseInt(from.querySelector("row")?.textContent || "0");
-                const blip = anchor.querySelector("blip");
-                if (blip) {
-                    const rId = blip.getAttribute("r:embed") || blip.getAttribute("embed");
-                    if (rId && rels[rId] && imageMap[rels[rId]]) {
-                        cellImageMap[`${row}:${col}`] = imageMap[rels[rId]];
+        const anchors = [
+            ...Array.from(drawingDoc.getElementsByTagNameNS("*", "twoCellAnchor")),
+            ...Array.from(drawingDoc.getElementsByTagNameNS("*", "oneCellAnchor"))
+        ];
+
+        anchors.forEach(anchor => {
+            const fromTags = anchor.getElementsByTagNameNS("*", "from");
+            if (fromTags.length > 0) {
+                const from = fromTags[0];
+                const colTags = from.getElementsByTagNameNS("*", "col");
+                const rowTags = from.getElementsByTagNameNS("*", "row");
+                
+                if (colTags.length > 0 && rowTags.length > 0) {
+                    const col = parseInt(colTags[0].textContent || "0");
+                    const row = parseInt(rowTags[0].textContent || "0");
+                    
+                    const blipTags = anchor.getElementsByTagNameNS("*", "blip");
+                    if (blipTags.length > 0) {
+                        const blip = blipTags[0];
+                        const rId = blip.getAttribute("r:embed") || blip.getAttribute("embed");
+                        if (rId && rels[rId] && imageMap[rels[rId]]) {
+                            cellImageMap[`${row}:${col}`] = imageMap[rels[rId]];
+                        }
                     }
                 }
             }
@@ -2897,25 +2903,44 @@ async function importSiswaExcel(jsonData) {
 }
 
 async function importSoalExcel(jsonData, bankId, imageMapping = {}) {
-    let soalUpdates = {};
-    let kunciUpdates = {};
-    let count = 0;
-    let warnings = [];
-    const letters = ['A', 'B', 'C', 'D', 'E'];
     
-    // Find Kunci Jawaban index dynamically from header (default to 12 if not found)
     let headerRow = jsonData[0] || [];
-    let kunciIdx = 12;
+    let kunciIdx = -1;
+    let opsiIndices = []; // [{label: 'A', textIdx: 4, imgIdx: 5}, ...]
+
+    // Dynamic Column Mapping
     for(let c=0; c<headerRow.length; c++) {
-        if(String(headerRow[c]).toLowerCase().includes('kunci')) {
+        const head = String(headerRow[c]).toLowerCase();
+        if(head.includes('kunci')) {
             kunciIdx = c;
-            break;
+        } else if(head.startsWith('opsi ') || (head.includes('pilihan') && !head.includes('kompleks'))) {
+            const label = head.replace(/opsi|pilihan|\s/g, '').toUpperCase();
+            if (label.length === 1 && label >= 'A' && label <= 'E') {
+                // Find next column for image
+                let imgIdx = -1;
+                if (c + 1 < headerRow.length && String(headerRow[c+1]).toLowerCase().includes('gambar')) {
+                    imgIdx = c + 1;
+                }
+                opsiIndices.push({ label, textIdx: c, imgIdx });
+            }
         }
     }
-    
-    for(let i=1; i<jsonData.length; i++) { // skip header
+
+    // Fallback if dynamic mapping failed (use standard layout)
+    if (opsiIndices.length === 0) {
+        for(let j=0; j<5; j++) {
+            let tIdx = 4 + (j*2);
+            let iIdx = 5 + (j*2);
+            if (tIdx < (kunciIdx > 0 ? kunciIdx : headerRow.length)) {
+                opsiIndices.push({ label: letters[j], textIdx: tIdx, imgIdx: iIdx });
+            }
+        }
+    }
+    if (kunciIdx === -1) kunciIdx = 12; // final fallback
+
+    for(let i=1; i<jsonData.length; i++) {
         let row = jsonData[i];
-        if(!row || row.length === 0) continue; // Skip empty row entirely
+        if(!row || row.length === 0) continue;
         
         if(!row[1]) {
             warnings.push(`Baris ke-${i+1} dilewati: Teks soal kosong.`);
@@ -2923,35 +2948,36 @@ async function importSoalExcel(jsonData, bankId, imageMapping = {}) {
         }
         
         let id = 'S-' + (count+1);
-        let rawJenis = String(row[0]).trim();
-        let tipe = (rawJenis === '1' || rawJenis === 'PG' || !rawJenis) ? 'PG' : rawJenis;
+        let rawJenis = String(row[0]).trim().toUpperCase();
+        let tipe = 'PG';
+        if (rawJenis.includes('KOMPLEKS')) tipe = 'KOMPLEKS';
+        else if (rawJenis.includes('BS') || rawJenis.includes('BENAR')) tipe = 'BS';
+        else if (rawJenis.includes('JODOH')) tipe = 'JODOH';
+        else if (rawJenis.includes('ISIAN')) tipe = 'ISIAN';
         
         let pertanyaan = String(row[1]).trim();
         let gambarSoal = String(row[2] || '').trim();
         if (!gambarSoal && imageMapping[`${i}:2`]) {
             gambarSoal = imageMapping[`${i}:2`];
         }
-        // Kolom 3 (Audio/Video) diabaikan sementara
         
         let opsi = [];
-        for(let j=0; j<4; j++) {
-            let colIndex = 4 + (j*2); // 4, 6, 8, 10, 12
-            let imgColIndex = 5 + (j*2); // 5, 7, 9, 11, 13
-            let teks = row[colIndex] !== undefined ? String(row[colIndex]).trim() : '';
-            let gmb = row[imgColIndex] !== undefined ? String(row[imgColIndex]).trim() : '';
-            
-            if (!gmb && imageMapping[`${i}:${imgColIndex}`]) {
-                gmb = imageMapping[`${i}:${imgColIndex}`];
+        opsiIndices.forEach(idxMap => {
+            let teks = row[idxMap.textIdx] !== undefined ? String(row[idxMap.textIdx]).trim() : '';
+            let gmb = '';
+            if (idxMap.imgIdx !== -1) {
+                gmb = row[idxMap.imgIdx] !== undefined ? String(row[idxMap.imgIdx]).trim() : '';
+                if (!gmb && imageMapping[`${i}:${idxMap.imgIdx}`]) {
+                    gmb = imageMapping[`${i}:${idxMap.imgIdx}`];
+                }
             }
-
             if(teks || gmb) {
-                opsi.push({ id: letters[j], text: teks, gambar: gmb });
+                opsi.push({ id: idxMap.label, text: teks, gambar: gmb });
             }
-        }
+        });
         
-        if (opsi.length < 2 && tipe === 'PG') {
-            warnings.push(`Baris ke-${i+1} dilewati: Tipe PG butuh minimal 2 opsi (A & B).`);
-            continue;
+        if (opsi.length < 2 && (tipe === 'PG' || tipe === 'BS')) {
+            // Warnings handled later
         }
 
         let rawKunci = String(row[kunciIdx] || '').trim();
@@ -2967,36 +2993,24 @@ async function importSoalExcel(jsonData, bankId, imageMapping = {}) {
         } else if (tipe === 'KOMPLEKS') {
             kunci = String(rawKunci).split(',').map(s => {
                s = s.trim().toUpperCase();
-               if(s==='1') return 'A'; if(s==='2') return 'B'; if(s==='3') return 'C'; if(s==='4') return 'D';
+               if(s==='1') return 'A'; if(s==='2') return 'B'; if(s==='3') return 'C'; if(s==='4') return 'D'; if(s==='5') return 'E';
                return s;
             }).filter(s=>s).join(',');
         }
 
-        if (!rawKunci && tipe === 'PG') {
-            warnings.push(`Baris ke-${i+1} tidak memiliki Kunci Jawaban.`);
-        }
-        
         let updateData = { id, tipe, pertanyaan, opsi, bobot: 1, gambar: gambarSoal };
         
         if (tipe === 'JODOH') {
-            let kiri = [];
-            let kanan = [];
-            let autoKunci = [];
+            let kiri = []; let kanan = []; let autoKunci = [];
             opsi.forEach(o => {
                if(o.text.includes('=')) {
                   let parts = o.text.split('=');
-                  let k = parts[0].trim();
-                  let v = parts[1].trim();
-                  if(k && v) {
-                      kiri.push(k);
-                      kanan.push(v);
-                      autoKunci.push(`${k}=${v}`);
-                  }
+                  let k = parts[0].trim(); let v = parts[1].trim();
+                  if(k && v) { kiri.push(k); kanan.push(v); autoKunci.push(`${k}=${v}`); }
                }
             });
-            updateData.kiri = kiri;
-            updateData.kanan = [...kanan].sort(); // Sort to scramble the dropdowns
-            kunci = autoKunci.join(';'); // Auto-generate key
+            updateData.kiri = kiri; updateData.kanan = [...kanan].sort();
+            kunci = autoKunci.join(';');
         }
         
         soalUpdates[id] = updateData;
@@ -3007,17 +3021,25 @@ async function importSoalExcel(jsonData, bankId, imageMapping = {}) {
     if(count > 0) {
         await db.ref('/soal/' + bankId).set(soalUpdates);
         await db.ref('/kunci/' + bankId).set(kunciUpdates);
-        let msg = 'Berhasil import ' + count + ' soal ke bank ' + bankId + '.';
+        
+        // Count detected images for summary
+        let imgTotal = 0;
+        Object.values(soalUpdates).forEach(s => {
+            if(s.gambar && s.gambar.startsWith('data:image')) imgTotal++;
+            s.opsi.forEach(o => { if(o.gambar && o.gambar.startsWith('data:image')) imgTotal++; });
+        });
+
+        let msg = `Berhasil import ${count} soal ke bank ${bankId}.`;
+        if (imgTotal > 0) msg = `Berhasil import ${count} soal (${imgTotal} gambar terdeteksi) ke bank ${bankId}.`;
+        
         if(warnings.length > 0) {
             msg += '\n\nPeringatan:\n- ' + warnings.slice(0, 5).join('\n- ');
-            if (warnings.length > 5) msg += `\n...dan ${warnings.length - 5} baris lainnya.`;
         }
         alert(msg);
         closeImportModal();
         loadAdminSoal();
     } else {
-        let errStr = warnings.length > 0 ? ('\nAlasan:\n- ' + warnings.slice(0, 3).join('\n- ')) : '';
-        alert('Gagal: Tidak ada soal valid yang ditemukan.' + errStr);
+        alert('Gagal: Tidak ada soal valid yang ditemukan.');
     }
 }
 
