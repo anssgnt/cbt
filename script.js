@@ -3037,14 +3037,20 @@ async function importSoalExcel(jsonData, bankId, imageMapping = {}, stats = { ra
     }
     
     if(count > 0) {
-        await db.ref('/soal/' + bankId).set(soalUpdates);
-        await db.ref('/kunci/' + bankId).set(kunciUpdates);
+        // Clean data for Firebase (No undefined allowed)
+        const cleanSoal = JSON.parse(JSON.stringify(soalUpdates, (k, v) => v === undefined ? "" : v));
+        const cleanKunci = JSON.parse(JSON.stringify(kunciUpdates, (k, v) => v === undefined ? "" : v));
+
+        await db.ref('/soal/' + bankId).set(cleanSoal);
+        await db.ref('/kunci/' + bankId).set(cleanKunci);
         
         // Count detected images for summary
         let imgTotal = 0;
         Object.values(soalUpdates).forEach(s => {
-            if(s.gambar && s.gambar.startsWith('data:image')) imgTotal++;
-            s.opsi.forEach(o => { if(o.gambar && o.gambar.startsWith('data:image')) imgTotal++; });
+            if(s.gambar && String(s.gambar).startsWith('data:image')) imgTotal++;
+            if(s.opsi) {
+                s.opsi.forEach(o => { if(o.gambar && String(o.gambar).startsWith('data:image')) imgTotal++; });
+            }
         });
 
         let msg = `Berhasil import ${count} soal ke bank ${bankId}.`;
