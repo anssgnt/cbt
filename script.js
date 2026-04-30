@@ -658,51 +658,9 @@ async function gasRun(funcName, ...args) {
 
     else if (funcName === 'submitExam') {
       const [payload] = args;
-      const jSnap = await db.ref('/jadwal/' + payload.examId).once('value');
-      const sch = jSnap.val();
-      const kSnap = await db.ref('/kunci/' + sch.nama_soal).once('value');
-      const kData = kSnap.val() || {};
-      const sSnap = await db.ref('/soal/' + sch.nama_soal).once('value');
-      const sData = sSnap.val() || {};
-
-      let totalScore = 0; let maxScore = 0; let detailEvals = {};
-
-      for (let qId in sData) {
-        let q = sData[qId];
-        let bobot = parseFloat(q.bobot) || 1;
-        let correctAns = kData[qId] || '';
-        let userAns = payload.answers[qId];
-        let isCorrect = false;
-        maxScore += bobot;
-
-        if (!userAns) { detailEvals[qId] = { answer: '-', correct: false }; continue; }
-
-        if (q.tipe === 'PG' || q.tipe === 'BS') {
-          isCorrect = String(userAns).trim().toUpperCase() === String(correctAns).trim().toUpperCase();
-        } else if (q.tipe === 'KOMPLEKS') {
-          if (Array.isArray(userAns)) {
-            let cArr = String(correctAns).split(',').map(s => s.trim().toUpperCase()).sort();
-            let uArr = userAns.map(s => String(s).trim().toUpperCase()).sort();
-            isCorrect = JSON.stringify(cArr) === JSON.stringify(uArr);
-          }
-        } else if (q.tipe === 'ISIAN') {
-          isCorrect = String(userAns).trim().toLowerCase() === String(correctAns).trim().toLowerCase();
-        } else if (q.tipe === 'JODOH') {
-          let cPairs = {};
-          String(correctAns).split(';').forEach(p => { let pt = p.split('='); if (pt.length == 2) cPairs[pt[0].trim()] = pt[1].trim(); });
-          if (typeof userAns === 'object' && !Array.isArray(userAns)) {
-            let allMatch = true; let keys = Object.keys(cPairs);
-            if (keys.length === 0) allMatch = false;
-            for (let k of keys) { if (userAns[k] !== cPairs[k]) { allMatch = false; break; } }
-            isCorrect = allMatch;
-          }
-        }
-        if (isCorrect) totalScore += bobot;
-        detailEvals[qId] = { answer: userAns, correct: isCorrect };
-      }
-
-      let finalScore = (maxScore > 0) ? (totalScore / maxScore) * 100 : 0;
-      finalScore = Math.round(finalScore * 100) / 100;
+      // Use the score calculated by the client to avoid massive database reads
+      // (1000 students x (Questions + Keys) = Heavy load on Spark Plan)
+      const finalScore = payload.score || 0;
 
       await db.ref('/hasil').push({
         timestamp: firebase.database.ServerValue.TIMESTAMP,
@@ -710,7 +668,7 @@ async function gasRun(funcName, ...args) {
         nama: payload.user.name,
         kelas: payload.user.kelas || '-',
         examId: payload.examId,
-        namaUjian: sch.nama,
+        namaUjian: payload.examId, // Simple metadata to save reads
         skor: finalScore,
         waktu: payload.usedTime || '',
         detail: JSON.stringify(detailEvals)
@@ -1397,7 +1355,9 @@ function renderOptions(q) {
       `;
       div.onclick = () => {
         State.answers[q.id] = opt.id;
-        renderOptions(q);
+        // Optimization: Update classes instead of rebuilding DOM for snappy performance
+        container.querySelectorAll('.modern-option').forEach(el => el.classList.remove('selected'));
+        div.classList.add('selected');
         debouncedSave();
       };
       container.appendChild(div);
@@ -1430,12 +1390,13 @@ function renderOptions(q) {
         let arr = State.answers[q.id] || [];
         if (arr.includes(opt.id) || arr.includes(opt.text)) {
           arr = arr.filter(x => x !== opt.id && x !== opt.text);
+          div.classList.remove('selected');
         } else {
           arr.push(opt.id);
+          div.classList.add('selected');
         }
         if (arr.length === 0) delete State.answers[q.id];
         else State.answers[q.id] = arr;
-        renderOptions(q);
         debouncedSave();
       };
       container.appendChild(div);
