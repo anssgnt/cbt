@@ -2748,11 +2748,13 @@ window.closeImportModal = function() {
  * Returns an object { "row:col": base64DataUrl }
  */
 async function extractImagesFromXLSX(arrayBuffer) {
-    if (typeof JSZip === 'undefined') return {};
+    const stats = { rawImages: 0, drawings: 0, mapped: 0 };
+    if (typeof JSZip === 'undefined') return { mapping: {}, stats };
     const zip = await JSZip.loadAsync(arrayBuffer);
     
     const imageMap = {}; 
-    const mediaFiles = Object.keys(zip.files).filter(path => path.startsWith("xl/media/"));
+    const mediaFiles = Object.keys(zip.files).filter(path => path.toLowerCase().includes("media/"));
+    stats.rawImages = mediaFiles.length;
     
     for (const path of mediaFiles) {
         const file = zip.file(path);
@@ -2762,17 +2764,16 @@ async function extractImagesFromXLSX(arrayBuffer) {
             let mime = 'image/png';
             if (ext === 'jpg' || ext === 'jpeg') mime = 'image/jpeg';
             else if (ext === 'gif') mime = 'image/gif';
-            else if (ext === 'svg') mime = 'image/svg+xml';
-            
             imageMap[path] = `data:${mime};base64,${blob}`;
         }
     }
 
-    const drawingFiles = Object.keys(zip.files).filter(path => path.startsWith("xl/drawings/") && path.endsWith(".xml") && !path.includes("_rels"));
+    const drawingFiles = Object.keys(zip.files).filter(path => path.toLowerCase().includes("drawings/") && path.endsWith(".xml") && !path.includes("_rels"));
+    stats.drawings = drawingFiles.length;
     const cellImageMap = {}; 
 
     for (const drawingPath of drawingFiles) {
-        const relsPath = drawingPath.replace("xl/drawings/", "xl/drawings/_rels/") + ".rels";
+        const relsPath = drawingPath.replace(/drawings\/([^\/]+)\.xml$/, "drawings/_rels/$1.xml.rels");
         const relsFile = zip.file(relsPath);
         if (!relsFile) continue;
 
@@ -2783,7 +2784,9 @@ async function extractImagesFromXLSX(arrayBuffer) {
         for (let rel of relTags) {
             let target = rel.getAttribute("Target");
             if (target) {
-                const cleanTarget = target.replace(/^..\/media\//, "xl/media/").replace(/^media\//, "xl/media/");
+                // Ensure target is absolute relative to xl/
+                let cleanTarget = target.replace(/^..\/media\//, "xl/media/").replace(/^media\//, "xl/media/");
+                if (!cleanTarget.startsWith('xl/')) cleanTarget = 'xl/' + cleanTarget;
                 rels[rel.getAttribute("Id")] = cleanTarget;
             }
         }
@@ -2814,8 +2817,10 @@ async function extractImagesFromXLSX(arrayBuffer) {
                                     blip.getAttribute("embed") || 
                                     blip.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "embed");
 
-                        if (rId && rels[rId] && imageMap[rels[rId]]) {
-                            cellImageMap[`${row}:${col}`] = imageMap[rels[rId]];
+                        if (rId && rels[rId] && (imageMap[rels[rId]] || imageMap[rels[rId].replace('xl/','')] || imageMap[rels[rId].split('/').pop()])) {
+                            const imgData = imageMap[rels[rId]] || imageMap[rels[rId].replace('xl/','')] || imageMap[rels[rId].split('/').pop()];
+                            cellImageMap[`${row}:${col}`] = imgData;
+                            stats.mapped++;
                         }
                     }
                 }
@@ -2823,7 +2828,7 @@ async function extractImagesFromXLSX(arrayBuffer) {
         });
     }
 
-    return cellImageMap;
+    return { mapping: cellImageMap, stats };
 }
 
 window.processImport = async function() {
@@ -2851,9 +2856,9 @@ window.processImport = async function() {
                 if (typeof XLSX === 'undefined') return alert("Library Excel belum termuat, periksa koneksi internet Anda.");
                 const data = new Uint8Array(e.target.result);
                 
-                let imageMapping = {};
+                let extractData = { mapping: {}, stats: { rawImages: 0, drawings: 0, mapped: 0 } };
                 try {
-                    imageMapping = await extractImagesFromXLSX(e.target.result);
+                    extractData = await extractImagesFromXLSX(e.target.result);
                 } catch(imgErr) {
                     console.warn("Image extraction failed:", imgErr);
                 }
@@ -2868,7 +2873,7 @@ window.processImport = async function() {
                 } else if(currentImportType === 'soal') {
                     const bankId = document.getElementById('importBankId').value.trim();
                     if(!bankId) return alert('Kode Bank Soal wajib diisi!');
-                    await importSoalExcel(jsonData, bankId, imageMapping);
+                    await importSoalExcel(jsonData, bankId, extractData.mapping, extractData.stats);
                 }
             } catch(err) {
                 alert("Gagal membaca file Excel. Pastikan file tidak rusak.");
@@ -2909,7 +2914,7 @@ async function importSiswaExcel(jsonData) {
     }
 }
 
-async function importSoalExcel(jsonData, bankId, imageMapping = {}) {
+async function importSoalExcel(jsonData, bankId, imageMapping = {}, stats = { rawImages: 0, drawings: 0, mapped: 0 }) {
     let soalUpdates = {};
     let kunciUpdates = {};
     let count = 0;
@@ -3043,11 +3048,14 @@ async function importSoalExcel(jsonData, bankId, imageMapping = {}) {
         });
 
         let msg = `Berhasil import ${count} soal ke bank ${bankId}.`;
-        if (imgTotal > 0) msg = `Berhasil import ${count} soal (${imgTotal} gambar terdeteksi) ke bank ${bankId}.`;
-        
-        if(warnings.length > 0) {
-            msg += '\n\nPeringatan:\n- ' + warnings.slice(0, 5).join('\n- ');
+        if (imgTotal > 0) {
+            msg = `Berhasil import ${count} soal (${imgTotal} gambar terdeteksi) ke bank ${bankId}.`;
+        } else if (stats && stats.rawImages > 0) {
+            msg += `\n\n(Info: Ditemukan ${stats.rawImages} file gambar di Excel, tapi tidak ada yang menempel di sel soal/opsi. Pastikan gambar diletakkan tepat di dalam sel.)`;
+        } else {
+            msg += `\n\n(Info: Tidak ditemukan file gambar di dalam file Excel ini.)`;
         }
+        
         alert(msg);
         closeImportModal();
         loadAdminSoal();
