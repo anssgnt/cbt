@@ -93,27 +93,8 @@
     <!-- ══════════════════════════════════════
        1b. LOGIN CONFIRM VIEW
   ══════════════════════════════════════ -->
-    <div id="login-confirm-view" class="view portal-layout" style="padding:0;">
-      <!-- Wavy Header Background -->
-      <div class="wave-bg-container" style="min-height: 30vh; padding-bottom: 60px;">
-        <div class="wave-content">
-          <div class="centric-header stagger-1">
-            <div class="centric-logo">
-              <svg fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L2 7L12 12L22 7L12 2Z" /><path d="M2 9V14C2 14 7.5 17.5 12 19.5C16.5 17.5 22 14 22 14V9L12 14L2 9Z" /></svg>
-            </div>
-            <div class="centric-identity">
-              <h1 id="portal-school-sub">Konfirmasi</h1>
-              <p>Pastikan data Anda benar</p>
-            </div>
-          </div>
-        </div>
-        <!-- SVG Wave -->
-        <svg class="wave-svg" viewBox="0 0 1440 320" preserveAspectRatio="none">
-          <path fill="#FFFFFF" fill-opacity="1" d="M0,256L48,245.3C96,235,192,213,288,213.3C384,213,480,235,576,234.7C672,235,768,213,864,186.7C960,160,1056,128,1152,122.7C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
-        </svg>
-      </div>
-      <div class="saas-login-container stagger-2" style="margin-top: -60px; z-index: 2; width: 100%; padding: 20px;">
-        <div class="confirm-card" style="margin: 0; width: 100%; background: transparent; box-shadow: none; border: none; padding: 0;">
+    <div id="login-confirm-view" class="view portal-layout" style="justify-content:center; align-items:center;">
+      <div class="confirm-card">
         <!-- Avatar area -->
         <div class="confirm-avatar-wrap">
           <div class="confirm-avatar">
@@ -156,9 +137,8 @@
     <!-- ══════════════════════════════════════
        1c. SCHEDULE VIEW
   ══════════════════════════════════════ -->
-    <div id="schedule-view" class="view" style="padding:0; background: #F3F4F6;">
-      <div class="wave-header-exam" style="padding-bottom: 80px;">
-        <div class="schedule-header" style="background: transparent; border: none; padding-bottom: 0;">
+    <div id="schedule-view" class="view">
+      <div class="schedule-header">
         <div class="schedule-header-left">
           <div class="schedule-header-icon">
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -176,13 +156,8 @@
           </svg>
           Keluar
         </button>
-        </div>
-        <!-- SVG Wave -->
-        <svg class="wave-svg" viewBox="0 0 1440 320" preserveAspectRatio="none">
-          <path fill="#F3F4F6" fill-opacity="1" d="M0,256L48,245.3C96,235,192,213,288,213.3C384,213,480,235,576,234.7C672,235,768,213,864,186.7C960,160,1056,128,1152,122.7C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
-        </svg>
       </div>
-      <div id="schedule-list" style="padding:20px;display:flex;flex-direction:column;gap:14px; position: relative; z-index: 2; margin-top: -60px;"></div>
+      <div id="schedule-list" style="padding:20px;display:flex;flex-direction:column;gap:14px;"></div>
     </div>
 
 
@@ -200,9 +175,10 @@
     <!-- ══════════════════════════════════════
        3. DASHBOARD VIEW
   ══════════════════════════════════════ -->
-    <div id="dashboard-view" class="view" style="padding:0; background: #F3F4F6;">
-      <div class="wave-header-exam" style="padding-bottom: 80px;">
-        <div class="dash-page-header" style="background: transparent; border: none; padding-bottom: 0;">
+    <div id="dashboard-view" class="view">
+      <div class="dash-wrap">
+        <!-- Page Header -->
+        <div class="dash-page-header">
           <div class="dash-page-icon">
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
@@ -213,12 +189,6 @@
             <p class="dash-page-sub">Periksa detail sebelum memulai</p>
           </div>
         </div>
-        <!-- SVG Wave -->
-        <svg class="wave-svg" viewBox="0 0 1440 320" preserveAspectRatio="none">
-          <path fill="#F3F4F6" fill-opacity="1" d="M0,256L48,245.3C96,235,192,213,288,213.3C384,213,480,235,576,234.7C672,235,768,213,864,186.7C960,160,1056,128,1152,122.7C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
-        </svg>
-      </div>
-      <div class="dash-wrap" style="position: relative; z-index: 2; margin-top: -60px;">
         <!-- Info Card -->
         <div class="dash-info-card">
           <div class="info-row">
@@ -255,26 +225,20 @@
        4. EXAM VIEW
   ══════════════════════════════════════ -->
     <div id="exam-view" class="view" style="padding:0; background: #FFFFFF;">
-      <!-- Wave Header for Exam View -->
-      <div class="wave-header-exam">
-        <div class="modern-exam-header">
-          <div class="header-left">
-            <button id="btnOpenMenu" class="header-menu-btn">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-            </button>
-            <div class="header-info">
-              <div id="exam-title" class="exam-main-title">SIMULASI 1</div>
-              <div class="exam-status-sub">Ujian Sedang Berlangsung</div>
-            </div>
-          </div>
-          <div class="header-right">
-            <div id="exam-timer" class="modern-timer">00:57:59</div>
+      <!-- Modern Header -->
+      <div class="modern-exam-header">
+        <div class="header-left">
+          <button id="btnOpenMenu" class="header-menu-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+          </button>
+          <div class="header-info">
+            <div id="exam-title" class="exam-main-title">SIMULASI 1</div>
+            <div class="exam-status-sub">Ujian Sedang Berlangsung</div>
           </div>
         </div>
-        <!-- SVG Wave -->
-        <svg class="wave-svg" viewBox="0 0 1440 320" preserveAspectRatio="none">
-          <path fill="#ffffff" fill-opacity="1" d="M0,256L48,245.3C96,235,192,213,288,213.3C384,213,480,235,576,234.7C672,235,768,213,864,186.7C960,160,1056,128,1152,122.7C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
-        </svg>
+        <div class="header-right">
+          <div id="exam-timer" class="modern-timer">00:57:59</div>
+        </div>
       </div>
 
       <!-- Progress Area -->
@@ -700,13 +664,97 @@
       <div style="background:rgba(0,0,0,0.2); padding:10px 20px; border-radius:8px; font-weight:700; font-size:1.2rem;" id="cheat-countdown">5</div>
   </div>
 
+  <!-- Question Grid Bottom Sheet -->
+  <div class="q-grid-container" id="qGridContainer">
+    <div class="q-grid-header">
+      <div>
+        <h3>Navigasi Soal</h3>
+        <p style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">Ketuk nomor untuk berpindah soal</p>
+      </div>
+      <button class="btn btn-outline" id="btnCloseGrid"
+        style="padding:7px 14px;font-size:0.85rem;width:auto;">Tutup</button>
+    </div>
+    <div class="q-grid" id="qGrid"></div>
+    <div style="margin-top:16px;display:flex;gap:14px;flex-wrap:wrap;font-size:0.77rem;color:var(--text-muted);">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div style="width:14px;height:14px;background:white;border:1.5px solid var(--border-strong);border-radius:3px;">
+        </div>Belum
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div style="width:14px;height:14px;background:var(--primary);border-radius:3px;"></div>Sudah
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div style="width:14px;height:14px;background:var(--warning);border-radius:3px;"></div>Ragu-ragu
+      </div>
+    </div>
+  </div>
 
+  <!-- Token Modal -->
+  <div class="overlay" id="token-overlay"></div>
+  <div class="card modal-card" id="token-modal" style="
+  position:fixed;top:50%;left:50%;
+  transform:translate(-50%,-50%) scale(0.95);
+  z-index:101;display:none;flex-direction:column;
+  width:90%;max-width:360px;
+  opacity:0;transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+">
+    <div style="text-align:center;margin-bottom:20px;">
+      <div
+        style="width:56px;height:56px;background:linear-gradient(135deg,#1D4ED8,#0EA5E9);border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;box-shadow:var(--shadow-pri-sm);">
+        <svg style="width:26px;height:26px;color:white;" fill="none" stroke="currentColor" stroke-width="1.5"
+          viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+        </svg>
+      </div>
+      <h3 style="margin-bottom:6px;">Masukkan Token</h3>
+      <p class="text-muted" style="font-size:0.875rem;">Hubungi pengawas untuk mendapatkan Token ujian ini.</p>
+    </div>
+    <input type="text" id="examTokenInput" class="form-control" placeholder="TOKEN..." autocomplete="off"
+      style="margin-bottom:20px;">
+    <div style="display:flex;gap:10px;">
+      <button id="btnCancelToken" class="btn btn-outline" style="flex:1;">Batal</button>
+      <button id="btnSubmitToken" class="btn btn-primary" style="flex:1;">Mulai</button>
+    </div>
+  </div>
 
+  <!-- Image Zoom Modal -->
+  <div class="overlay" id="zoom-overlay" onclick="closeZoomModal()"
+    style="z-index:999;display:none;justify-content:center;align-items:center;background:rgba(15,23,90,0.85);">
+    <button
+      style="position:absolute;top:20px;right:20px;background:rgba(0,0,0,0.4);border:none;color:white;width:40px;height:40px;border-radius:50%;font-size:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;">&times;</button>
+    <img id="zoom-image" src=""
+      style="max-width:95vw;max-height:85vh;object-fit:contain;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.3);pointer-events:none;" />
+  </div>
 
-
-
-
-
+  <!-- Admin Auth Modal -->
+  <div class="overlay" id="admin-overlay" style="z-index:1003;"></div>
+  <div class="card modal-card" id="admin-login-modal" style="
+  position:fixed;top:50%;left:50%;
+  transform:translate(-50%,-50%) scale(0.95);
+  z-index:1004;display:none;flex-direction:column;
+  width:90%;max-width:360px;
+  opacity:0;transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+">
+    <div style="text-align:center;margin-bottom:20px;">
+      <div
+        style="width:56px;height:56px;background:linear-gradient(135deg,#DC2626,#EF4444);border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;box-shadow:0 4px 12px rgba(239,68,68,0.3);">
+        <svg style="width:26px;height:26px;color:white;" fill="none" stroke="currentColor" stroke-width="1.5"
+          viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+      </div>
+      <h3 style="margin-bottom:6px;">Otorisasi Proktor</h3>
+      <p class="text-muted" style="font-size:0.875rem;">Masukkan sandi keamanan</p>
+    </div>
+    <input type="password" id="adminTokenInput" class="form-control" placeholder="••••••••" autocomplete="off"
+      style="text-align:center;margin-bottom:20px;">
+    <div style="display:flex;gap:10px;">
+      <button id="btnCancelAdmin" class="btn btn-outline" style="flex:1;">Tutup</button>
+      <button id="btnSubmitAdmin" class="btn btn-danger" style="flex:1;">Verifikasi</button>
+    </div>
+  </div>
 
   <!-- Generic Import Modal -->
   <div class="overlay" id="import-overlay" style="z-index:1005;"></div>
@@ -1106,8 +1154,8 @@
       <p class="text-muted" style="font-size:0.9rem;margin-bottom:20px;">Masukkan token ujian yang diberikan oleh pengawas.</p>
       <input type="text" id="examTokenInput" class="form-control" placeholder="ABCDEF" maxlength="6" style="text-align:center; letter-spacing:6px; font-family:monospace; font-size:1.5rem; height:60px;">
       <div style="display:flex;gap:10px;margin-top:20px;">
-          <button id="btnCancelToken" class="btn btn-outline" style="flex:1;">Batal</button>
-          <button id="btnSubmitToken" class="btn btn-primary" style="flex:1;">Masuk Ujian</button>
+          <button class="btn btn-outline" style="flex:1;" onclick="closeTokenModal()">Batal</button>
+          <button class="btn btn-primary" style="flex:1;" onclick="verifyToken()">Masuk Ujian</button>
       </div>
   </div>
 
@@ -1117,8 +1165,8 @@
       <p class="text-muted" style="font-size:0.9rem;margin-bottom:20px;">Masukkan token keamanan untuk masuk ke dashboard.</p>
       <input type="password" id="adminTokenInput" class="form-control" placeholder="••••" style="text-align:center; letter-spacing:8px; font-size:1.5rem; height:60px;">
       <div style="display:flex;gap:10px;margin-top:20px;">
-          <button id="btnCancelAdmin" class="btn btn-outline" style="flex:1;">Batal</button>
-          <button id="btnSubmitAdmin" class="btn btn-primary" style="flex:1;">Masuk Panel</button>
+          <button class="btn btn-outline" style="flex:1;" onclick="closeAdminModal()">Batal</button>
+          <button class="btn btn-primary" style="flex:1;" onclick="verifyAdminToken()">Masuk Panel</button>
       </div>
   </div>
 
@@ -1133,7 +1181,7 @@
   </div>
 
   <div class="overlay" id="zoom-overlay" onclick="closeZoomModal()" style="z-index:3000; background:rgba(0,0,0,0.9); display:none; align-items:center; justify-content:center;">
-      <img id="zoom-image" style="max-width:95vw; max-height:95vh; object-fit:contain; border-radius:8px;">
+      <img id="zoomed-image" style="max-width:95vw; max-height:95vh; object-fit:contain; border-radius:8px;">
       <div style="position:absolute; top:20px; right:20px; color:white; font-size:2.5rem; cursor:pointer;">×</div>
   </div>
 
