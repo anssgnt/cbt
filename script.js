@@ -2765,6 +2765,9 @@ async function extractImagesFromXLSX(arrayBuffer) {
             if (ext === 'jpg' || ext === 'jpeg') mime = 'image/jpeg';
             else if (ext === 'gif') mime = 'image/gif';
             imageMap[path] = `data:${mime};base64,${blob}`;
+            
+            // Also map by basename for easier lookup
+            imageMap[path.split('/').pop()] = imageMap[path];
         }
     }
 
@@ -2783,10 +2786,10 @@ async function extractImagesFromXLSX(arrayBuffer) {
         const relTags = relsDoc.getElementsByTagNameNS("*", "Relationship");
         for (let rel of relTags) {
             let target = rel.getAttribute("Target");
-            if (target) {
+            let rId = rel.getAttribute("Id");
+            if (target && rId) {
                 let cleanTarget = target.replace(/^..\/media\//, "xl/media/").replace(/^media\//, "xl/media/");
-                if (!cleanTarget.startsWith('xl/')) cleanTarget = 'xl/' + cleanTarget;
-                rels[rel.getAttribute("Id")] = cleanTarget;
+                rels[rId] = cleanTarget;
             }
         }
 
@@ -2799,30 +2802,29 @@ async function extractImagesFromXLSX(arrayBuffer) {
         ];
 
         anchors.forEach(anchor => {
-            const fromTags = anchor.getElementsByTagNameNS("*", "from");
-            if (fromTags.length > 0) {
-                const from = fromTags[0];
-                const colTags = from.getElementsByTagNameNS("*", "col");
-                const rowTags = from.getElementsByTagNameNS("*", "row");
+            // Find row/col anywhere inside the anchor (usually in xdr:from)
+            const rowTags = anchor.getElementsByTagNameNS("*", "row");
+            const colTags = anchor.getElementsByTagNameNS("*", "col");
+            
+            if (rowTags.length > 0 && colTags.length > 0) {
+                const row = parseInt(rowTags[0].textContent || "0");
+                const col = parseInt(colTags[0].textContent || "0");
                 
-                if (colTags.length > 0 && rowTags.length > 0) {
-                    const col = parseInt(colTags[0].textContent || "0");
-                    const row = parseInt(rowTags[0].textContent || "0");
-                    stats.coords.push(`${row}:${col}`);
-                    
-                    const blipTags = anchor.getElementsByTagNameNS("*", "blip");
-                    if (blipTags.length > 0) {
-                        const blip = blipTags[0];
-                        const rId = blip.getAttribute("r:embed") || 
-                                    blip.getAttribute("embed") || 
-                                    blip.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "embed");
+                // Find all blips in this anchor
+                const blipTags = anchor.getElementsByTagNameNS("*", "blip");
+                for (const blip of blipTags) {
+                    const rId = blip.getAttribute("r:embed") || 
+                                blip.getAttribute("embed") || 
+                                blip.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "embed");
 
-                        if (rId && rels[rId]) {
-                            const imgData = imageMap[rels[rId]] || imageMap[rels[rId].replace('xl/','')] || imageMap[rels[rId].split('/').pop()];
-                            if (imgData) {
-                                cellImageMap[`${row}:${col}`] = imgData;
-                                stats.mapped++;
-                            }
+                    if (rId && rels[rId]) {
+                        const targetPath = rels[rId];
+                        const imgData = imageMap[targetPath] || imageMap[targetPath.replace('xl/','')] || imageMap[targetPath.split('/').pop()];
+                        
+                        if (imgData) {
+                            cellImageMap[`${row}:${col}`] = imgData;
+                            stats.coords.push(`${row}:${col}`);
+                            stats.mapped++;
                         }
                     }
                 }
