@@ -5,15 +5,28 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>CBT Online – SMP Negeri 1 Dander</title>
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-database-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-  <script async src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-  <!-- Dynamic PWA Manifest for Google Apps Script -->
-  <link id="pwa-manifest" rel="manifest" href="">
+
+  <!-- Preconnect: sambungkan ke CDN lebih awal agar download lebih cepat -->
+  <link rel="preconnect" href="https://www.gstatic.com">
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+  <link rel="dns-prefetch" href="https://firebasestorage.googleapis.com">
+
+  <!-- CSS: load pertama (non-blocking) -->
   <link rel="stylesheet" href="style.css">
+
+  <!-- Dynamic PWA Manifest -->
+  <link id="pwa-manifest" rel="manifest" href="">
+
+  <!-- Firebase SDK: defer = download paralel, eksekusi SETELAH HTML selesai di-parse -->
+  <script defer src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.8.1/firebase-database-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
+
+  <!-- JSZip: defer, hanya dipakai saat import Excel -->
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <!-- XLSX: defer (tidak pakai async lagi agar urutan eksekusi terjaga) -->
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 
 <body>
@@ -1311,7 +1324,7 @@
       </div>
   </div>
 
-  <script src="script.js"></script>
+  <script defer src="script.js"></script>
 </body>
 
 </html>
