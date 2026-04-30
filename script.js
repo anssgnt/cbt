@@ -2781,7 +2781,11 @@ async function extractImagesFromXLSX(arrayBuffer) {
         const rels = {};
         const relTags = relsDoc.getElementsByTagNameNS("*", "Relationship");
         for (let rel of relTags) {
-            rels[rel.getAttribute("Id")] = rel.getAttribute("Target").replace("../media/", "xl/media/");
+            let target = rel.getAttribute("Target");
+            if (target) {
+                const cleanTarget = target.replace(/^..\/media\//, "xl/media/").replace(/^media\//, "xl/media/");
+                rels[rel.getAttribute("Id")] = cleanTarget;
+            }
         }
 
         const drawingXml = await zip.file(drawingPath).async("string");
@@ -2806,7 +2810,10 @@ async function extractImagesFromXLSX(arrayBuffer) {
                     const blipTags = anchor.getElementsByTagNameNS("*", "blip");
                     if (blipTags.length > 0) {
                         const blip = blipTags[0];
-                        const rId = blip.getAttribute("r:embed") || blip.getAttribute("embed");
+                        const rId = blip.getAttribute("r:embed") || 
+                                    blip.getAttribute("embed") || 
+                                    blip.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "embed");
+
                         if (rId && rels[rId] && imageMap[rels[rId]]) {
                             cellImageMap[`${row}:${col}`] = imageMap[rels[rId]];
                         }
