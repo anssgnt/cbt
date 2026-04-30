@@ -574,7 +574,7 @@ db.goOffline(); // Matikan koneksi bawaan seketika!
 let activeDbRequests = 0;
 let dbDisconnectTimer = null;
 
-const sleep = ms => new Promise(res => setTimeout(res, ms));
+// sleep is already declared above in the Performance Core Patch
 
 window.dbConnect = async function () {
   activeDbRequests++;
@@ -921,8 +921,7 @@ async function gasRun(funcName, ...args) {
   }
 }
 
-// --- Initialization & Login ---
-let searchTimeout = null;
+// searchTimeout is already declared above in the Performance Core Patch
 const userNameInput = document.getElementById('userName');
 const autoList = document.getElementById('autocomplete-list');
 let tempSelectedUser = null;
