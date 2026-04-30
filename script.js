@@ -317,69 +317,8 @@ async function cachedGet(path) {
   return val;
 }
 
-/* ================================
-   🔍 SEARCH PESERTA (ANTI LOAD 1000)
-================================ */
-
-async function searchPeserta(keyword) {
-  if (!keyword || keyword.length < 2) return [];
-
-  const key = keyword.toLowerCase();
-
-  const snap = await db.ref('/peserta')
-    .orderByChild('nama_lower')
-    .startAt(key)
-    .endAt(key + '\uf8ff')
-    .limitToFirst(15)
-    .once('value');
-
-  const data = snap.val() || {};
-
-  return Object.keys(data).map(id => ({
-    id,
-    name: data[id].nama,
-    kelas: data[id].kelas
-  }));
-}
-
-/* ================================
-   ⚡ AUTOCOMPLETE OPTIMIZED
-================================ */
-
+// Database caching logic (Memory Cache)
 let searchTimeout = null;
-
-function initAutocomplete() {
-  const input = document.getElementById('userName');
-  const list = document.getElementById('autocomplete-list');
-
-  input.addEventListener('input', function () {
-    clearTimeout(searchTimeout);
-
-    searchTimeout = setTimeout(async () => {
-      const keyword = this.value.trim();
-      const results = await searchPeserta(keyword);
-
-      list.innerHTML = '';
-
-      results.forEach(r => {
-        const div = document.createElement('div');
-        div.className = 'autocomplete-item';
-        div.textContent = r.name + ' (' + r.kelas + ')';
-
-        div.onclick = () => {
-          input.value = r.name;
-          list.innerHTML = '';
-          State.user = r;
-        };
-
-        list.appendChild(div);
-      });
-
-      list.style.display = results.length ? 'block' : 'none';
-
-    }, 300);
-  });
-}
 
 /* ================================
    📦 CACHE SOAL (SUPER CEPAT)
@@ -444,51 +383,7 @@ setInterval(() => {
   }
 }, 5000);
 
-/* ================================
-   🧠 RENDER OPTIMIZED
-================================ */
-
-function renderQuestionOptimized(q) {
-  const container = document.getElementById('q-options');
-  container.innerHTML = '';
-
-  const frag = document.createDocumentFragment();
-
-  // soal text
-  document.getElementById('q-text').textContent = q.pertanyaan || '';
-
-  // gambar (lazy)
-  const imgWrap = document.getElementById('q-image-container');
-  imgWrap.innerHTML = '';
-  imgWrap.style.display = 'none';
-
-  if (q.image) {
-    const img = document.createElement('img');
-    img.src = q.image;
-    img.loading = 'lazy';
-    img.style.maxWidth = '100%';
-
-    imgWrap.appendChild(img);
-    imgWrap.style.display = 'block';
-  }
-
-  // opsi
-  q.opsi.forEach((opt, i) => {
-    const btn = document.createElement('button');
-    btn.className = 'option-btn';
-    btn.textContent = opt;
-
-    btn.onclick = () => {
-      State.answers[q.id] = i;
-    };
-
-    frag.appendChild(btn);
-  });
-
-  container.appendChild(frag);
-
-  preloadNext(q._index);
-}
+// Question rendering optimizations
 
 /* ================================
    ⚡ PRELOAD NEXT SOAL
@@ -508,21 +403,7 @@ function preloadNext(index) {
    🚀 SUBMIT SUPER AMAN
 ================================ */
 
-async function submitExamSafe(payload) {
-  // delay random (ANTI server spike)
-  await sleep(Math.random() * 3000);
-
-  for (let i = 0; i < 5; i++) {
-    try {
-      return await gasRun('submitExam', payload);
-    } catch (e) {
-      console.warn('Retry submit', i);
-      await sleep(1000);
-    }
-  }
-
-  throw new Error('Submit gagal');
-}
+// submitExamSafe integrated into submitExam below
 
 /* ================================
    ⏱️ TIMER RINGAN
@@ -555,10 +436,7 @@ function handleCheatDetectionOptimized() {
 /* ================================
    🚀 INIT
 ================================ */
-
-document.addEventListener('DOMContentLoaded', () => {
-  initAutocomplete();
-});
+// initAutocomplete removed here, using original logic
 
 
 
@@ -1183,7 +1061,7 @@ async function loadDashboard(examId, token) {
   State.examToken = token;
   showLoading('Verifikasi Token...');
   try {
-    const res = await gasRun('getExamData', examId, token);
+    const res = await getExamDataOptimized(examId, token);
     if (res.success) {
       State.config = res.config;
 
@@ -1411,7 +1289,7 @@ function renderQuestion(index) {
   // Render Image
   const imgContainer = document.getElementById('q-image-container');
   if (q.gambar && q.gambar.trim() !== '') {
-    imgContainer.innerHTML = `<img src="${q.gambar.trim()}" class="q-image" onclick="openZoomModal('${q.gambar.trim()}')" alt="Gambar Soal" />`;
+    imgContainer.innerHTML = `<img src="${q.gambar.trim()}" class="q-image" loading="lazy" onclick="openZoomModal('${q.gambar.trim()}')" alt="Gambar Soal" />`;
     imgContainer.style.display = 'block';
   } else {
     imgContainer.style.display = 'none';
@@ -1450,7 +1328,7 @@ function renderOptions(q) {
 
       let imgHTML = '';
       if (opt.gambar) {
-        imgHTML = `<img src="${opt.gambar}" class="q-image" style="max-height:140px; margin-top:8px; display:block;" onclick="openZoomModal('${opt.gambar}'); event.stopPropagation();" />`;
+        imgHTML = `<img src="${opt.gambar}" class="q-image" loading="lazy" style="max-height:140px; margin-top:8px; display:block;" onclick="openZoomModal('${opt.gambar}'); event.stopPropagation();" />`;
       }
 
       div.innerHTML = `
@@ -1480,7 +1358,7 @@ function renderOptions(q) {
 
       let imgHTML = '';
       if (opt.gambar) {
-        imgHTML = `<img src="${opt.gambar}" class="q-image" style="max-height:140px; margin-top:8px; display:block;" onclick="openZoomModal('${opt.gambar}'); event.stopPropagation();" />`;
+        imgHTML = `<img src="${opt.gambar}" class="q-image" loading="lazy" style="max-height:140px; margin-top:8px; display:block;" onclick="openZoomModal('${opt.gambar}'); event.stopPropagation();" />`;
       }
 
       div.innerHTML = `
@@ -1754,6 +1632,9 @@ async function submitExam(isAutoSubmit) {
     const jitterSec = Math.ceil(jitterMs / 1000);
     showLoading(`Waktu habis. Mengirim dalam ${jitterSec} detik...`);
     await sleep(jitterMs);
+  } else {
+    // Manual jitter (0-2s) to prevent exact simultaneous clicks
+    await sleep(Math.floor(Math.random() * 2000));
   }
 
   saveStateLocal(); // Pastikan jawaban terbaru tersimpan di LocalStorage sebelum kirim
@@ -1770,7 +1651,7 @@ async function submitExam(isAutoSubmit) {
 
   // ─── FASE 3: SUBMIT DENGAN AUTO-RETRY ────────────────────────────
   try {
-    const res = await gasRunWithRetry('submitExam', payload, 3, 5000);
+    const res = await gasRunWithRetry('submitExam', payload, 5, 3000);
     if (res.success) {
       // Bersihkan localStorage setelah berhasil
       const lsKey = `CBT_${State.user.id}_${State.config.id_ujian}`;
@@ -2743,7 +2624,7 @@ function renderPreviewQuestion(index) {
 
   const imgContainer = document.getElementById('prev-q-image-container');
   if (q.gambar && q.gambar.trim() !== '') {
-    imgContainer.innerHTML = `<img src="${q.gambar.trim()}" class="q-image" onclick="openZoomModal('${q.gambar.trim()}')" alt="Gambar Soal" />`;
+    imgContainer.innerHTML = `<img src="${q.gambar.trim()}" class="q-image" loading="lazy" onclick="openZoomModal('${q.gambar.trim()}')" alt="Gambar Soal" />`;
     imgContainer.style.display = 'block';
   } else {
     imgContainer.style.display = 'none';
@@ -2771,7 +2652,7 @@ function renderPreviewOptions(q) {
 
       let imgHTML = '';
       if (opt.gambar) {
-        imgHTML = `<img src="${opt.gambar}" class="q-image" style="max-height:140px; margin-top:8px; display:block;" onclick="openZoomModal('${opt.gambar}'); event.stopPropagation();" />`;
+        imgHTML = `<img src="${opt.gambar}" class="q-image" loading="lazy" style="max-height:140px; margin-top:8px; display:block;" onclick="openZoomModal('${opt.gambar}'); event.stopPropagation();" />`;
       }
 
       div.innerHTML = `
@@ -2798,7 +2679,7 @@ function renderPreviewOptions(q) {
       div.className = `option-item ${isCorrect ? 'answer-correct' : ''}`;
 
       let imgHTML = '';
-      imgHTML = `<img src="${opt.gambar}" class="q-image" style="max-height:140px; margin-top:8px; display:block;" onclick="openZoomModal('${opt.gambar}'); event.stopPropagation();" />`;
+      imgHTML = `<img src="${opt.gambar}" class="q-image" loading="lazy" style="max-height:140px; margin-top:8px; display:block;" onclick="openZoomModal('${opt.gambar}'); event.stopPropagation();" />`;
 
       div.innerHTML = `
                <div style="display:flex; align-items:flex-start; width:100%;">
