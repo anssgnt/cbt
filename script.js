@@ -132,53 +132,9 @@ function showAlert(msg, type = 'danger') {
   setTimeout(() => { alertEl.style.display = 'none'; }, 3000);
 }
 
-function showLoading(text, sub) {
-  const loadingText = document.getElementById('loading-text');
-  const loadingSub  = document.getElementById('loading-sub');
-  const loadingBar  = document.getElementById('loading-queue-bar');
-  if (loadingText) loadingText.textContent = text || 'Memuat...';
-  if (loadingSub)  { loadingSub.textContent = sub || ''; loadingSub.style.display = sub ? 'block' : 'none'; }
-  if (loadingBar)  loadingBar.style.display = 'none';
+function showLoading(text) {
+  document.getElementById('loading-text').textContent = text || 'Memuat...';
   showView('loading-view');
-}
-
-// Pesan loading yang berputar secara otomatis, dengan progress bar antrian
-let _loadingQueueTimer = null;
-function showLoadingQueue(phases, totalMs) {
-  // phases: array string pesan, totalMs: estimasi total waktu dalam ms
-  if (_loadingQueueTimer) clearInterval(_loadingQueueTimer);
-  const loadingText = document.getElementById('loading-text');
-  const loadingSub  = document.getElementById('loading-sub');
-  const loadingBar  = document.getElementById('loading-queue-bar');
-  const loadingFill = document.getElementById('loading-queue-fill');
-  showView('loading-view');
-
-  let phaseIdx = 0;
-  const intervalMs = totalMs / phases.length;
-  const startTime  = Date.now();
-
-  function update() {
-    if (loadingText) loadingText.textContent = phases[phaseIdx] || phases[phases.length - 1];
-    if (loadingSub)  { loadingSub.textContent = 'Harap tunggu, sistem sedang memproses...'; loadingSub.style.display = 'block'; }
-    if (loadingBar)  loadingBar.style.display = 'block';
-    if (loadingFill) {
-      const elapsed = Math.min(Date.now() - startTime, totalMs);
-      loadingFill.style.width = Math.round((elapsed / totalMs) * 100) + '%';
-    }
-    phaseIdx = Math.min(phaseIdx + 1, phases.length - 1);
-  }
-
-  update();
-  _loadingQueueTimer = setInterval(update, intervalMs);
-  return _loadingQueueTimer;
-}
-
-function stopLoadingQueue() {
-  if (_loadingQueueTimer) { clearInterval(_loadingQueueTimer); _loadingQueueTimer = null; }
-  const loadingBar = document.getElementById('loading-queue-bar');
-  const loadingFill = document.getElementById('loading-queue-fill');
-  if (loadingBar) loadingBar.style.display = 'none';
-  if (loadingFill) loadingFill.style.width = '0%';
 }
 
 function hideLoading() {
@@ -367,6 +323,11 @@ async function cachedGet(path) {
 // Database caching logic (Memory Cache)
 let searchTimeout = null;
 
+// Deklarasi di sini agar bisa dipakai oleh dbConnectFast dan dbConnect di bawah
+// tanpa ReferenceError (let tidak di-hoist seperti var).
+let activeDbRequests = 0;
+let dbDisconnectTimer = null;
+
 // --- KONEKSI CEPAT TANPA JITTER (khusus operasi interaktif) ---
 // Jitter 0-1500ms dirancang untuk bulk request serentak 1000 siswa.
 // Untuk pencarian nama yang dipicu satu user, jitter justru merusak UX.
@@ -472,22 +433,6 @@ async function getExamDataOptimized(examId, token, forceRefresh = false) {
     throw new Error("Token salah!");
   }
 
-  // Jitter ringan 0-3 detik sebelum fetch soal dari Firebase.
-  // Ini menyebarkan spike saat 1000 siswa klik "Mulai" bersamaan setelah guru beri token.
-  // Cache hit di atas tidak terkena jitter — hanya fetch pertama kali yang perlu diatur.
-  const fetchJitterMs = Math.floor(Math.random() * 3000);
-  if (fetchJitterMs > 500) {
-    const secs = Math.ceil(fetchJitterMs / 1000);
-    showLoadingQueue([
-      'Mengambil soal ujian...',
-      'Menyiapkan paket soal...',
-      `Sebentar lagi... (${secs}s)`,
-      'Hampir selesai...'
-    ], fetchJitterMs);
-    await sleep(fetchJitterMs);
-    stopLoadingQueue();
-  }
-
   const sDataPromise = cachedGet('/soal/' + sch.nama_soal);
   const kDataPromise = cachedGet('/kunci/' + sch.nama_soal);
 
@@ -510,7 +455,8 @@ async function getExamDataOptimized(examId, token, forceRefresh = false) {
       id_ujian: examId,
       nama_ujian: sch.nama,
       durasi: sch.durasi,
-      end_ms: sch.selesai
+      end_ms: sch.selesai,
+      min_selesai: sch.min_selesai || 0  // wajib ada agar batas waktu minimal mengerjakan berlaku dari cache
     },
     questions,
     keys: kData || {} // Cache keys for client-side scoring
@@ -600,15 +546,15 @@ function handleCheatDetectionOptimized() {
 
 
 // Initialize School Identity
-initSchoolIdentity();
+// initSchoolIdentity call removed from here, moved to initPortal for safety
 
 // --- SMART DB CONNECTION MANAGER (HIT & RUN) ---
 // Trik ini membuat Firebase berjalan secara stateless seperti REST API.
 // Sangat vital untuk mem-bypass limit 100 concurrent connection di versi gratis (Spark).
 db.goOffline(); // Matikan koneksi bawaan seketika!
 
-let activeDbRequests = 0;
-let dbDisconnectTimer = null;
+// activeDbRequests dan dbDisconnectTimer sudah dideklarasikan di atas (dekat dbConnectFast)
+// agar tidak ReferenceError saat loadPesertaCache() dipanggil sebelum blok ini.
 
 // sleep is already declared above in the Performance Core Patch
 
@@ -616,21 +562,8 @@ window.dbConnect = async function () {
   activeDbRequests++;
   if (activeDbRequests === 1) {
     if (dbDisconnectTimer) clearTimeout(dbDisconnectTimer);
-    // Jitter: Delay acak 0-1500ms untuk memecah gelombang trafik simultan (Skala 1000).
-    // Selama jitter, tampilkan countdown transparan agar user tidak panik dengan spinner beku.
-    const jitterMs = Math.floor(Math.random() * 1500);
-    if (jitterMs > 400) {
-      // Hanya tampilkan countdown jika delay cukup lama untuk dirasakan user (>400ms)
-      const phases = [
-        'Menyambungkan ke server...',
-        'Mempersiapkan koneksi...',
-        'Hampir siap...',
-        'Menghubungkan...'
-      ];
-      showLoadingQueue(phases, jitterMs);
-    }
-    await sleep(jitterMs);
-    stopLoadingQueue();
+    // Jitter: Delay acak 0-1500ms untuk memecah gelombang trafik simultan (Skala 1000)
+    await sleep(Math.floor(Math.random() * 1500));
     db.goOnline();
   }
 };
@@ -652,7 +585,14 @@ window.dbDisconnect = function () {
 window.withDB = async function (promiseFunc) {
   await dbConnect();
   try {
-    return await promiseFunc();
+    // Timeout 15 detik untuk mencegah request menggantung selamanya (Armor 1000)
+    const timeoutPromise = new Promise((_, reject) => 
+      setTimeout(() => reject(new Error("Firebase Timeout")), 15000)
+    );
+    return await Promise.race([promiseFunc(), timeoutPromise]);
+  } catch (err) {
+    console.warn("DB Operation Error:", err.message);
+    throw err;
   } finally {
     dbDisconnect();
   }
@@ -722,9 +662,12 @@ async function gasRun(funcName, ...args) {
 
     else if (funcName === 'getSchedules') {
       const [userId, kelas] = args;
-      const snap = await db.ref('/jadwal').once('value');
+      // Jalankan kedua query secara paralel (bukan serial) untuk memotong waktu tunggu ~50%
+      const [snap, hSnap] = await Promise.all([
+        db.ref('/jadwal').once('value'),
+        db.ref('/hasil').orderByChild('userId').equalTo(userId).once('value')
+      ]);
       const data = snap.val() || {};
-      const hSnap = await db.ref('/hasil').orderByChild('userId').equalTo(userId).once('value');
       const hData = hSnap.val() || {};
       const completedSet = new Set();
       for (let k in hData) completedSet.add(hData[k].examId);
@@ -1047,7 +990,7 @@ let scheduleTimer = null;
 
 async function loadSchedules() {
   document.getElementById('schedule-user-name').textContent = State.user.name + ' - ' + State.user.kelas;
-  showLoading('Memeriksa jadwal ujian...', 'Mengambil daftar ujian yang tersedia untuk Anda');
+  showLoading('Memeriksa Jadwal...');
   try {
     const res = await gasRun('getSchedules', State.user.id, State.user.kelas);
     if (res.success) {
@@ -1197,7 +1140,7 @@ safeAddListener('btnScheduleLogout', 'click', () => {
 
 async function loadDashboard(examId, token) {
   State.examToken = token;
-  showLoading('Verifikasi token...', 'Memeriksa akses ujian Anda');
+  showLoading('Verifikasi Token...');
   try {
     const res = await getExamDataOptimized(examId, token);
     if (res.success) {
@@ -1749,10 +1692,12 @@ safeAddListener('btnSubmit', 'click', () => {
  * @param {number} retryDelayMs - Jeda tunggu antar percobaan (default: 5 detik)
  */
 async function gasRunWithRetry(funcName, args, maxRetries = 3, retryDelayMs = 5000) {
+  // args bisa berupa single value atau array — normalisasi ke array dulu
+  const argsArray = Array.isArray(args) ? args : [args];
   let lastError = null;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const res = await gasRun(funcName, args);
+      const res = await gasRun(funcName, ...argsArray); // spread agar gasRun menerima argumen individual
       return res; // Sukses, kembalikan hasilnya
     } catch (err) {
       lastError = err;
@@ -1773,26 +1718,20 @@ async function submitExam(isAutoSubmit) {
 
   // ─── FASE 1: JITTER (Pengacak Antrean) ───────────────────────────
   // Hanya aktif jika waktu habis secara otomatis (bukan klik manual).
-  // Setiap HP akan mengacak jeda uniknya sendiri antara 0-60 detik.
-  // Ini memecah "Tsunami 1000 Submit" menjadi gelombang ~17 /detik.
+  // Setiap HP akan mengacak jeda uniknya sendiri antara 0-55 detik.
+  // Ini memecah "Tsunami 1000 Submit" menjadi gelombang ~18 /detik.
   if (isAutoSubmit) {
-    const jitterMs = Math.floor(Math.random() * 60000); // 0–60 detik: cukup untuk 1000 siswa
+    const jitterMs = Math.floor(Math.random() * 60000); // 0 - 60.000 ms: cukup untuk 1000 siswa (~17/detik), tidak membuat siswa panik
     const jitterSec = Math.ceil(jitterMs / 1000);
-    showLoadingQueue([
-      'Waktu habis. Jawaban Anda sudah aman tersimpan di perangkat.',
-      `Menunggu giliran kirim ke server... (estimasi ${jitterSec} detik)`,
-      'Mempersiapkan pengiriman jawaban...',
-      'Hampir dikirim ke server...',
-    ], jitterMs);
+    showLoading(`Waktu habis. Jawaban dikirim dalam ${jitterSec} detik...`);
     await sleep(jitterMs);
-    stopLoadingQueue();
   } else {
     // Manual jitter (0-2s) to prevent exact simultaneous clicks
     await sleep(Math.floor(Math.random() * 2000));
   }
 
   saveStateLocal(); // Pastikan jawaban terbaru tersimpan di LocalStorage sebelum kirim
-  showLoading('Mengirim jawaban ke server...', 'Jangan tutup aplikasi ini');
+  showLoading('Menyimpan jawaban ke server...');
 
   // ─── FASE 2: FULL CLIENT-SIDE GRADING ───────────────────────────
   const keys = State.config.keys || {};
@@ -1958,7 +1897,9 @@ function initPortal() {
       const snap = await db.ref('/config/security').once('value');
       State.security = snap.val() || {};
 
-      // Load Global Identity
+      // Load Global Identity (Safe after Auth & Patch)
+      initSchoolIdentity();
+
       try {
         await withDB(async function () {
           const idenSnap = await db.ref('/config/identity').once('value');
