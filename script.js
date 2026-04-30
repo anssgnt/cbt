@@ -79,6 +79,7 @@ function applySchoolIdentity(iden) {
   if (iden.name) {
     document.title = `CBT Online – ${iden.name}`;
     safeSetText('ph-sekolah-2', iden.name);
+    safeSetText('ph-sekolah-print', iden.name);
   }
 
   if (iden.sub) {
@@ -353,21 +354,21 @@ async function searchPeserta(keyword) {
    📦 CACHE SOAL (SUPER CEPAT)
 ================================ */
 
-async function getExamDataOptimized(examId, token, forceRefresh = false) {
-  const CACHE_KEY = `SOAL_${examId}`;
+  const jSnap = await db.ref('/jadwal/' + examId).once('value');
+  const sch = jSnap.val();
+  if (!sch) throw new Error("Ujian tidak ditemukan");
+
+  // Cache Versioning (Armor 1000)
+  // Gunakan timestamp mulai sebagai versi untuk invalidasi otomatis jika jadwal diubah
+  const ver = sch.mulai || 0; 
+  const CACHE_KEY = `SOAL_${examId}_v${ver}`;
 
   if (!forceRefresh) {
     const cached = localStorage.getItem(CACHE_KEY);
     if (cached) {
-      try {
-        return JSON.parse(cached);
-      } catch { }
+      try { return JSON.parse(cached); } catch { }
     }
   }
-
-  const jSnap = await db.ref('/jadwal/' + examId).once('value');
-  const sch = jSnap.val();
-  if (!sch) throw new Error("Ujian tidak ditemukan");
 
   if (sch.token && String(sch.token).toUpperCase() !== String(token).toUpperCase()) {
     throw new Error("Token salah!");
@@ -669,10 +670,10 @@ async function gasRun(funcName, ...args) {
         nama: payload.user.name,
         kelas: payload.user.kelas || '-',
         examId: payload.examId,
-        namaUjian: payload.examId, // Simple metadata to save reads
+        namaUjian: payload.namaUjian || payload.examId,
         skor: finalScore,
         waktu: payload.usedTime || '',
-        detail: JSON.stringify(detailEvals)
+        detail: payload.detail || "{}"
       });
 
       if (payload.violations && payload.violations > 0) {
@@ -702,27 +703,42 @@ async function gasRun(funcName, ...args) {
     }
 
     else if (funcName === 'getAdminMonitoringData') {
+      const [skipPeserta] = args;
       const nowMs = Date.now();
       
-      // Parallelize queries to reduce round-trips
-      const [jSnap, pSnap, hSnap, oSnap] = await Promise.all([
-        db.ref('/jadwal').once('value'),
-        db.ref('/peserta').once('value'),
-        db.ref('/hasil').limitToLast(500).once('value'), // Limit to last 500 for performance
-        db.ref('/online_status').once('value')
-      ]);
-
+      const jSnap = await db.ref('/jadwal').once('value');
       const jData = jSnap.val() || {};
       const activeExams = [];
+      const onlineQueries = [];
+
       for (let id in jData) {
         if (jData[id].aktif && nowMs >= jData[id].mulai && nowMs <= jData[id].selesai) {
           activeExams.push({ id, nama: jData[id].nama, token: jData[id].token });
+          onlineQueries.push(db.ref(`/online_status/${id}`).once('value'));
         }
       }
 
-      const pData = pSnap.val() || {};
+      const queries = [
+        db.ref('/hasil').limitToLast(500).once('value')
+      ];
+      if (!skipPeserta) queries.push(db.ref('/peserta').once('value'));
+
+      const snaps = await Promise.all([...queries, ...onlineQueries]);
+      const hSnap = snaps[0];
+      const pSnap = skipPeserta ? null : snaps[1];
+      
+      const onlinesMap = {};
+      const onlineSnaps = snaps.slice(skipPeserta ? 1 : 2);
+      activeExams.forEach((ex, idx) => {
+        const oData = onlineSnaps[idx] ? onlineSnaps[idx].val() || {} : {};
+        onlinesMap[ex.id] = Object.keys(oData);
+      });
+
+      const pData = pSnap ? pSnap.val() || {} : null;
       const expectedPeserta = []; 
-      for (let id in pData) expectedPeserta.push({ id, nama: pData[id].nama, kelas: pData[id].kelas });
+      if (pData) {
+        for (let id in pData) expectedPeserta.push({ id, nama: pData[id].nama, kelas: pData[id].kelas });
+      }
 
       const hData = hSnap.val() || {};
       const completedMap = {};
@@ -732,15 +748,7 @@ async function gasRun(funcName, ...args) {
         if (!completedMap[eid].includes(uid)) completedMap[eid].push(uid);
       }
 
-      const oData = oSnap.val() || {};
-      const onlineMap = {};
-      for (let eid in oData) {
-        onlineMap[eid] = [];
-        for (let uid in oData[eid]) {
-          if (nowMs - oData[eid][uid] < 300000) onlineMap[eid].push(uid);
-        }
-      }
-      return { success: true, activeExams, peserta: expectedPeserta, completions: completedMap, onlines: onlineMap };
+      return { success: true, activeExams, peserta: expectedPeserta, completions: completedMap, onlines: onlinesMap };
     }
 
     else if (funcName === 'getAdminJadwalFull') {
@@ -1664,23 +1672,61 @@ async function submitExam(isAutoSubmit) {
   saveStateLocal(); // Pastikan jawaban terbaru tersimpan di LocalStorage sebelum kirim
   showLoading('Menyimpan jawaban ke server...');
 
-  // ─── FASE 2: BUILD PAYLOAD & CALCULATE SCORE ────────────────────
-  const keys = State.config.keys || {}; // Keys already cached in loadDashboard
-  let correct = 0;
-  for (let qId in State.answers) {
-    if (String(State.answers[qId]).toUpperCase() === String(keys[qId]).toUpperCase()) {
-      correct++;
+  // ─── FASE 2: FULL CLIENT-SIDE GRADING ───────────────────────────
+  const keys = State.config.keys || {};
+  let totalPoints = 0; 
+  let maxPoints = 0; 
+  let detailEvals = {};
+
+  State.questions.forEach(q => {
+    const bobot = parseFloat(q.bobot) || 1;
+    const correctAns = keys[q.id] || '';
+    const userAns = State.answers[q.id];
+    let isCorrect = false;
+    maxPoints += bobot;
+
+    if (userAns !== undefined) {
+      if (q.tipe === 'PG' || q.tipe === 'BS') {
+        isCorrect = String(userAns).trim().toUpperCase() === String(correctAns).trim().toUpperCase();
+      } else if (q.tipe === 'KOMPLEKS') {
+        if (Array.isArray(userAns)) {
+          let cArr = String(correctAns).split(',').map(s => s.trim().toUpperCase()).sort();
+          let uArr = userAns.map(s => String(s).trim().toUpperCase()).sort();
+          isCorrect = JSON.stringify(cArr) === JSON.stringify(uArr);
+        }
+      } else if (q.tipe === 'ISIAN') {
+        isCorrect = String(userAns).trim().toLowerCase() === String(correctAns).trim().toLowerCase();
+      } else if (q.tipe === 'JODOH') {
+        let cPairs = {};
+        String(correctAns).split(';').forEach(p => { 
+          let pt = p.split('='); 
+          if (pt.length == 2) cPairs[pt[0].trim()] = pt[1].trim(); 
+        });
+        if (typeof userAns === 'object' && !Array.isArray(userAns)) {
+          let allMatch = true; 
+          let kList = Object.keys(cPairs);
+          if (kList.length === 0) allMatch = false;
+          for (let k of kList) { if (userAns[k] !== cPairs[k]) { allMatch = false; break; } }
+          isCorrect = allMatch;
+        }
+      }
     }
-  }
-  const score = State.questions.length ? Math.round((correct / State.questions.length) * 100) : 0;
+
+    if (isCorrect) totalPoints += bobot;
+    detailEvals[q.id] = { answer: userAns || '-', correct: isCorrect };
+  });
+
+  const score = maxPoints > 0 ? Math.round((totalPoints / maxPoints) * 100) : 0;
 
   const payload = {
     examId: State.config.id_ujian,
+    namaUjian: State.config.nama_ujian,
     user: State.user,
     answers: State.answers,
     usedTime: getUsedTimeStr(),
     violations: State.violations,
-    score: score // Send score directly to avoid extra DB reads on server
+    score: score,
+    detail: JSON.stringify(detailEvals)
   };
 
   // ─── FASE 3: SUBMIT DENGAN AUTO-RETRY ────────────────────────────
@@ -1941,7 +1987,12 @@ safeAddListener('btnAdminLogout', 'click', () => {
 async function loadAdminDashboard() {
   showLoading('Memuat Intelijen Proktor...');
   try {
-    const res = await gasRun('getAdminMonitoringData');
+    // Only fetch peserta once and cache it to save bandwidth (Armor 1000)
+    const skipPeserta = !!(window.adminState && window.adminState.peserta && window.adminState.peserta.length > 0);
+    const res = await gasRun('getAdminMonitoringData', skipPeserta);
+    
+    if (!skipPeserta) window.adminState.peserta = res.peserta || [];
+    else res.peserta = window.adminState.peserta;
     if (res.success) {
       showView('admin-dash-view');
       renderAdminDashboard(res);
@@ -2950,145 +3001,8 @@ window.closeImportModal = function () {
   }, 300);
 }
 
-/**
- * Extract images from XLSX using JSZip and map them to cell coordinates.
- * Returns an object { "row:col": base64DataUrl }
- */
-async function extractImagesFromXLSX(arrayBuffer) {
-  const stats = { rawImages: 0, drawings: 0, mapped: 0, coords: [], folders: [], hasCellImages: false, xlFiles: [] };
-  if (typeof JSZip === 'undefined') return { mapping: {}, stats };
-  const zip = await JSZip.loadAsync(arrayBuffer);
-
-  const allPaths = Object.keys(zip.files);
-  stats.xlFiles = allPaths.filter(p => p.startsWith("xl/")).map(p => p.split('/').pop());
-
-  const imageMap = {};
-  const mediaFiles = allPaths.filter(path => {
-    const p = path.toLowerCase();
-    return p.includes("media/") || p.endsWith(".jpeg") || p.endsWith(".jpg") || p.endsWith(".png") || p.endsWith(".gif");
-  });
-  stats.rawImages = mediaFiles.length;
-
-  for (const path of mediaFiles) {
-    const file = zip.file(path);
-    if (file) {
-      const blob = await file.async("base64");
-      const ext = path.split('.').pop().toLowerCase();
-      let mime = 'image/png';
-      if (ext === 'jpg' || ext === 'jpeg') mime = 'image/jpeg';
-      else if (ext === 'gif') mime = 'image/gif';
-      imageMap[path] = `data:${mime};base64,${blob}`;
-      imageMap[path.split('/').pop()] = imageMap[path];
-    }
-  }
-
-  const cellImageMap = {};
-
-  // --- STRATEGY: Relationship Discovery (Brute Force) ---
-  try {
-    const sheetRels = allPaths.filter(p => p.toLowerCase().includes("sheet1.xml.rels"));
-    const sheetXmls = allPaths.filter(p => p.toLowerCase().includes("sheet1.xml") && !p.includes(".rels"));
-
-    if (sheetRels.length > 0 && sheetXmls.length > 0) {
-      const relsXml = await zip.file(sheetRels[0]).async("string");
-      const relsDoc = new DOMParser().parseFromString(relsXml, "text/xml");
-      const rels = {};
-      const relTags = relsDoc.getElementsByTagNameNS("*", "Relationship");
-      for (let rel of relTags) {
-        rels[rel.getAttribute("Id")] = rel.getAttribute("Target");
-      }
-
-      const sheetXml = await zip.file(sheetXmls[0]).async("string");
-      const sheetDoc = new DOMParser().parseFromString(sheetXml, "text/xml");
-      const cTags = sheetDoc.getElementsByTagNameNS("*", "c");
-
-      for (let c of cTags) {
-        const r = c.getAttribute("r");
-        // Check for various attributes that might link to images in non-standard files
-        const rId = c.getAttribute("r:id") || c.getAttribute("id");
-        if (rId && rels[rId]) {
-          const target = rels[rId];
-          const imgData = imageMap[target] || imageMap[target.split('/').pop()];
-          if (imgData && r) {
-            const colMatch = r.match(/^[A-Z]+/);
-            const rowMatch = r.match(/[0-9]+/);
-            if (colMatch && rowMatch) {
-              let colStr = colMatch[0], col = 0;
-              for (let j = 0; j < colStr.length; j++) col = col * 26 + (colStr.charCodeAt(j) - 64);
-              let row = parseInt(rowMatch[0]) - 1;
-              cellImageMap[`${row}:${col - 1}`] = imgData;
-              stats.coords.push(`${row}:${col - 1}`);
-              stats.mapped++;
-            }
-          }
-        }
-      }
-    }
-  } catch (e) { console.warn("Brute force rels error:", e); }
-
-  // --- STRATEGY 2: Legacy/Standard Drawings ---
-  const drawingFiles = allPaths.filter(path => path.toLowerCase().includes("drawings/") && path.endsWith(".xml") && !path.includes("_rels"));
-  for (const drawingPath of drawingFiles) {
-    try {
-      const relsPath = drawingPath.replace(/drawings\/([^\/]+)\.xml$/, "drawings/_rels/$1.xml.rels");
-      const relsFile = zip.file(relsPath);
-      const rels = {};
-      if (relsFile) {
-        const relsXml = await relsFile.async("string");
-        const relsDoc = new DOMParser().parseFromString(relsXml, "text/xml");
-        const relTags = relsDoc.getElementsByTagNameNS("*", "Relationship");
-        for (let rel of relTags) rels[rel.getAttribute("Id")] = rel.getAttribute("Target").replace(/^..\/media\//, "xl/media/");
-      }
-      const xml = await zip.file(drawingPath).async("string");
-      const doc = new DOMParser().parseFromString(xml, "text/xml");
-      const anchors = [...Array.from(doc.getElementsByTagNameNS("*", "twoCellAnchor")), ...Array.from(doc.getElementsByTagNameNS("*", "oneCellAnchor"))];
-      anchors.forEach(anchor => {
-        const rowTags = anchor.getElementsByTagNameNS("*", "row"), colTags = anchor.getElementsByTagNameNS("*", "col");
-        if (rowTags.length > 0 && colTags.length > 0) {
-          const row = parseInt(rowTags[0].textContent), col = parseInt(colTags[0].textContent);
-          const blips = anchor.getElementsByTagNameNS("*", "blip");
-          for (let blip of blips) {
-            const rId = blip.getAttribute("r:embed") || blip.getAttribute("embed");
-            if (rId && rels[rId]) {
-              const imgData = imageMap[rels[rId]] || imageMap[rels[rId].split('/').pop()];
-              if (imgData) {
-                cellImageMap[`${row}:${col}`] = imgData;
-                stats.coords.push(`${row}:${col}`);
-                stats.mapped++;
-              }
-            }
-          }
-        }
-      });
-    } catch (e) { }
-  }
-
-  // --- STRATEGY 3: Sequential Fallback (Non-standard files) ---
-  // If no coordinates were mapped but images exist, assign them sequentially to rows.
-  // Gambar di-sort berdasarkan nama file, lalu dipasangkan ke baris soal secara berurutan.
-  // Kolom 2 (C) adalah kolom gambar soal utama.
-  if (stats.mapped === 0 && Object.keys(imageMap).length > 0) {
-    // Get unique image entries (by basename only, to avoid counting duplicates)
-    const uniqueImages = mediaFiles
-      .map(p => p.split('/').pop())
-      .filter((name, idx, arr) => arr.indexOf(name) === idx) // deduplicate
-      .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-
-    uniqueImages.forEach((name, idx) => {
-      const imgData = imageMap[name];
-      if (imgData) {
-        // Assign to row (idx+1, since row 0 is header), col 2 (Kolom C = gambar soal)
-        const rowKey = `${idx + 1}:2`;
-        cellImageMap[rowKey] = imgData;
-        stats.coords.push(rowKey);
-        stats.mapped++;
-      }
-    });
-  }
-
-  return { mapping: cellImageMap, stats };
-}
-async function importSoalExcel(jsonData, bankId, imageMapping = {}, stats = { rawImages: 0, drawings: 0, mapped: 0 }) {
+// --- XLSX Import Logic ---
+async function importSoalExcel(jsonData, bankId) {
   let soalUpdates = {};
   let kunciUpdates = {};
   let count = 0;
@@ -3135,7 +3049,10 @@ async function importSoalExcel(jsonData, bankId, imageMapping = {}, stats = { ra
 
     let pertanyaan = String(row[1]).trim();
     let gambarSoal = String(row[2] || '').trim();
-    if (!gambarSoal) gambarSoal = imageMapping[`${i}:2`] || imageMapping[`${i - 1}:2`] || "";
+    if (gambarSoal.startsWith('data:image')) {
+      gambarSoal = ""; // Block base64 in question image
+      warnings.push(`Baris ke-${i+1}: Gambar Base64 diblokir. Gunakan link external.`);
+    }
 
     let opsi = [];
     opsiIndices.forEach(idxMap => {
@@ -3143,7 +3060,7 @@ async function importSoalExcel(jsonData, bankId, imageMapping = {}, stats = { ra
       let gmb = '';
       if (idxMap.imgIdx !== -1) {
         gmb = row[idxMap.imgIdx] !== undefined ? String(row[idxMap.imgIdx]).trim() : '';
-        if (!gmb) gmb = imageMapping[`${i}:${idxMap.imgIdx}`] || imageMapping[`${i - 1}:${idxMap.imgIdx}`] || "";
+        if (gmb.startsWith('data:image')) gmb = ""; // Block base64 in options
       }
       if (teks || gmb) opsi.push({ id: idxMap.label, text: teks, gambar: gmb });
     });
@@ -3236,13 +3153,6 @@ window.processImport = async function () {
         if (typeof XLSX === 'undefined') return showCustomAlert("Library Excel belum termuat, periksa koneksi internet Anda.");
         const data = new Uint8Array(e.target.result);
 
-        let extractData = { mapping: {}, stats: { rawImages: 0, drawings: 0, mapped: 0 } };
-        try {
-          extractData = await extractImagesFromXLSX(e.target.result);
-        } catch (imgErr) {
-          console.warn("Image extraction failed:", imgErr);
-        }
-
         const workbook = XLSX.read(data, { type: 'array' });
         const firstSheet = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheet];
@@ -3253,7 +3163,7 @@ window.processImport = async function () {
         } else if (currentImportType === 'soal') {
           const bankId = document.getElementById('importBankId').value.trim();
           if (!bankId) return showCustomAlert('Kode Bank Soal wajib diisi!');
-          await importSoalExcel(jsonData, bankId, extractData.mapping, extractData.stats);
+          await importSoalExcel(jsonData, bankId);
         }
       } catch (err) {
         showCustomAlert("Gagal membaca file Excel. Pastikan file tidak rusak.");
@@ -3294,172 +3204,7 @@ async function importSiswaExcel(jsonData) {
   }
 }
 
-async function importSoalExcel(jsonData, bankId, imageMapping = {}, stats = { rawImages: 0, drawings: 0, mapped: 0 }) {
-  let soalUpdates = {};
-  let kunciUpdates = {};
-  let count = 0;
-  let warnings = [];
-  const letters = ['A', 'B', 'C', 'D', 'E'];
-
-  let headerRow = jsonData[0] || [];
-  let kunciIdx = -1;
-  let opsiIndices = []; // [{label: 'A', textIdx: 4, imgIdx: 5}, ...]
-
-  // Dynamic Column Mapping
-  for (let c = 0; c < headerRow.length; c++) {
-    const head = String(headerRow[c]).toLowerCase();
-    if (head.includes('kunci')) {
-      kunciIdx = c;
-    } else if (head.startsWith('opsi ') || (head.includes('pilihan') && !head.includes('kompleks'))) {
-      const label = head.replace(/opsi|pilihan|\s/g, '').toUpperCase();
-      if (label.length === 1 && label >= 'A' && label <= 'E') {
-        // Find next column for image
-        let imgIdx = -1;
-        if (c + 1 < headerRow.length && String(headerRow[c + 1]).toLowerCase().includes('gambar')) {
-          imgIdx = c + 1;
-        }
-        opsiIndices.push({ label, textIdx: c, imgIdx });
-      }
-    }
-  }
-
-  // Fallback if dynamic mapping failed (use standard layout)
-  if (opsiIndices.length === 0) {
-    for (let j = 0; j < 5; j++) {
-      let tIdx = 4 + (j * 2);
-      let iIdx = 5 + (j * 2);
-      if (tIdx < (kunciIdx > 0 ? kunciIdx : headerRow.length)) {
-        opsiIndices.push({ label: letters[j], textIdx: tIdx, imgIdx: iIdx });
-      }
-    }
-  }
-  if (kunciIdx === -1) kunciIdx = 12; // final fallback
-
-  for (let i = 1; i < jsonData.length; i++) {
-    let row = jsonData[i];
-    if (!row || row.length === 0) continue;
-
-    if (!row[1]) {
-      warnings.push(`Baris ke-${i + 1} dilewati: Teks soal kosong.`);
-      continue;
-    }
-
-    let id = 'S-' + (count + 1);
-    let rawJenis = String(row[0]).trim().toUpperCase();
-    let tipe = 'PG';
-    if (rawJenis.includes('KOMPLEKS')) tipe = 'KOMPLEKS';
-    else if (rawJenis.includes('BS') || rawJenis.includes('BENAR')) tipe = 'BS';
-    else if (rawJenis.includes('JODOH')) tipe = 'JODOH';
-    else if (rawJenis.includes('ISIAN')) tipe = 'ISIAN';
-
-    let pertanyaan = String(row[1]).trim();
-    let gambarSoal = String(row[2] || '').trim();
-    if (!gambarSoal) {
-      // Fuzzy match: check current row and row-1 (in case image is slightly high)
-      gambarSoal = imageMapping[`${i}:2`] || imageMapping[`${i - 1}:2`] || "";
-    }
-
-    let opsi = [];
-    opsiIndices.forEach(idxMap => {
-      let teks = row[idxMap.textIdx] !== undefined ? String(row[idxMap.textIdx]).trim() : '';
-      let gmb = '';
-      if (idxMap.imgIdx !== -1) {
-        gmb = row[idxMap.imgIdx] !== undefined ? String(row[idxMap.imgIdx]).trim() : '';
-        if (!gmb) {
-          gmb = imageMapping[`${i}:${idxMap.imgIdx}`] || imageMapping[`${i - 1}:${idxMap.imgIdx}`] || "";
-        }
-      }
-      if (teks || gmb) {
-        opsi.push({ id: idxMap.label, text: teks, gambar: gmb });
-      }
-    });
-
-    if (opsi.length < 2 && (tipe === 'PG' || tipe === 'BS')) {
-      // Warnings handled later
-    }
-
-    let rawKunci = String(row[kunciIdx] || '').trim();
-    let kunci = rawKunci;
-
-    if (tipe === 'PG' || tipe === 'BS') {
-      if (rawKunci === '1') kunci = 'A';
-      else if (rawKunci === '2') kunci = 'B';
-      else if (rawKunci === '3') kunci = 'C';
-      else if (rawKunci === '4') kunci = 'D';
-      else if (rawKunci === '5') kunci = 'E';
-      else kunci = rawKunci.toUpperCase();
-    } else if (tipe === 'KOMPLEKS') {
-      kunci = String(rawKunci).split(',').map(s => {
-        s = s.trim().toUpperCase();
-        if (s === '1') return 'A'; if (s === '2') return 'B'; if (s === '3') return 'C'; if (s === '4') return 'D'; if (s === '5') return 'E';
-        return s;
-      }).filter(s => s).join(',');
-    }
-
-    let updateData = { id, tipe, pertanyaan, opsi, bobot: 1, gambar: gambarSoal };
-
-    if (tipe === 'JODOH') {
-      let kiri = []; let kanan = []; let autoKunci = [];
-      opsi.forEach(o => {
-        if (o.text.includes('=')) {
-          let parts = o.text.split('=');
-          let k = parts[0].trim(); let v = parts[1].trim();
-          if (k && v) { kiri.push(k); kanan.push(v); autoKunci.push(`${k}=${v}`); }
-        }
-      });
-      updateData.kiri = kiri; updateData.kanan = [...kanan].sort();
-      kunci = autoKunci.join(';');
-    }
-
-    soalUpdates[id] = updateData;
-    kunciUpdates[id] = kunci;
-    count++;
-  }
-
-  if (count > 0) {
-    // Clean data for Firebase (No undefined allowed)
-    const cleanSoal = JSON.parse(JSON.stringify(soalUpdates, (k, v) => v === undefined ? "" : v));
-    const cleanKunci = JSON.parse(JSON.stringify(kunciUpdates, (k, v) => v === undefined ? "" : v));
-
-    await db.ref('/soal/' + bankId).set(cleanSoal);
-    await db.ref('/kunci/' + bankId).set(cleanKunci);
-
-    // Count detected images for summary
-    let imgTotal = 0;
-    Object.values(soalUpdates).forEach(s => {
-      if (s.gambar && String(s.gambar).startsWith('data:image')) imgTotal++;
-      if (s.opsi) {
-        s.opsi.forEach(o => { if (o.gambar && String(o.gambar).startsWith('data:image')) imgTotal++; });
-      }
-    });
-
-    let msg = `Berhasil import ${count} soal ke bank ${bankId}.`;
-    if (imgTotal > 0) {
-      msg = `Berhasil import ${count} soal (${imgTotal} gambar terdeteksi) ke bank ${bankId}.`;
-    } else if (stats && stats.rawImages > 0) {
-      if (stats.hasCellImages) {
-        msg += `\n\n[PENTING] Terdeteksi gambar format "Place in Cell".\nSistem sedang mencoba membacanya. Jika gagal, mohon ubah ke "Place over Cells".`;
-      } else {
-        msg += `\n\n(Info: Ditemukan ${stats.rawImages} file gambar di Excel.`;
-        if (stats.coords && stats.coords.length > 0) {
-          msg += `\nKoordinat ditemukan: ${stats.coords.join(', ')}`;
-        }
-        if (stats.xlFiles && stats.xlFiles.length > 0) {
-          msg += `\nIsi folder XL: ${stats.xlFiles.slice(0, 10).join(', ')}`;
-        }
-        msg += `\n\nSistem mencari gambar di Kolom C (Index 2) dan kolom Gambar Opsi. Pastikan gambar diletakkan tepat di dalam sel tersebut.)`;
-      }
-    } else {
-      msg += `\n\n(Info: Tidak ditemukan file gambar di dalam file Excel ini.)`;
-    }
-
-    showCustomAlert(msg);
-    closeImportModal();
-    loadAdminSoal();
-  } else {
-    showCustomAlert('Gagal: Tidak ada soal valid yang ditemukan.');
-  }
-}
+// (Duplicate importSoalExcel removed)
 
 async function importSiswaCSV(csvText) {
   const lines = csvText.split('\n');
