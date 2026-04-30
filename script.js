@@ -354,6 +354,7 @@ async function searchPeserta(keyword) {
    📦 CACHE SOAL (SUPER CEPAT)
 ================================ */
 
+async function getExamDataOptimized(examId, token, forceRefresh = false) {
   const jSnap = await db.ref('/jadwal/' + examId).once('value');
   const sch = jSnap.val();
   if (!sch) throw new Error("Ujian tidak ditemukan");
