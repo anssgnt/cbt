@@ -324,8 +324,8 @@ async function cachedGet(path) {
 let searchTimeout = null;
 
 async function searchPeserta(keyword) {
-  if (!keyword || keyword.length < 2) return [];
-  const key = keyword.toLowerCase();
+  const key = keyword.trim().toLowerCase();
+  if (key.length < 2) return [];
 
   try {
     await window.dbConnect(); // Ensure connection with jitter
@@ -2259,13 +2259,54 @@ window.saveSiswa = async function () {
 
   showLoading('Menyimpan data...');
   try {
-    await db.ref('/peserta/' + id).update({ nama, kelas });
+    await db.ref('/peserta/' + id).update({ 
+      nama, 
+      nama_lower: nama.toLowerCase(),
+      kelas 
+    });
     hideLoading();
     closeSiswaModal();
     loadAdminSiswa();
   } catch (e) {
     hideLoading();
     showCustomAlert('Gagal menyimpan data.');
+  }
+}
+
+window.fixPesertaIndex = async function () {
+  if (!confirm('Sistem akan memindai seluruh data siswa dan memperbaiki indeks pencarian (nama_lower). Proses ini mungkin memakan waktu beberapa detik tergantung jumlah siswa.\n\nLanjutkan?')) return;
+
+  showLoading('Memperbaiki Indeks...');
+  try {
+    const snap = await db.ref('/peserta').once('value');
+    const data = snap.val() || {};
+    const updates = {};
+    let count = 0;
+
+    for (let id in data) {
+      const nama = String(data[id].nama || '').trim();
+      const currentNamaLower = data[id].nama_lower || '';
+      const targetNamaLower = nama.toLowerCase();
+      
+      if (currentNamaLower !== targetNamaLower) {
+        updates[`${id}/nama_lower`] = targetNamaLower;
+        updates[`${id}/nama`] = nama; // Also clean up whitespace in original name
+        count++;
+      }
+    }
+
+    if (count > 0) {
+      await db.ref('/peserta').update(updates);
+      hideLoading();
+      showCustomAlert(`Berhasil memperbaiki ${count} data siswa. Sekarang nama siswa seharusnya sudah muncul saat login.`);
+    } else {
+      hideLoading();
+      showCustomAlert('Seluruh data siswa sudah memiliki indeks yang benar. Tidak ada yang perlu diperbaiki.');
+    }
+  } catch (e) {
+    console.error(e);
+    hideLoading();
+    showCustomAlert('Gagal melakukan pemeliharaan database.');
   }
 }
 
@@ -3196,7 +3237,11 @@ async function importSiswaExcel(jsonData) {
       continue;
     }
     let id = String(row[0]).trim();
-    updates[id] = { nama: String(row[1] || '').trim(), kelas: String(row[2] || '').trim() };
+    updates[id] = { 
+      nama: String(row[1] || '').trim(), 
+      nama_lower: String(row[1] || '').trim().toLowerCase(),
+      kelas: String(row[2] || '').trim() 
+    };
     count++;
   }
   if (count > 0) {
@@ -3225,7 +3270,11 @@ async function importSiswaCSV(csvText) {
     const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
     if (cols.length >= 3) {
       let id = cols[0];
-      updates[id] = { nama: cols[1], kelas: cols[2] };
+      updates[id] = { 
+        nama: cols[1], 
+        nama_lower: cols[1].toLowerCase(),
+        kelas: cols[2] 
+      };
       count++;
     }
   }
