@@ -2840,28 +2840,6 @@ async function extractImagesFromXLSX(arrayBuffer) {
             const anchors = [...Array.from(doc.getElementsByTagNameNS("*", "twoCellAnchor")), ...Array.from(doc.getElementsByTagNameNS("*", "oneCellAnchor"))];
             anchors.forEach(anchor => {
                 const rowTags = anchor.getElementsByTagNameNS("*", "row"), colTags = anchor.getElementsByTagNameNS("*", "col");
-                if (rowTags.length > 0 && colTags.length > 0) {
-                    const row = parseInt(rowTags[0].textContent), col = parseInt(colTags[0].textContent);
-                    const blips = anchor.getElementsByTagNameNS("*", "blip");
-                    for (let blip of blips) {
-                        const rId = blip.getAttribute("r:embed") || blip.getAttribute("embed");
-                        if (rId && rels[rId]) {
-                            const imgData = imageMap[rels[rId]] || imageMap[rels[rId].split('/').pop()];
-                            if (imgData) {
-                                cellImageMap[`${row}:${col}`] = imgData;
-                                stats.coords.push(`${row}:${col}`);
-                                stats.mapped++;
-                            }
-                        }
-                    }
-                }
-            });
-        } catch(e) {}
-    }
-
-    return { mapping: cellImageMap, stats };
-}
-
     // --- STRATEGY 2: Standard Drawings (Place over Cells) ---
     const drawingFiles = allPaths.filter(path => path.toLowerCase().includes("drawings/") && path.endsWith(".xml") && !path.includes("_rels"));
     stats.drawings = drawingFiles.length;
