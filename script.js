@@ -322,6 +322,8 @@ async function cachedGet(path) {
 
 // Database caching logic (Memory Cache)
 let searchTimeout = null;
+let activeDbRequests = 0;
+let dbDisconnectTimer = null;
 
 // --- KONEKSI CEPAT TANPA JITTER (khusus operasi interaktif) ---
 // Jitter 0-1500ms dirancang untuk bulk request serentak 1000 siswa.
@@ -414,7 +416,7 @@ async function getExamDataOptimized(examId, token, forceRefresh = false) {
 
   // Cache Versioning (Armor 1000)
   // Gunakan timestamp mulai sebagai versi untuk invalidasi otomatis jika jadwal diubah
-  const ver = sch.mulai || 0; 
+  const ver = sch.mulai || 0;
   const CACHE_KEY = `SOAL_${examId}_v${ver}`;
 
   if (!forceRefresh) {
@@ -547,8 +549,7 @@ initSchoolIdentity();
 // Sangat vital untuk mem-bypass limit 100 concurrent connection di versi gratis (Spark).
 db.goOffline(); // Matikan koneksi bawaan seketika!
 
-let activeDbRequests = 0;
-let dbDisconnectTimer = null;
+
 
 // sleep is already declared above in the Performance Core Patch
 
@@ -649,9 +650,11 @@ async function gasRun(funcName, ...args) {
 
     else if (funcName === 'getSchedules') {
       const [userId, kelas] = args;
-      const snap = await db.ref('/jadwal').once('value');
+      const [snap, hSnap] = await Promise.all([
+        db.ref('/jadwal').once('value'),
+        db.ref('/hasil').orderByChild('userId').equalTo(userId).once('value')
+      ]);
       const data = snap.val() || {};
-      const hSnap = await db.ref('/hasil').orderByChild('userId').equalTo(userId).once('value');
       const hData = hSnap.val() || {};
       const completedSet = new Set();
       for (let k in hData) completedSet.add(hData[k].examId);
@@ -721,7 +724,7 @@ async function gasRun(funcName, ...args) {
       const [payload] = args;
       // Gunakan path deterministik untuk mencegah duplikasi dan mempercepat proses
       const resultPath = `/hasil/${payload.examId}_${payload.user.id}`;
-      
+
       // Trust client score to avoid massive DB reads (Armor 1000)
       const finalScore = payload.score || 0;
 
@@ -766,7 +769,7 @@ async function gasRun(funcName, ...args) {
     else if (funcName === 'getAdminMonitoringData') {
       const [skipPeserta] = args;
       const nowMs = Date.now();
-      
+
       const jSnap = await db.ref('/jadwal').once('value');
       const jData = jSnap.val() || {};
       const activeExams = [];
@@ -787,7 +790,7 @@ async function gasRun(funcName, ...args) {
       const snaps = await Promise.all([...queries, ...onlineQueries]);
       const hSnap = snaps[0];
       const pSnap = skipPeserta ? null : snaps[1];
-      
+
       const onlinesMap = {};
       const onlineSnaps = snaps.slice(skipPeserta ? 1 : 2);
       activeExams.forEach((ex, idx) => {
@@ -796,7 +799,7 @@ async function gasRun(funcName, ...args) {
       });
 
       const pData = pSnap ? pSnap.val() || {} : null;
-      const expectedPeserta = []; 
+      const expectedPeserta = [];
       if (pData) {
         for (let id in pData) expectedPeserta.push({ id, nama: pData[id].nama, kelas: pData[id].kelas });
       }
@@ -905,7 +908,7 @@ if (userNameInput) {
     // Prefetch cache peserta di background saat user fokus ke input,
     // sehingga ketika mulai mengetik, data sudah siap di memori.
     if (!cachedPeserta) {
-      loadPesertaCache().catch(() => {});
+      loadPesertaCache().catch(() => { });
     }
   });
 
@@ -1679,7 +1682,7 @@ async function gasRunWithRetry(funcName, args, maxRetries = 3, retryDelayMs = 50
   let lastError = null;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const res = await gasRun(funcName, args);
+      const res = await gasRun(funcName, ...args);
       return res; // Sukses, kembalikan hasilnya
     } catch (err) {
       lastError = err;
@@ -1703,7 +1706,7 @@ async function submitExam(isAutoSubmit) {
   // Setiap HP akan mengacak jeda uniknya sendiri antara 0-55 detik.
   // Ini memecah "Tsunami 1000 Submit" menjadi gelombang ~18 /detik.
   if (isAutoSubmit) {
-    const jitterMs = Math.floor(Math.random() * 120000); // 0 - 120.000 ms (Armor 1000 Siswa)
+    const jitterMs = Math.floor(Math.random() * 60000); // 0 - 60.000 ms (Armor 1000 Siswa)
     const jitterSec = Math.ceil(jitterMs / 1000);
     showLoading(`Waktu habis. Mengirim dalam ${jitterSec} detik...`);
     await sleep(jitterMs);
@@ -1717,8 +1720,8 @@ async function submitExam(isAutoSubmit) {
 
   // ─── FASE 2: FULL CLIENT-SIDE GRADING ───────────────────────────
   const keys = State.config.keys || {};
-  let totalPoints = 0; 
-  let maxPoints = 0; 
+  let totalPoints = 0;
+  let maxPoints = 0;
   let detailEvals = {};
 
   State.questions.forEach(q => {
@@ -1741,12 +1744,12 @@ async function submitExam(isAutoSubmit) {
         isCorrect = String(userAns).trim().toLowerCase() === String(correctAns).trim().toLowerCase();
       } else if (q.tipe === 'JODOH') {
         let cPairs = {};
-        String(correctAns).split(';').forEach(p => { 
-          let pt = p.split('='); 
-          if (pt.length == 2) cPairs[pt[0].trim()] = pt[1].trim(); 
+        String(correctAns).split(';').forEach(p => {
+          let pt = p.split('=');
+          if (pt.length == 2) cPairs[pt[0].trim()] = pt[1].trim();
         });
         if (typeof userAns === 'object' && !Array.isArray(userAns)) {
-          let allMatch = true; 
+          let allMatch = true;
           let kList = Object.keys(cPairs);
           if (kList.length === 0) allMatch = false;
           for (let k of kList) { if (userAns[k] !== cPairs[k]) { allMatch = false; break; } }
@@ -1869,7 +1872,7 @@ function initPortal() {
   // Cache disimpan di localStorage (30 menit), jadi request berikutnya tidak hit Firebase sama sekali.
   authPromise.then(() => {
     if (!cachedPeserta) {
-      loadPesertaCache().catch(() => {});
+      loadPesertaCache().catch(() => { });
     }
   });
 
@@ -2043,7 +2046,7 @@ async function loadAdminDashboard() {
     // Only fetch peserta once and cache it to save bandwidth (Armor 1000)
     const skipPeserta = !!(window.adminState && window.adminState.peserta && window.adminState.peserta.length > 0);
     const res = await gasRun('getAdminMonitoringData', skipPeserta);
-    
+
     if (!skipPeserta) window.adminState.peserta = res.peserta || [];
     else res.peserta = window.adminState.peserta;
     if (res.success) {
@@ -2302,10 +2305,10 @@ window.saveSiswa = async function () {
 
   showLoading('Menyimpan data...');
   try {
-    await db.ref('/peserta/' + id).update({ 
-      nama, 
+    await db.ref('/peserta/' + id).update({
+      nama,
       nama_lower: nama.toLowerCase(),
-      kelas 
+      kelas
     });
     hideLoading();
     closeSiswaModal();
@@ -2330,7 +2333,7 @@ window.fixPesertaIndex = async function () {
       const nama = String(data[id].nama || '').trim();
       const currentNamaLower = data[id].nama_lower || '';
       const targetNamaLower = nama.toLowerCase();
-      
+
       if (currentNamaLower !== targetNamaLower) {
         updates[`${id}/nama_lower`] = targetNamaLower;
         updates[`${id}/nama`] = nama; // Also clean up whitespace in original name
@@ -3145,7 +3148,7 @@ async function importSoalExcel(jsonData, bankId) {
     let gambarSoal = String(row[2] || '').trim();
     if (gambarSoal.startsWith('data:image')) {
       gambarSoal = ""; // Block base64 in question image
-      warnings.push(`Baris ke-${i+1}: Gambar Base64 diblokir. Gunakan link external.`);
+      warnings.push(`Baris ke-${i + 1}: Gambar Base64 diblokir. Gunakan link external.`);
     }
 
     let opsi = [];
@@ -3280,10 +3283,10 @@ async function importSiswaExcel(jsonData) {
       continue;
     }
     let id = String(row[0]).trim();
-    updates[id] = { 
-      nama: String(row[1] || '').trim(), 
+    updates[id] = {
+      nama: String(row[1] || '').trim(),
       nama_lower: String(row[1] || '').trim().toLowerCase(),
-      kelas: String(row[2] || '').trim() 
+      kelas: String(row[2] || '').trim()
     };
     count++;
   }
@@ -3313,10 +3316,10 @@ async function importSiswaCSV(csvText) {
     const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
     if (cols.length >= 3) {
       let id = cols[0];
-      updates[id] = { 
-        nama: cols[1], 
+      updates[id] = {
+        nama: cols[1],
         nama_lower: cols[1].toLowerCase(),
-        kelas: cols[2] 
+        kelas: cols[2]
       };
       count++;
     }
