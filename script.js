@@ -310,10 +310,13 @@ const memoryCache = {};
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function cachedGet(path) {
-  if (memoryCache[path]) return memoryCache[path];
+  const now = Date.now();
+  const cached = memoryCache[path];
+  if (cached && (now - cached.ts < 10 * 60 * 1000)) return cached.val;
+
   const snap = await db.ref(path).once('value');
   const val = snap.val();
-  memoryCache[path] = val;
+  memoryCache[path] = { val, ts: now };
   return val;
 }
 
@@ -371,7 +374,10 @@ async function getExamDataOptimized(examId, token, forceRefresh = false) {
     throw new Error("Token salah!");
   }
 
-  const sData = await cachedGet('/soal/' + sch.nama_soal);
+  const sDataPromise = cachedGet('/soal/' + sch.nama_soal);
+  const kDataPromise = cachedGet('/kunci/' + sch.nama_soal);
+
+  const [sData, kData] = await Promise.all([sDataPromise, kDataPromise]);
 
   const questions = [];
   let idx = 0;
@@ -392,7 +398,8 @@ async function getExamDataOptimized(examId, token, forceRefresh = false) {
       durasi: sch.durasi,
       end_ms: sch.selesai
     },
-    questions
+    questions,
+    keys: kData || {} // Cache keys for client-side scoring
   };
 
   localStorage.setItem(CACHE_KEY, JSON.stringify(result));
@@ -736,18 +743,29 @@ async function gasRun(funcName, ...args) {
     }
 
     else if (funcName === 'getAdminMonitoringData') {
-      const activeExams = [];
-      const jSnap = await db.ref('/jadwal').once('value'); const jData = jSnap.val() || {};
       const nowMs = Date.now();
+      
+      // Parallelize queries to reduce round-trips
+      const [jSnap, pSnap, hSnap, oSnap] = await Promise.all([
+        db.ref('/jadwal').once('value'),
+        db.ref('/peserta').once('value'),
+        db.ref('/hasil').limitToLast(500).once('value'), // Limit to last 500 for performance
+        db.ref('/online_status').once('value')
+      ]);
+
+      const jData = jSnap.val() || {};
+      const activeExams = [];
       for (let id in jData) {
         if (jData[id].aktif && nowMs >= jData[id].mulai && nowMs <= jData[id].selesai) {
           activeExams.push({ id, nama: jData[id].nama, token: jData[id].token });
         }
       }
-      const pSnap = await db.ref('/peserta').once('value'); const pData = pSnap.val() || {};
-      const expectedPeserta = []; for (let id in pData) expectedPeserta.push({ id, nama: pData[id].nama, kelas: pData[id].kelas });
 
-      const hSnap = await db.ref('/hasil').once('value'); const hData = hSnap.val() || {};
+      const pData = pSnap.val() || {};
+      const expectedPeserta = []; 
+      for (let id in pData) expectedPeserta.push({ id, nama: pData[id].nama, kelas: pData[id].kelas });
+
+      const hData = hSnap.val() || {};
       const completedMap = {};
       for (let k in hData) {
         let eid = hData[k].examId, uid = hData[k].userId;
@@ -755,7 +773,7 @@ async function gasRun(funcName, ...args) {
         if (!completedMap[eid].includes(uid)) completedMap[eid].push(uid);
       }
 
-      const oSnap = await db.ref('/online_status').once('value'); const oData = oSnap.val() || {};
+      const oData = oSnap.val() || {};
       const onlineMap = {};
       for (let eid in oData) {
         onlineMap[eid] = [];
@@ -780,8 +798,15 @@ async function gasRun(funcName, ...args) {
     }
 
     else if (funcName === 'getAdminLaporanLengkap') {
-      const hSnap = await db.ref('/hasil').limitToLast(150).once('value');
-      const pSnap = await db.ref('/pelanggaran').limitToLast(100).once('value');
+      const [examId] = args;
+      let hasilRef = db.ref('/hasil');
+      if (examId) hasilRef = hasilRef.orderByChild('examId').equalTo(examId).limitToLast(1000);
+      else hasilRef = hasilRef.limitToLast(1000);
+
+      const [hSnap, pSnap] = await Promise.all([
+        hasilRef.once('value'),
+        db.ref('/pelanggaran').limitToLast(200).once('value')
+      ]);
       const hData = hSnap.val() || {}; const pData = pSnap.val() || {};
 
       const hasilResult = Object.values(hData).sort((a, b) => b.timestamp - a.timestamp).map(h => {
@@ -849,12 +874,8 @@ if (userNameInput) {
     setTimeout(() => {
       userNameInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 350);
-
-    if (!cachedPeserta && !fetchPesertaPromise) {
-      fetchPesertaPromise = gasRun('getAllPeserta').then(data => {
-        cachedPeserta = data;
-      }).catch(() => { fetchPesertaPromise = null; });
-    }
+    // Auto-fetch disabled on focus to save bandwidth for 1000 students.
+    // Login will use direct Firebase search fallback.
   });
 
   userNameInput.addEventListener('input', async (e) => {
@@ -964,11 +985,11 @@ async function loadSchedules() {
       }, 1000);
 
     } else {
-      alert('Gagal memuat jadwal: ' + res.message);
+      showCustomAlert('Gagal memuat jadwal: ' + res.message);
       showView('login-view');
     }
   } catch (err) {
-    alert('Terjadi kesalahan sinkronisasi jaringan.');
+    showCustomAlert('Terjadi kesalahan sinkronisasi jaringan.');
     showView('login-view');
   }
 }
@@ -1061,7 +1082,7 @@ function renderSchedules() {
         document.getElementById('btnCancelToken').onclick = closeTokenModal;
         document.getElementById('btnSubmitToken').onclick = () => {
           const tk = document.getElementById('examTokenInput').value.trim();
-          if (!tk) { alert('Harap berikan token ujian!'); return; }
+          if (!tk) { showCustomAlert('Harap berikan token ujian!'); return; }
           closeTokenModal();
           loadDashboard(sch.id, tk);
         };
@@ -1147,11 +1168,11 @@ async function loadDashboard(examId, token) {
       if (scheduleTimer) clearInterval(scheduleTimer);
       showView('dashboard-view');
     } else {
-      alert('Error mengambil data ujian: ' + res.message);
+      showCustomAlert('Error mengambil data ujian: ' + res.message);
       showView('schedule-view');
     }
   } catch (err) {
-    alert('Terjadi kesalahan sinkronisasi.');
+    showCustomAlert('Terjadi kesalahan sinkronisasi.');
     showView('schedule-view');
   }
 }
@@ -1204,7 +1225,7 @@ function startTimer() {
 
     if (State.timeRemaining <= 0) {
       clearInterval(State.timerInterval);
-      alert('Waktu ujian telah habis! Jawaban Anda akan otomatis dikirim ke server.');
+      showCustomAlert('Waktu ujian telah habis! Jawaban Anda akan otomatis dikirim ke server.');
       submitExam(true);
     }
   }, 1000);
@@ -1228,7 +1249,7 @@ safeAddListener('btnRefreshExam', 'click', async () => {
 
   if (now - lastForceRefresh < REFRESH_COOLDOWN_MS) {
     const sisa = Math.ceil((REFRESH_COOLDOWN_MS - (now - lastForceRefresh)) / 60000);
-    alert(`Anda baru saja melakukan refresh. Harap tunggu ${sisa} menit lagi untuk mencegah beban server berlebih.`);
+    showCustomAlert(`Anda baru saja melakukan refresh. Harap tunggu ${sisa} menit lagi untuk mencegah beban server berlebih.`);
     return;
   }
 
@@ -1255,13 +1276,13 @@ safeAddListener('btnRefreshExam', 'click', async () => {
         updateGridUI();
 
         showView('exam-view');
-        alert("Penyegaran data soal berhasil! Silakan lanjutkan ujian.");
+        showCustomAlert("Penyegaran data soal berhasil! Silakan lanjutkan ujian.");
       } else {
-        alert("Gagal menyegarkan soal: " + res.message);
+        showCustomAlert("Gagal menyegarkan soal: " + res.message);
         showView('exam-view');
       }
     } catch (err) {
-      alert("Terjadi kesalahan jaringan.");
+      showCustomAlert("Terjadi kesalahan jaringan.");
       showView('exam-view');
     }
   }
@@ -1681,13 +1702,23 @@ async function submitExam(isAutoSubmit) {
   saveStateLocal(); // Pastikan jawaban terbaru tersimpan di LocalStorage sebelum kirim
   showLoading('Menyimpan jawaban ke server...');
 
-  // ─── FASE 2: BUILD PAYLOAD ────────────────────────────────────────
+  // ─── FASE 2: BUILD PAYLOAD & CALCULATE SCORE ────────────────────
+  const keys = State.config.keys || {}; // Keys already cached in loadDashboard
+  let correct = 0;
+  for (let qId in State.answers) {
+    if (String(State.answers[qId]).toUpperCase() === String(keys[qId]).toUpperCase()) {
+      correct++;
+    }
+  }
+  const score = State.questions.length ? Math.round((correct / State.questions.length) * 100) : 0;
+
   const payload = {
     examId: State.config.id_ujian,
     user: State.user,
     answers: State.answers,
     usedTime: getUsedTimeStr(),
-    violations: State.violations
+    violations: State.violations,
+    score: score // Send score directly to avoid extra DB reads on server
   };
 
   // ─── FASE 3: SUBMIT DENGAN AUTO-RETRY ────────────────────────────
@@ -1707,13 +1738,13 @@ async function submitExam(isAutoSubmit) {
       if (errMsg.includes('sudah')) {
         safeSetText('result-score', '✓');
       } else {
-        alert('Gagal mengirim jawaban: ' + errMsg);
+        showCustomAlert('Gagal mengirim jawaban: ' + errMsg);
         showView('exam-view');
       }
     }
   } catch (err) {
     // Gagal total setelah 3x retry — beri tahu siswa
-    alert('Koneksi terputus setelah beberapa percobaan!\n\nJawaban Anda masih AMAN di perangkat ini.\nSilakan tekan tombol Kirim Ulang (tombol hijau di bawah).');
+    showCustomAlert('Koneksi terputus setelah beberapa percobaan!\n\nJawaban Anda masih AMAN di perangkat ini.\nSilakan tekan tombol Kirim Ulang (tombol hijau di bawah).');
     State.examActive = true;
     State.submissionFailed = true;
     updateNavButtons();
@@ -1934,9 +1965,9 @@ safeAddListener('btnSubmitAdmin', 'click', async () => {
       hideAdminAuthModal();
       loadAdminDashboard();
     } else {
-      alert("Sandi Proktor Ditolak!");
+      showCustomAlert("Sandi Proktor Ditolak!");
     }
-  } catch (e) { alert("Network Error"); }
+  } catch (e) { showCustomAlert("Network Error"); }
   if (btn) btn.textContent = 'Verifikasi';
 });
 
@@ -1953,11 +1984,11 @@ async function loadAdminDashboard() {
       showView('admin-dash-view');
       renderAdminDashboard(res);
     } else {
-      alert("Gagal memuat monitoring: " + res.message);
+      showCustomAlert("Gagal memuat monitoring: " + res.message);
       showView('login-view');
     }
   } catch (e) {
-    alert("Koneksi gagal.");
+    showCustomAlert("Koneksi gagal.");
     showView('login-view');
   }
 }
@@ -2188,11 +2219,11 @@ window.editSiswa = async function (id) {
         document.getElementById('siswa-modal').style.transform = 'translate(-50%, -50%) scale(1)';
       }, 10);
     } else {
-      alert('Siswa tidak ditemukan.');
+      showCustomAlert('Siswa tidak ditemukan.');
     }
   } catch (e) {
     hideLoading();
-    alert('Gagal mengambil data.');
+    showCustomAlert('Gagal mengambil data.');
   }
 }
 
@@ -2201,7 +2232,7 @@ window.saveSiswa = async function () {
   const nama = document.getElementById('siswaNamaInput').value.trim();
   const kelas = document.getElementById('siswaKelasInput').value.trim();
 
-  if (!id || !nama || !kelas) return alert('Semua kolom wajib diisi!');
+  if (!id || !nama || !kelas) return showCustomAlert('Semua kolom wajib diisi!');
 
   showLoading('Menyimpan data...');
   try {
@@ -2211,11 +2242,11 @@ window.saveSiswa = async function () {
     loadAdminSiswa();
   } catch (e) {
     hideLoading();
-    alert('Gagal menyimpan data.');
+    showCustomAlert('Gagal menyimpan data.');
   }
 }
 
-function openBankSoalModal() { alert('Fitur Bank Soal Builder segera hadir. Gunakan Import CSV sementara.'); }
+function openBankSoalModal() { showCustomAlert('Fitur Bank Soal Builder segera hadir. Gunakan Import CSV sementara.'); }
 
 window.deleteSiswa = async function (id) {
   if (confirm('Hapus siswa ' + id + '?')) {
@@ -2277,7 +2308,7 @@ window.previewSoal = async function (bankId) {
     }, 10);
   } catch (e) {
     hideLoading();
-    alert('Gagal mengambil data Bank Soal.');
+    showCustomAlert('Gagal mengambil data Bank Soal.');
     console.error(e);
   }
 }
@@ -2365,11 +2396,11 @@ async function saveAdminJadwal(id) {
   try {
     const res = await gasRun('updateJadwalSistem', id, token, status);
     if (res.success) {
-      alert("Pembaruan jadwal sukses disimpan!");
+      showCustomAlert("Pembaruan jadwal sukses disimpan!");
     } else {
-      alert("Gagal menyimpan: " + res.message);
+      showCustomAlert("Gagal menyimpan: " + res.message);
     }
-  } catch (e) { alert("Terjadi kesalahan jaringan."); }
+  } catch (e) { showCustomAlert("Terjadi kesalahan jaringan."); }
   showView('admin-dash-view');
 }
 
@@ -2488,7 +2519,7 @@ safeAddListener('cfgLogoInput', 'change', (e) => {
   if (!file) return;
 
   if (file.size > 1024 * 1024) { // 1MB Limit
-    alert("Ukuran file terlalu besar! Maksimal 1MB.");
+    showCustomAlert("Ukuran file terlalu besar! Maksimal 1MB.");
     e.target.value = '';
     return;
   }
@@ -2548,10 +2579,10 @@ window.saveAdminSettings = async function () {
       }
     });
 
-    alert('Pengaturan Berhasil Disimpan! Silakan muat ulang halaman agar perubahan identitas terlihat.');
+    showCustomAlert('Pengaturan Berhasil Disimpan! Silakan muat ulang halaman agar perubahan identitas terlihat.');
   } catch (e) {
     console.error(e);
-    alert('Gagal menyimpan pengaturan.');
+    showCustomAlert('Gagal menyimpan pengaturan.');
   }
   hideLoading();
 };
@@ -2579,9 +2610,9 @@ async function promptBroadcast(examId) {
     showLoading('Menyiarkan Pesan...');
     try {
       const res = await gasRun('sendBroadcastAdmin', examId, msg.trim());
-      if (res.success) alert("Pesan berhasil diteruskan ke jalur orbit server!");
-      else alert("Gagal menyiarkan pesan.");
-    } catch (ex) { alert("Kegagalan jaringan."); }
+      if (res.success) showCustomAlert("Pesan berhasil diteruskan ke jalur orbit server!");
+      else showCustomAlert("Gagal menyiarkan pesan.");
+    } catch (ex) { showCustomAlert("Kegagalan jaringan."); }
     hideLoading();
   }
 }
@@ -2781,11 +2812,11 @@ async function showAdminPreview(examId) {
         modal.style.transform = 'translate(-50%, -50%) scale(1)';
       }, 10);
     } else {
-      alert("Gagal membaca lembar soal: " + res.message);
+      showCustomAlert("Gagal membaca lembar soal: " + res.message);
     }
   } catch (e) {
     hideLoading();
-    alert("Koneksi bermasalah.");
+    showCustomAlert("Koneksi bermasalah.");
   }
 }
 
@@ -2831,11 +2862,11 @@ window.openSoalEditModal = async function (bankId, soalId) {
         document.getElementById('soal-edit-modal').style.transform = 'translate(-50%, -50%) scale(1)';
       }, 10);
     } else {
-      alert('Maaf, fitur edit cepat saat ini baru mendukung tipe Pilihan Ganda (PG), Benar-Salah (BS), dan PG Kompleks (KOMPLEKS).');
+      showCustomAlert('Maaf, fitur edit cepat saat ini baru mendukung tipe Pilihan Ganda (PG), Benar-Salah (BS), dan PG Kompleks (KOMPLEKS).');
     }
   } catch (e) {
     hideLoading();
-    alert('Gagal mengambil data soal.');
+    showCustomAlert('Gagal mengambil data soal.');
   }
 }
 
@@ -2856,8 +2887,8 @@ window.saveSoalEdit = async function () {
   const gambar = document.getElementById('soalEditGambar').value.trim();
   const rawKunci = document.getElementById('soalEditKunci').value;
 
-  if (!pertanyaan) return alert('Teks soal tidak boleh kosong!');
-  if (!rawKunci) return alert('Kunci Jawaban tidak boleh kosong!');
+  if (!pertanyaan) return showCustomAlert('Teks soal tidak boleh kosong!');
+  if (!rawKunci) return showCustomAlert('Kunci Jawaban tidak boleh kosong!');
 
   // Format the key to uppercase and remove spaces
   const kunci = String(rawKunci).toUpperCase().replace(/\s+/g, '');
@@ -2880,13 +2911,13 @@ window.saveSoalEdit = async function () {
     await db.ref('/kunci/' + bankId + '/' + soalId).set(kunci);
     hideLoading();
     closeSoalEditModal();
-    alert('Perubahan berhasil disimpan!');
+    showCustomAlert('Perubahan berhasil disimpan!');
 
     // Refresh the preview
     previewSoal(bankId);
   } catch (e) {
     hideLoading();
-    alert('Gagal menyimpan.');
+    showCustomAlert('Gagal menyimpan.');
   }
 }
 
@@ -2894,7 +2925,7 @@ window.saveSoalEdit = async function () {
 let currentImportType = '';
 
 window.downloadTemplateExcel = function () {
-  if (typeof XLSX === 'undefined') return alert('Library Excel belum dimuat, pastikan koneksi internet stabil.');
+  if (typeof XLSX === 'undefined') return showCustomAlert('Library Excel belum dimuat, pastikan koneksi internet stabil.');
   let data = [];
   if (currentImportType === 'siswa') {
     data = [
@@ -3212,15 +3243,15 @@ async function importSoalExcel(jsonData, bankId, imageMapping = {}, stats = { ra
       msg += `\n\nSistem mencari gambar di Kolom C dan kolom Gambar Opsi.)`;
     } else msg += `\n\n(Info: Tidak ditemukan file gambar di dalam file Excel ini.)`;
 
-    alert(msg);
+    showCustomAlert(msg);
     closeImportModal();
     loadAdminSoal();
-  } else alert('Gagal: Tidak ada soal valid yang ditemukan.');
+  } else showCustomAlert('Gagal: Tidak ada soal valid yang ditemukan.');
 }
 
 window.processImport = async function () {
   const fileInput = document.getElementById('importFileInput');
-  if (fileInput.files.length === 0) return alert('Pilih file terlebih dahulu.');
+  if (fileInput.files.length === 0) return showCustomAlert('Pilih file terlebih dahulu.');
 
   const file = fileInput.files[0];
   const reader = new FileReader();
@@ -3232,7 +3263,7 @@ window.processImport = async function () {
       if (currentImportType === 'siswa') await importSiswaCSV(text);
       else if (currentImportType === 'soal') {
         const bankId = document.getElementById('importBankId').value.trim();
-        if (!bankId) return alert('Kode Bank Soal wajib diisi!');
+        if (!bankId) return showCustomAlert('Kode Bank Soal wajib diisi!');
         await importSoalCSV(text, bankId);
       }
     };
@@ -3240,7 +3271,7 @@ window.processImport = async function () {
   } else {
     reader.onload = async function (e) {
       try {
-        if (typeof XLSX === 'undefined') return alert("Library Excel belum termuat, periksa koneksi internet Anda.");
+        if (typeof XLSX === 'undefined') return showCustomAlert("Library Excel belum termuat, periksa koneksi internet Anda.");
         const data = new Uint8Array(e.target.result);
 
         let extractData = { mapping: {}, stats: { rawImages: 0, drawings: 0, mapped: 0 } };
@@ -3259,11 +3290,11 @@ window.processImport = async function () {
           await importSiswaExcel(jsonData);
         } else if (currentImportType === 'soal') {
           const bankId = document.getElementById('importBankId').value.trim();
-          if (!bankId) return alert('Kode Bank Soal wajib diisi!');
+          if (!bankId) return showCustomAlert('Kode Bank Soal wajib diisi!');
           await importSoalExcel(jsonData, bankId, extractData.mapping, extractData.stats);
         }
       } catch (err) {
-        alert("Gagal membaca file Excel. Pastikan file tidak rusak.");
+        showCustomAlert("Gagal membaca file Excel. Pastikan file tidak rusak.");
         console.error(err);
       }
     };
@@ -3293,11 +3324,11 @@ async function importSiswaExcel(jsonData) {
       msg += '\n\nPeringatan:\n- ' + warnings.slice(0, 5).join('\n- ');
       if (warnings.length > 5) msg += `\n...dan ${warnings.length - 5} peringatan lainnya.`;
     }
-    alert(msg);
+    showCustomAlert(msg);
     closeImportModal();
     loadAdminSiswa();
   } else {
-    alert('Gagal: Tidak ada data valid ditemukan di Excel. Pastikan ID terisi di kolom A.');
+    showCustomAlert('Gagal: Tidak ada data valid ditemukan di Excel. Pastikan ID terisi di kolom A.');
   }
 }
 
@@ -3460,11 +3491,11 @@ async function importSoalExcel(jsonData, bankId, imageMapping = {}, stats = { ra
       msg += `\n\n(Info: Tidak ditemukan file gambar di dalam file Excel ini.)`;
     }
 
-    alert(msg);
+    showCustomAlert(msg);
     closeImportModal();
     loadAdminSoal();
   } else {
-    alert('Gagal: Tidak ada soal valid yang ditemukan.');
+    showCustomAlert('Gagal: Tidak ada soal valid yang ditemukan.');
   }
 }
 
@@ -3483,11 +3514,11 @@ async function importSiswaCSV(csvText) {
   }
   if (count > 0) {
     await db.ref('/peserta').update(updates);
-    alert('Berhasil import ' + count + ' siswa.');
+    showCustomAlert('Berhasil import ' + count + ' siswa.');
     closeImportModal();
     loadAdminSiswa();
   } else {
-    alert('Tidak ada data valid ditemukan di CSV. Pastikan ada Header di baris 1.');
+    showCustomAlert('Tidak ada data valid ditemukan di CSV. Pastikan ada Header di baris 1.');
   }
 }
 
@@ -3523,11 +3554,11 @@ async function importSoalCSV(csvText, bankId) {
   if (count > 0) {
     await db.ref('/soal/' + bankId).set(soalUpdates);
     await db.ref('/kunci/' + bankId).set(kunciUpdates);
-    alert('Berhasil import ' + count + ' soal ke bank ' + bankId + '.');
+    showCustomAlert('Berhasil import ' + count + ' soal ke bank ' + bankId + '.');
     closeImportModal();
     loadAdminSoal();
   } else {
-    alert('Data kosong atau salah format. Pastikan gunakan titik koma (;) sebagai pemisah.');
+    showCustomAlert('Data kosong atau salah format. Pastikan gunakan titik koma (;) sebagai pemisah.');
   }
 }
 // --- Jadwal Builder Logic ---
@@ -3581,14 +3612,14 @@ window.saveJadwal = async function () {
   const selesaiStr = document.getElementById('jSelesai').value;
 
   if (!id || !nama || !soal || !mulaiStr || !selesaiStr) {
-    return alert('Harap isi semua field yang wajib!');
+    return showCustomAlert('Harap isi semua field yang wajib!');
   }
 
   const mulaiMs = new Date(mulaiStr).getTime();
   const selesaiMs = new Date(selesaiStr).getTime();
 
   if (mulaiMs >= selesaiMs) {
-    return alert('Waktu selesai harus lebih besar dari waktu mulai.');
+    return showCustomAlert('Waktu selesai harus lebih besar dari waktu mulai.');
   }
 
   const token = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -3606,7 +3637,7 @@ window.saveJadwal = async function () {
   };
 
   await db.ref('/jadwal/' + id).set(payload);
-  alert('Jadwal berhasil disimpan!');
+  showCustomAlert('Jadwal berhasil disimpan!');
   closeJadwalModal();
   loadAdminJadwal();
 }
@@ -3753,7 +3784,7 @@ window.executePrint = async function () {
 
   } catch (e) {
     hideLoading();
-    alert('Gagal menyiapkan dokumen cetak.');
+    showCustomAlert('Gagal menyiapkan dokumen cetak.');
     console.error(e);
   }
 }
