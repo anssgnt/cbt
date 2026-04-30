@@ -2969,8 +2969,9 @@ async function importSoalExcel(jsonData, bankId, imageMapping = {}) {
         
         let pertanyaan = String(row[1]).trim();
         let gambarSoal = String(row[2] || '').trim();
-        if (!gambarSoal && imageMapping[`${i}:2`]) {
-            gambarSoal = imageMapping[`${i}:2`];
+        if (!gambarSoal) {
+            // Fuzzy match: check current row and row-1 (in case image is slightly high)
+            gambarSoal = imageMapping[`${i}:2`] || imageMapping[`${i-1}:2`];
         }
         
         let opsi = [];
@@ -2979,8 +2980,8 @@ async function importSoalExcel(jsonData, bankId, imageMapping = {}) {
             let gmb = '';
             if (idxMap.imgIdx !== -1) {
                 gmb = row[idxMap.imgIdx] !== undefined ? String(row[idxMap.imgIdx]).trim() : '';
-                if (!gmb && imageMapping[`${i}:${idxMap.imgIdx}`]) {
-                    gmb = imageMapping[`${i}:${idxMap.imgIdx}`];
+                if (!gmb) {
+                    gmb = imageMapping[`${i}:${idxMap.imgIdx}`] || imageMapping[`${i-1}:${idxMap.imgIdx}`];
                 }
             }
             if(teks || gmb) {
