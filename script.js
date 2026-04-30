@@ -1,3 +1,4 @@
+
 // --- Dynamic PWA Manifest for Google Apps Script ---
 (function() {
   const manifestData = {
@@ -808,9 +809,6 @@ function renderSchedules() {
     const btn = card.querySelector('button');
     if (!btnDisabled) {
       btn.onclick = () => {
-         // Simpan examId untuk dipakai oleh verifyToken()
-         window._pendingExamId = sch.id;
-         
          // Show Token Modal
          document.getElementById('token-overlay').classList.add('active');
          const modal = document.getElementById('token-modal');
@@ -821,6 +819,15 @@ function renderSchedules() {
          modal.style.transform = 'translate(-50%, -50%) scale(1)';
          document.getElementById('examTokenInput').value = '';
          document.getElementById('examTokenInput').focus();
+         
+         // Setup temp handlers
+         document.getElementById('btnCancelToken').onclick = closeTokenModal;
+         document.getElementById('btnSubmitToken').onclick = () => {
+            const tk = document.getElementById('examTokenInput').value.trim();
+            if(!tk) { alert('Harap berikan token ujian!'); return; }
+            closeTokenModal();
+            loadDashboard(sch.id, tk);
+         };
       };
     }
     container.appendChild(card);
@@ -828,7 +835,7 @@ function renderSchedules() {
 }
 
 // Token Modal helper
-window.closeTokenModal = function() {
+function closeTokenModal() {
   const modal = document.getElementById('token-modal');
   modal.style.opacity = '0'; 
   modal.style.transform = 'translate(-50%, -50%) scale(0.95)';
@@ -837,16 +844,6 @@ window.closeTokenModal = function() {
      document.getElementById('token-overlay').classList.remove('active');
   }, 300);
 }
-
-// Dipanggil dari onclick HTML di token-modal
-window.verifyToken = function() {
-  const tk = document.getElementById('examTokenInput').value.trim();
-  if (!tk) { alert('Harap masukkan token ujian!'); return; }
-  const examId = window._pendingExamId;
-  if (!examId) { alert('Data ujian tidak ditemukan. Silakan pilih ujian kembali.'); return; }
-  window.closeTokenModal();
-  loadDashboard(examId, tk);
-};
 
 safeAddListener('btnScheduleLogout', 'click', () => {
   State.user = null;
@@ -1669,12 +1666,13 @@ function hideAdminAuthModal() {
   }, 300);
 }
 
-// Alias untuk onclick di HTML
-window.closeAdminModal = hideAdminAuthModal;
+safeAddListener('btnCancelAdmin', 'click', hideAdminAuthModal);
 
-window.verifyAdminToken = async function() {
+safeAddListener('btnSubmitAdmin', 'click', async () => {
   const pwd = document.getElementById('adminTokenInput').value.trim();
   if(!pwd) return;
+  const btn = document.getElementById('btnSubmitAdmin');
+  if(btn) btn.textContent = '...';
   try {
      const res = await gasRun('validateAdmin', pwd);
      if(res) {
@@ -1684,7 +1682,8 @@ window.verifyAdminToken = async function() {
        alert("Sandi Proktor Ditolak!");
      }
   } catch(e) { alert("Network Error"); }
-};
+  if(btn) btn.textContent = 'Verifikasi';
+});
 
 safeAddListener('btnAdminLogout', 'click', () => {
   showView('login-view');
