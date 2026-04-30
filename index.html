@@ -633,14 +633,26 @@
                 </div>
                 
                 <!-- Minimal Mengerjakan -->
-                <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
                    <div>
                        <div style="font-weight:600; color:var(--text-main);">Waktu Minimal Ujian (Menit)</div>
                        <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">Siswa tidak bisa mengumpulkan jawaban jika durasi pengerjaan belum mencapai angka ini.</div>
                    </div>
                    <input type="number" id="cfgMinTime" class="form-control" style="width:80px; text-align:center;" min="0" placeholder="0">
                 </div>
-             </div>
+
+                <!-- Bypass Code -->
+                <div style="display:flex; justify-content:space-between; align-items:center;">
+                   <div style="flex:1; margin-right:16px;">
+                       <div style="font-weight:600; color:var(--text-main);">Kode Bypass PWA</div>
+                       <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">Kode darurat untuk siswa yang <b>tidak bisa install PWA</b>. Bagikan hanya ke siswa bermasalah. Kosongkan untuk menonaktifkan.</div>
+                   </div>
+                   <input type="text" id="cfgBypassCode" class="form-control"
+                     style="width:130px; text-align:center; font-family:monospace; letter-spacing:2px; text-transform:uppercase; font-size:1rem;"
+                     placeholder="Contoh: CBT2026"
+                     maxlength="12"
+                     oninput="this.value=this.value.toUpperCase()">
+                </div>
           </div>
 
         </div>
@@ -658,16 +670,71 @@
   <div class="overlay" id="overlay"></div>
   
   <!-- Anti-Cheat Overlays -->
-  <div id="pwa-blocker-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:var(--bg-page, #ffffff); z-index:99999; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:20px;">
-      <svg style="width:80px; height:80px; color:var(--primary); margin-bottom:20px;" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"></path></svg>
-      <h2 style="font-size:1.5rem; font-weight:800; color:var(--text-main); margin-bottom:12px;">Mohon Install Aplikasi</h2>
-      <p style="font-size:1rem; color:var(--text-muted); max-width:400px; line-height:1.6; margin-bottom:12px;">Ujian ini mewajibkan mode Kios. Ketuk tombol Install di bawah jika tersedia. Jika tidak:</p>
-      <div style="text-align:left; font-size:0.85rem; background:#f1f5f9; padding:12px; border-radius:0; margin-bottom:20px; color:#334155; line-height:1.5;">
-        <b>Di HP:</b> Buka menu (⋮) atau Share -> Add to Home Screen / Tambahkan ke Layar Utama.<br>
-        <b>Di PC Chrome:</b> Buka menu (⋮) -> Cast, save, and share -> Install page as app.
+  <div id="pwa-blocker-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:#f8fafc; z-index:99999; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:24px; overflow-y:auto;">
+    <div style="width:100%; max-width:440px; margin:0 auto;">
+
+      <!-- Ikon -->
+      <div style="width:80px;height:80px;background:linear-gradient(135deg,#1D4ED8,#0EA5E9);border-radius:24px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;box-shadow:0 8px 24px rgba(29,78,216,0.25);">
+        <svg style="width:42px;height:42px;color:white;" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+        </svg>
       </div>
-      <button id="btnTriggerInstall" class="btn btn-warning" style="display:none; padding:12px 24px; font-weight:700; margin-bottom:10px; font-size:1.1rem;">⬇️ Install Sekarang</button>
-      <button class="btn btn-primary" onclick="window.location.reload()" style="padding:12px 24px; font-weight:700;">Saya Sudah Install</button>
+
+      <h2 style="font-size:1.4rem;font-weight:800;color:#1e293b;margin-bottom:8px;">Wajib Install Aplikasi</h2>
+      <p style="font-size:0.9rem;color:#64748b;line-height:1.6;margin-bottom:20px;">Ujian ini hanya bisa dikerjakan melalui aplikasi yang terinstall (PWA / Add to Home Screen).</p>
+
+      <!-- Tombol Install Otomatis (muncul jika browser support) -->
+      <button id="btnTriggerInstall" style="display:none;width:100%;padding:14px;background:linear-gradient(135deg,#1D4ED8,#0EA5E9);color:white;border:none;border-radius:14px;font-size:1rem;font-weight:700;cursor:pointer;margin-bottom:12px;box-shadow:0 4px 16px rgba(29,78,216,0.3);letter-spacing:0.3px;">
+        ⬇️ Install Aplikasi Sekarang
+      </button>
+
+      <!-- Panduan manual -->
+      <div style="background:white;border:1px solid #e2e8f0;border-radius:14px;padding:16px;text-align:left;margin-bottom:12px;">
+        <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:10px;letter-spacing:0.5px;">Cara Install Manual</div>
+        <div style="font-size:0.85rem;color:#334155;line-height:1.7;">
+          <div style="display:flex;gap:10px;margin-bottom:6px;align-items:flex-start;">
+            <span style="font-size:1rem;">📱</span>
+            <span><b>Android Chrome:</b> Ketuk menu (⋮) → <em>Tambahkan ke Layar Utama</em></span>
+          </div>
+          <div style="display:flex;gap:10px;margin-bottom:6px;align-items:flex-start;">
+            <span style="font-size:1rem;">🍎</span>
+            <span><b>iPhone Safari:</b> Ketuk ikon Share → <em>Add to Home Screen</em></span>
+          </div>
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <span style="font-size:1rem;">💻</span>
+            <span><b>PC Chrome:</b> Ikon install (⊕) di address bar → <em>Install</em></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tombol sudah install -->
+      <button onclick="window.location.reload()" style="width:100%;padding:13px;background:white;color:#1D4ED8;border:2px solid #1D4ED8;border-radius:14px;font-size:0.95rem;font-weight:700;cursor:pointer;margin-bottom:20px;">
+        ✅ Saya Sudah Install — Muat Ulang
+      </button>
+
+      <!-- Divider bypass -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+        <div style="flex:1;height:1px;background:#e2e8f0;"></div>
+        <span style="font-size:0.75rem;color:#94a3b8;white-space:nowrap;">atau gunakan kode bypass dari pengawas</span>
+        <div style="flex:1;height:1px;background:#e2e8f0;"></div>
+      </div>
+
+      <!-- Bypass Code Input -->
+      <div style="background:white;border:1px solid #e2e8f0;border-radius:14px;padding:16px;">
+        <div style="font-size:0.78rem;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:10px;letter-spacing:0.5px;">🔑 Kode Bypass (untuk HP bermasalah)</div>
+        <div style="display:flex;gap:8px;">
+          <input id="pwaBypassInput" type="text" placeholder="Masukkan kode bypass..."
+            style="flex:1;padding:11px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:0.95rem;outline:none;font-family:monospace;letter-spacing:2px;text-transform:uppercase;"
+            onkeydown="if(event.key==='Enter') verifyPwaBypass()"
+            oninput="this.value=this.value.toUpperCase()">
+          <button onclick="verifyPwaBypass()" style="padding:11px 16px;background:#475569;color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:0.9rem;white-space:nowrap;">
+            Masuk
+          </button>
+        </div>
+        <div id="pwaBypassError" style="display:none;margin-top:8px;font-size:0.8rem;color:#ef4444;font-weight:600;">Kode bypass tidak valid.</div>
+      </div>
+
+    </div>
   </div>
   
   <div id="cheat-alert-overlay" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:#DC2626; color:white; z-index:100000; flex-direction:column; align-items:center; justify-content:center; text-align:center; padding:20px;">
