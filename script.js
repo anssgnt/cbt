@@ -323,31 +323,84 @@ async function cachedGet(path) {
 // Database caching logic (Memory Cache)
 let searchTimeout = null;
 
-async function searchPeserta(keyword) {
-  const key = keyword.trim().toLowerCase();
-  if (key.length < 2) return [];
+// --- KONEKSI CEPAT TANPA JITTER (khusus operasi interaktif) ---
+// Jitter 0-1500ms dirancang untuk bulk request serentak 1000 siswa.
+// Untuk pencarian nama yang dipicu satu user, jitter justru merusak UX.
+window.dbConnectFast = async function () {
+  activeDbRequests++;
+  if (activeDbRequests === 1) {
+    if (dbDisconnectTimer) clearTimeout(dbDisconnectTimer);
+    db.goOnline(); // Langsung online, tanpa delay
+  }
+};
 
+// --- CACHE PESERTA PERSISTENT (localStorage, 30 menit) ---
+const PESERTA_CACHE_KEY = 'CBT_CACHE_PESERTA';
+const PESERTA_CACHE_TIME_KEY = 'CBT_CACHE_PESERTA_TIME';
+const PESERTA_CACHE_TTL = 30 * 60 * 1000; // 30 menit
+
+async function loadPesertaCache() {
+  // Cek apakah cache masih valid
   try {
-    await window.dbConnect(); // Ensure connection with jitter
-    const snap = await db.ref('/peserta')
-      .orderByChild('nama_lower')
-      .startAt(key)
-      .endAt(key + '\uf8ff')
-      .limitToFirst(15)
-      .once('value');
-    
+    const cachedTime = localStorage.getItem(PESERTA_CACHE_TIME_KEY);
+    if (cachedTime && (Date.now() - parseInt(cachedTime)) < PESERTA_CACHE_TTL) {
+      const cached = localStorage.getItem(PESERTA_CACHE_KEY);
+      if (cached) {
+        cachedPeserta = JSON.parse(cached);
+        return cachedPeserta;
+      }
+    }
+  } catch (e) { /* cache rusak, lanjut fetch */ }
+
+  // Fetch dari Firebase
+  try {
+    window.dbConnectFast();
+    const snap = await db.ref('/peserta').once('value');
     const data = snap.val() || {};
-    return Object.keys(data).map(id => ({
-      id,
-      name: data[id].nama,
-      kelas: data[id].kelas
-    }));
+    const results = [];
+    for (let id in data) {
+      const p = data[id];
+      results.push({
+        id,
+        name: p.nama || '',
+        kelas: p.kelas || '',
+        _search: ((p.nama || '') + ' ' + (p.kelas || '') + ' ' + id).toLowerCase()
+      });
+    }
+    // Simpan ke cache
+    cachedPeserta = results;
+    try {
+      localStorage.setItem(PESERTA_CACHE_KEY, JSON.stringify(results));
+      localStorage.setItem(PESERTA_CACHE_TIME_KEY, Date.now().toString());
+    } catch (e) { /* storage penuh, skip */ }
+    return results;
   } catch (e) {
-    console.error("Search Error:", e);
+    console.error("Gagal memuat daftar peserta:", e);
     return [];
   } finally {
     window.dbDisconnect();
   }
+}
+
+async function searchPeserta(keyword) {
+  const key = keyword.trim().toLowerCase();
+  if (key.length < 2) return [];
+
+  // Pastikan cache terisi
+  const list = cachedPeserta || await loadPesertaCache();
+  if (!list || list.length === 0) return [];
+
+  const queryWords = key.split(/\s+/).filter(w => w.length > 0);
+  const results = [];
+  for (let i = 0; i < list.length; i++) {
+    const p = list[i];
+    const haystack = p._search || ((p.name || '') + ' ' + (p.kelas || '') + ' ' + (p.id || '')).toLowerCase();
+    if (queryWords.every(word => haystack.includes(word))) {
+      results.push(p);
+      if (results.length >= 15) break;
+    }
+  }
+  return results;
 }
 
 /* ================================
@@ -845,12 +898,15 @@ let fetchPesertaPromise = null;
 
 if (userNameInput) {
   userNameInput.addEventListener('focus', () => {
-    // Memastikan posisi form naik saat keyboard HP muncul
+    // Scroll agar form tidak tertutup keyboard HP
     setTimeout(() => {
       userNameInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }, 350);
-    // Auto-fetch disabled on focus to save bandwidth for 1000 students.
-    // Login will use direct Firebase search fallback.
+    // Prefetch cache peserta di background saat user fokus ke input,
+    // sehingga ketika mulai mengetik, data sudah siap di memori.
+    if (!cachedPeserta) {
+      loadPesertaCache().catch(() => {});
+    }
   });
 
   userNameInput.addEventListener('input', async function (e) {
@@ -861,45 +917,24 @@ if (userNameInput) {
     if (searchTimeout) clearTimeout(searchTimeout);
     if (val.length < 2) return;
 
+    // Tunjukkan loading segera agar user tahu sistem merespons
+    autoList.innerHTML = '<div class="autocomplete-item text-muted">Mencari...</div>';
+    autoList.classList.add('show');
+
     searchTimeout = setTimeout(async function () {
-      let results = [];
-      
-      // UI Loading state
-      autoList.innerHTML = '<div class="autocomplete-item text-muted">Mencari...</div>';
-      autoList.classList.add('show');
+      // searchPeserta sudah menangani cache + fallback ke Firebase secara otomatis
+      const results = await searchPeserta(val);
 
-      // Strategi: Coba cari di cache lokal dulu jika ada
-      if (cachedPeserta) {
-        const queryWords = val.split(/\s+/);
-        for (let i = 0; i < cachedPeserta.length; i++) {
-          const row = cachedPeserta[i];
-          const p = Array.isArray(row) ? { id: String(row[0]), name: String(row[1]), kelas: String(row[2]) } : row;
-          const combined = (p.id + " " + (p.name||"") + " " + (p.kelas||"")).toLowerCase();
-          if (queryWords.every(word => combined.includes(word))) results.push(p);
-          if (results.length >= 15) break;
-        }
-      } 
-      
-      // Jika cache kosong atau hasil sedikit, cari langsung ke Database (Firebase)
-      if (results.length < 5) {
-        const dbResults = await searchPeserta(val);
-        // Merge results (avoid duplicates)
-        const existingIds = new Set(results.map(r => r.id));
-        dbResults.forEach(r => {
-          if (!existingIds.has(r.id)) results.push(r);
-        });
-      }
-
+      autoList.innerHTML = '';
       if (results.length > 0) {
-        autoList.innerHTML = '';
         results.forEach(p => {
           const div = document.createElement('div');
           div.className = 'autocomplete-item';
-          div.textContent = p.name + ' - ' + p.kelas;
-          const selectHandler = (e) => {
-            e.preventDefault();
+          div.textContent = (p.name || p.id) + ' - ' + (p.kelas || '');
+          const selectHandler = (evt) => {
+            evt.preventDefault();
             tempSelectedUser = p;
-            document.getElementById('confirm-name-text').textContent = p.name + ' (' + p.kelas + ')';
+            document.getElementById('confirm-name-text').textContent = (p.name || p.id) + ' (' + (p.kelas || '') + ')';
             showView('login-confirm-view');
             userNameInput.value = '';
             autoList.classList.remove('show');
@@ -909,10 +944,10 @@ if (userNameInput) {
           autoList.appendChild(div);
         });
       } else {
-        autoList.innerHTML = '<div class="autocomplete-item text-muted">Nama tidak ditemukan</div>';
+        autoList.innerHTML = '<div class="autocomplete-item text-muted">Nama tidak ditemukan. Coba kata lain atau hubungi pengawas.</div>';
       }
       autoList.classList.add('show');
-    }, 300);
+    }, 350); // Sedikit lebih lama agar prefetch sempat selesai
   });
 }
 
@@ -1829,6 +1864,14 @@ function initPortal() {
     portalClockInterval = setInterval(updateClock, 1000);
   }
   fetchPortalExams();
+
+  // Prefetch daftar peserta di background agar autocomplete login langsung responsif.
+  // Cache disimpan di localStorage (30 menit), jadi request berikutnya tidak hit Firebase sama sekali.
+  authPromise.then(() => {
+    if (!cachedPeserta) {
+      loadPesertaCache().catch(() => {});
+    }
+  });
 
   // Load Global Security Settings
   authPromise.then(async function () {
