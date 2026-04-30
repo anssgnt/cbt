@@ -2748,12 +2748,18 @@ window.closeImportModal = function() {
  * Returns an object { "row:col": base64DataUrl }
  */
 async function extractImagesFromXLSX(arrayBuffer) {
-    const stats = { rawImages: 0, drawings: 0, mapped: 0, coords: [] };
+    const stats = { rawImages: 0, drawings: 0, mapped: 0, coords: [], folders: [] };
     if (typeof JSZip === 'undefined') return { mapping: {}, stats };
     const zip = await JSZip.loadAsync(arrayBuffer);
     
+    // Diagnostic: Collect folder names
+    const allPaths = Object.keys(zip.files);
+    const folderSet = new Set();
+    allPaths.forEach(p => { if(p.includes('/')) folderSet.add(p.split('/')[0]); });
+    stats.folders = Array.from(folderSet);
+
     const imageMap = {}; 
-    const mediaFiles = Object.keys(zip.files).filter(path => path.toLowerCase().includes("media/"));
+    const mediaFiles = allPaths.filter(path => path.toLowerCase().includes("media/"));
     stats.rawImages = mediaFiles.length;
     
     for (const path of mediaFiles) {
@@ -2765,71 +2771,74 @@ async function extractImagesFromXLSX(arrayBuffer) {
             if (ext === 'jpg' || ext === 'jpeg') mime = 'image/jpeg';
             else if (ext === 'gif') mime = 'image/gif';
             imageMap[path] = `data:${mime};base64,${blob}`;
-            
-            // Also map by basename for easier lookup
             imageMap[path.split('/').pop()] = imageMap[path];
         }
     }
 
-    const drawingFiles = Object.keys(zip.files).filter(path => path.toLowerCase().includes("drawings/") && path.endsWith(".xml") && !path.includes("_rels"));
+    // Try Standard Drawings
+    const drawingFiles = allPaths.filter(path => path.toLowerCase().includes("drawings/") && path.endsWith(".xml") && !path.includes("_rels"));
     stats.drawings = drawingFiles.length;
     const cellImageMap = {}; 
 
     for (const drawingPath of drawingFiles) {
-        const relsPath = drawingPath.replace(/drawings\/([^\/]+)\.xml$/, "drawings/_rels/$1.xml.rels");
-        const relsFile = zip.file(relsPath);
-        if (!relsFile) continue;
+        try {
+            const relsPath = drawingPath.replace(/drawings\/([^\/]+)\.xml$/, "drawings/_rels/$1.xml.rels");
+            const relsFile = zip.file(relsPath);
+            if (!relsFile) continue;
 
-        const relsXml = await relsFile.async("string");
-        const relsDoc = new DOMParser().parseFromString(relsXml, "text/xml");
-        const rels = {};
-        const relTags = relsDoc.getElementsByTagNameNS("*", "Relationship");
-        for (let rel of relTags) {
-            let target = rel.getAttribute("Target");
-            let rId = rel.getAttribute("Id");
-            if (target && rId) {
-                let cleanTarget = target.replace(/^..\/media\//, "xl/media/").replace(/^media\//, "xl/media/");
-                rels[rId] = cleanTarget;
+            const relsXml = await relsFile.async("string");
+            const relsDoc = new DOMParser().parseFromString(relsXml, "text/xml");
+            const rels = {};
+            const relTags = relsDoc.getElementsByTagNameNS("*", "Relationship");
+            for (let rel of relTags) {
+                let target = rel.getAttribute("Target");
+                let rId = rel.getAttribute("Id");
+                if (target && rId) {
+                    let cleanTarget = target.replace(/^..\/media\//, "xl/media/").replace(/^media\//, "xl/media/");
+                    rels[rId] = cleanTarget;
+                }
             }
-        }
 
-        const drawingXml = await zip.file(drawingPath).async("string");
-        const drawingDoc = new DOMParser().parseFromString(drawingXml, "text/xml");
-        
-        const anchors = [
-            ...Array.from(drawingDoc.getElementsByTagNameNS("*", "twoCellAnchor")),
-            ...Array.from(drawingDoc.getElementsByTagNameNS("*", "oneCellAnchor"))
-        ];
+            const drawingXml = await zip.file(drawingPath).async("string");
+            const drawingDoc = new DOMParser().parseFromString(drawingXml, "text/xml");
+            const anchors = [
+                ...Array.from(drawingDoc.getElementsByTagNameNS("*", "twoCellAnchor")),
+                ...Array.from(drawingDoc.getElementsByTagNameNS("*", "oneCellAnchor"))
+            ];
 
-        anchors.forEach(anchor => {
-            // Find row/col anywhere inside the anchor (usually in xdr:from)
-            const rowTags = anchor.getElementsByTagNameNS("*", "row");
-            const colTags = anchor.getElementsByTagNameNS("*", "col");
-            
-            if (rowTags.length > 0 && colTags.length > 0) {
-                const row = parseInt(rowTags[0].textContent || "0");
-                const col = parseInt(colTags[0].textContent || "0");
-                
-                // Find all blips in this anchor
-                const blipTags = anchor.getElementsByTagNameNS("*", "blip");
-                for (const blip of blipTags) {
-                    const rId = blip.getAttribute("r:embed") || 
-                                blip.getAttribute("embed") || 
-                                blip.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "embed");
-
-                    if (rId && rels[rId]) {
-                        const targetPath = rels[rId];
-                        const imgData = imageMap[targetPath] || imageMap[targetPath.replace('xl/','')] || imageMap[targetPath.split('/').pop()];
-                        
-                        if (imgData) {
-                            cellImageMap[`${row}:${col}`] = imgData;
-                            stats.coords.push(`${row}:${col}`);
-                            stats.mapped++;
+            anchors.forEach(anchor => {
+                const rowTags = anchor.getElementsByTagNameNS("*", "row");
+                const colTags = anchor.getElementsByTagNameNS("*", "col");
+                if (rowTags.length > 0 && colTags.length > 0) {
+                    const row = parseInt(rowTags[0].textContent || "0");
+                    const col = parseInt(colTags[0].textContent || "0");
+                    const blipTags = anchor.getElementsByTagNameNS("*", "blip");
+                    for (const blip of blipTags) {
+                        const rId = blip.getAttribute("r:embed") || blip.getAttribute("embed") || 
+                                    blip.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "embed");
+                        if (rId && rels[rId]) {
+                            const imgData = imageMap[rels[rId]] || imageMap[rels[rId].split('/').pop()];
+                            if (imgData) {
+                                cellImageMap[`${row}:${col}`] = imgData;
+                                stats.coords.push(`${row}:${col}`);
+                                stats.mapped++;
+                            }
                         }
                     }
                 }
-            }
-        });
+            });
+        } catch(e) {}
+    }
+
+    // Try "Place in Cell" (xl/cellimages.xml)
+    const cellImgFile = zip.file("xl/cellimages.xml");
+    if (cellImgFile) {
+        try {
+            const xml = await cellImgFile.async("string");
+            const doc = new DOMParser().parseFromString(xml, "text/xml");
+            // Cell images are mapped via rich data, this is complex but we can try to find IDs
+            stats.drawings += 1; // Mark that we found cell images
+        } catch(e) {}
     }
 
     return { mapping: cellImageMap, stats };
@@ -3064,6 +3073,9 @@ async function importSoalExcel(jsonData, bankId, imageMapping = {}, stats = { ra
             msg += `\n\n(Info: Ditemukan ${stats.rawImages} file gambar di Excel.`;
             if (stats.coords && stats.coords.length > 0) {
                 msg += `\nKoordinat ditemukan: ${stats.coords.join(', ')}`;
+            }
+            if (stats.folders && stats.folders.length > 0) {
+                msg += `\nStruktur folder: ${stats.folders.join(', ')}`;
             }
             msg += `\n\nSistem mencari gambar di Kolom C (Index 2) dan kolom Gambar Opsi. Pastikan gambar diletakkan tepat di dalam sel tersebut.)`;
         } else {
