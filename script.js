@@ -322,6 +322,9 @@ async function cachedGet(path) {
 
 // Database caching logic (Memory Cache)
 let searchTimeout = null;
+
+// Deklarasi di sini agar bisa dipakai oleh dbConnectFast dan dbConnect di bawah
+// tanpa ReferenceError (let tidak di-hoist seperti var).
 let activeDbRequests = 0;
 let dbDisconnectTimer = null;
 
@@ -452,7 +455,8 @@ async function getExamDataOptimized(examId, token, forceRefresh = false) {
       id_ujian: examId,
       nama_ujian: sch.nama,
       durasi: sch.durasi,
-      end_ms: sch.selesai
+      end_ms: sch.selesai,
+      min_selesai: sch.min_selesai || 0  // wajib ada agar batas waktu minimal mengerjakan berlaku dari cache
     },
     questions,
     keys: kData || {} // Cache keys for client-side scoring
@@ -549,7 +553,8 @@ initSchoolIdentity();
 // Sangat vital untuk mem-bypass limit 100 concurrent connection di versi gratis (Spark).
 db.goOffline(); // Matikan koneksi bawaan seketika!
 
-
+// activeDbRequests dan dbDisconnectTimer sudah dideklarasikan di atas (dekat dbConnectFast)
+// agar tidak ReferenceError saat loadPesertaCache() dipanggil sebelum blok ini.
 
 // sleep is already declared above in the Performance Core Patch
 
@@ -650,6 +655,7 @@ async function gasRun(funcName, ...args) {
 
     else if (funcName === 'getSchedules') {
       const [userId, kelas] = args;
+      // Jalankan kedua query secara paralel (bukan serial) untuk memotong waktu tunggu ~50%
       const [snap, hSnap] = await Promise.all([
         db.ref('/jadwal').once('value'),
         db.ref('/hasil').orderByChild('userId').equalTo(userId).once('value')
@@ -1679,10 +1685,12 @@ safeAddListener('btnSubmit', 'click', () => {
  * @param {number} retryDelayMs - Jeda tunggu antar percobaan (default: 5 detik)
  */
 async function gasRunWithRetry(funcName, args, maxRetries = 3, retryDelayMs = 5000) {
+  // args bisa berupa single value atau array — normalisasi ke array dulu
+  const argsArray = Array.isArray(args) ? args : [args];
   let lastError = null;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const res = await gasRun(funcName, ...args);
+      const res = await gasRun(funcName, ...argsArray); // spread agar gasRun menerima argumen individual
       return res; // Sukses, kembalikan hasilnya
     } catch (err) {
       lastError = err;
@@ -1706,9 +1714,9 @@ async function submitExam(isAutoSubmit) {
   // Setiap HP akan mengacak jeda uniknya sendiri antara 0-55 detik.
   // Ini memecah "Tsunami 1000 Submit" menjadi gelombang ~18 /detik.
   if (isAutoSubmit) {
-    const jitterMs = Math.floor(Math.random() * 60000); // 0 - 60.000 ms (Armor 1000 Siswa)
+    const jitterMs = Math.floor(Math.random() * 60000); // 0 - 60.000 ms: cukup untuk 1000 siswa (~17/detik), tidak membuat siswa panik
     const jitterSec = Math.ceil(jitterMs / 1000);
-    showLoading(`Waktu habis. Mengirim dalam ${jitterSec} detik...`);
+    showLoading(`Waktu habis. Jawaban dikirim dalam ${jitterSec} detik...`);
     await sleep(jitterMs);
   } else {
     // Manual jitter (0-2s) to prevent exact simultaneous clicks
