@@ -2748,11 +2748,10 @@ window.closeImportModal = function() {
  * Returns an object { "row:col": base64DataUrl }
  */
 async function extractImagesFromXLSX(arrayBuffer) {
-    const stats = { rawImages: 0, drawings: 0, mapped: 0, coords: [], folders: [] };
+    const stats = { rawImages: 0, drawings: 0, mapped: 0, coords: [], folders: [], hasCellImages: false };
     if (typeof JSZip === 'undefined') return { mapping: {}, stats };
     const zip = await JSZip.loadAsync(arrayBuffer);
     
-    // Diagnostic: Collect folder names
     const allPaths = Object.keys(zip.files);
     const folderSet = new Set();
     allPaths.forEach(p => { if(p.includes('/')) folderSet.add(p.split('/')[0]); });
@@ -2775,10 +2774,85 @@ async function extractImagesFromXLSX(arrayBuffer) {
         }
     }
 
-    // Try Standard Drawings
+    const cellImageMap = {}; 
+
+    // --- STRATEGY 1: Place in Cell (Modern Excel) ---
+    const cellImgFile = zip.file("xl/cellimages.xml");
+    if (cellImgFile) {
+        stats.hasCellImages = true;
+        try {
+            const relsFile = zip.file("xl/_rels/cellimages.xml.rels");
+            const rels = {};
+            if (relsFile) {
+                const relsXml = await relsFile.async("string");
+                const relsDoc = new DOMParser().parseFromString(relsXml, "text/xml");
+                const relTags = relsDoc.getElementsByTagNameNS("*", "Relationship");
+                for (let rel of relTags) {
+                    let target = rel.getAttribute("Target");
+                    rels[rel.getAttribute("Id")] = target.replace(/^..\/media\//, "xl/media/").replace(/^media\//, "xl/media/");
+                }
+            }
+
+            const xml = await cellImgFile.async("string");
+            const doc = new DOMParser().parseFromString(xml, "text/xml");
+            const imgTags = doc.getElementsByTagNameNS("*", "cellImage");
+            
+            const cellImageMedia = [];
+            for (let img of imgTags) {
+                const blip = img.getElementsByTagNameNS("*", "blip")[0];
+                if (blip) {
+                    const rId = blip.getAttribute("r:embed") || blip.getAttribute("embed") || 
+                                blip.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "embed");
+                    cellImageMedia.push(rels[rId] ? (imageMap[rels[rId]] || imageMap[rels[rId].split('/').pop()]) : null);
+                } else {
+                    cellImageMedia.push(null);
+                }
+            }
+
+            // Map cells in sheet1 to cellImage indices
+            // This requires parsing metadata and richValue. Very complex, but let's try a heuristic:
+            // Often, if the user has 8 images and we have 8 cellImages, we can find their cell locations 
+            // by looking at cells that have a "vm" (Value Metadata) attribute in sheet1.xml
+            const sheet1File = zip.file("xl/worksheets/sheet1.xml");
+            if (sheet1File) {
+                const sXml = await sheet1File.async("string");
+                const sDoc = new DOMParser().parseFromString(sXml, "text/xml");
+                const cTags = sDoc.getElementsByTagNameNS("*", "c");
+                for (let c of cTags) {
+                    const vm = c.getAttribute("vm");
+                    if (vm) {
+                        const r = c.getAttribute("r"); // e.g. "C2"
+                        if (r) {
+                            const colMatch = r.match(/^[A-Z]+/);
+                            const rowMatch = r.match(/[0-9]+/);
+                            if (colMatch && rowMatch) {
+                                // Convert A1 to 0-based row/col
+                                let colStr = colMatch[0];
+                                let col = 0;
+                                for(let j=0; j<colStr.length; j++) col = col * 26 + (colStr.charCodeAt(j) - 64);
+                                col -= 1;
+                                let row = parseInt(rowMatch[0]) - 1;
+                                
+                                // Get metadata index
+                                const vmIdx = parseInt(vm);
+                                // Fallback mapping: use vmIdx as index into cellImageMedia if it's within range
+                                // This is a simplification but often works for simple sheets
+                                if (vmIdx >= 0 && vmIdx < cellImageMedia.length && cellImageMedia[vmIdx]) {
+                                    cellImageMap[`${row}:${col}`] = cellImageMedia[vmIdx];
+                                    stats.coords.push(`${row}:${col}`);
+                                    stats.mapped++;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch(e) { console.warn("CellImage deep parse error:", e); }
+    }
+
+    // --- STRATEGY 2: Standard Drawings (Place over Cells) ---
     const drawingFiles = allPaths.filter(path => path.toLowerCase().includes("drawings/") && path.endsWith(".xml") && !path.includes("_rels"));
     stats.drawings = drawingFiles.length;
-    const cellImageMap = {}; 
 
     for (const drawingPath of drawingFiles) {
         try {
@@ -2812,12 +2886,14 @@ async function extractImagesFromXLSX(arrayBuffer) {
                 if (rowTags.length > 0 && colTags.length > 0) {
                     const row = parseInt(rowTags[0].textContent || "0");
                     const col = parseInt(colTags[0].textContent || "0");
+                    
                     const blipTags = anchor.getElementsByTagNameNS("*", "blip");
                     for (const blip of blipTags) {
                         const rId = blip.getAttribute("r:embed") || blip.getAttribute("embed") || 
                                     blip.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "embed");
                         if (rId && rels[rId]) {
-                            const imgData = imageMap[rels[rId]] || imageMap[rels[rId].split('/').pop()];
+                            const targetPath = rels[rId];
+                            const imgData = imageMap[targetPath] || imageMap[targetPath.split('/').pop()];
                             if (imgData) {
                                 cellImageMap[`${row}:${col}`] = imgData;
                                 stats.coords.push(`${row}:${col}`);
@@ -2827,18 +2903,7 @@ async function extractImagesFromXLSX(arrayBuffer) {
                     }
                 }
             });
-        } catch(e) {}
-    }
-
-    // Try "Place in Cell" (xl/cellimages.xml)
-    const cellImgFile = zip.file("xl/cellimages.xml");
-    if (cellImgFile) {
-        try {
-            const xml = await cellImgFile.async("string");
-            const doc = new DOMParser().parseFromString(xml, "text/xml");
-            // Cell images are mapped via rich data, this is complex but we can try to find IDs
-            stats.drawings += 1; // Mark that we found cell images
-        } catch(e) {}
+        } catch(e) { console.error("Drawing parse error:", e); }
     }
 
     return { mapping: cellImageMap, stats };
@@ -3070,14 +3135,15 @@ async function importSoalExcel(jsonData, bankId, imageMapping = {}, stats = { ra
         if (imgTotal > 0) {
             msg = `Berhasil import ${count} soal (${imgTotal} gambar terdeteksi) ke bank ${bankId}.`;
         } else if (stats && stats.rawImages > 0) {
-            msg += `\n\n(Info: Ditemukan ${stats.rawImages} file gambar di Excel.`;
-            if (stats.coords && stats.coords.length > 0) {
-                msg += `\nKoordinat ditemukan: ${stats.coords.join(', ')}`;
+            if (stats.hasCellImages) {
+                msg += `\n\n[PENTING] Terdeteksi gambar format "Place in Cell".\nSistem tidak mendukung format ini. Mohon klik kanan gambar di Excel lalu pilih "Place over Cells" (Tempatkan di Atas Sel), lalu simpan dan import ulang.`;
+            } else {
+                msg += `\n\n(Info: Ditemukan ${stats.rawImages} file gambar di Excel.`;
+                if (stats.coords && stats.coords.length > 0) {
+                    msg += `\nKoordinat ditemukan: ${stats.coords.join(', ')}`;
+                }
+                msg += `\n\nSistem mencari gambar di Kolom C (Index 2) dan kolom Gambar Opsi. Pastikan gambar diletakkan tepat di dalam sel tersebut.)`;
             }
-            if (stats.folders && stats.folders.length > 0) {
-                msg += `\nStruktur folder: ${stats.folders.join(', ')}`;
-            }
-            msg += `\n\nSistem mencari gambar di Kolom C (Index 2) dan kolom Gambar Opsi. Pastikan gambar diletakkan tepat di dalam sel tersebut.)`;
         } else {
             msg += `\n\n(Info: Tidak ditemukan file gambar di dalam file Excel ini.)`;
         }
