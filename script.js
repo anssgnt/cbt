@@ -320,6 +320,33 @@ async function cachedGet(path) {
 // Database caching logic (Memory Cache)
 let searchTimeout = null;
 
+async function searchPeserta(keyword) {
+  if (!keyword || keyword.length < 2) return [];
+  const key = keyword.toLowerCase();
+
+  try {
+    await window.dbConnect(); // Ensure connection with jitter
+    const snap = await db.ref('/peserta')
+      .orderByChild('nama_lower')
+      .startAt(key)
+      .endAt(key + '\uf8ff')
+      .limitToFirst(15)
+      .once('value');
+    
+    const data = snap.val() || {};
+    return Object.keys(data).map(id => ({
+      id,
+      name: data[id].nama,
+      kelas: data[id].kelas
+    }));
+  } catch (e) {
+    console.error("Search Error:", e);
+    return [];
+  } finally {
+    window.dbDisconnect();
+  }
+}
+
 /* ================================
    📦 CACHE SOAL (SUPER CEPAT)
 ================================ */
@@ -829,45 +856,42 @@ if (userNameInput) {
     if (val.length < 2) return;
 
     searchTimeout = setTimeout(async () => {
-      if (!cachedPeserta) {
-        autoList.innerHTML = '<div class="autocomplete-item text-muted">Mengunduh data siswa...</div>';
-        autoList.classList.add('show');
-        if (!fetchPesertaPromise) {
-          fetchPesertaPromise = gasRun('getAllPeserta').then(data => {
-            cachedPeserta = data;
-          }).catch(() => { fetchPesertaPromise = null; });
+      let results = [];
+      
+      // UI Loading state
+      autoList.innerHTML = '<div class="autocomplete-item text-muted">Mencari...</div>';
+      autoList.classList.add('show');
+
+      // Strategi: Coba cari di cache lokal dulu jika ada
+      if (cachedPeserta) {
+        const queryWords = val.split(/\s+/);
+        for (let i = 0; i < cachedPeserta.length; i++) {
+          const row = cachedPeserta[i];
+          const p = Array.isArray(row) ? { id: String(row[0]), name: String(row[1]), kelas: String(row[2]) } : row;
+          const combined = (p.id + " " + (p.name||"") + " " + (p.kelas||"")).toLowerCase();
+          if (queryWords.every(word => combined.includes(word))) results.push(p);
+          if (results.length >= 15) break;
         }
-        await fetchPesertaPromise;
-      }
-
-      if (!cachedPeserta) {
-        autoList.innerHTML = '<div class="autocomplete-item text-muted text-danger">Gagal memuat data. Periksa koneksi internet!</div>';
-        autoList.classList.add('show');
-        return;
-      }
-
-      autoList.innerHTML = '';
-      const queryWords = val.split(/\s+/);
-      const results = [];
-
-      for (let i = 0; i < cachedPeserta.length; i++) {
-        const row = cachedPeserta[i];
-        // Support tuple array [id, name, kelas] untuk kompresi data
-        const p = Array.isArray(row) ? { id: String(row[0]), name: String(row[1]), kelas: String(row[2]) } : row;
-
-        const combined = (p.id + " " + p.name + " " + p.kelas).toLowerCase();
-        const isMatch = queryWords.every(word => combined.includes(word));
-        if (isMatch) results.push(p);
-        if (results.length >= 15) break; // Limit 15 hasil
+      } 
+      
+      // Jika cache kosong atau hasil sedikit, cari langsung ke Database (Firebase)
+      if (results.length < 5) {
+        const dbResults = await searchPeserta(val);
+        // Merge results (avoid duplicates)
+        const existingIds = new Set(results.map(r => r.id));
+        dbResults.forEach(r => {
+          if (!existingIds.has(r.id)) results.push(r);
+        });
       }
 
       if (results.length > 0) {
+        autoList.innerHTML = '';
         results.forEach(p => {
           const div = document.createElement('div');
           div.className = 'autocomplete-item';
           div.textContent = p.name + ' - ' + p.kelas;
           const selectHandler = (e) => {
-            e.preventDefault(); // Mencegah input kehilangan fokus terlalu cepat
+            e.preventDefault();
             tempSelectedUser = p;
             document.getElementById('confirm-name-text').textContent = p.name + ' (' + p.kelas + ')';
             showView('login-confirm-view');
@@ -882,7 +906,7 @@ if (userNameInput) {
         autoList.innerHTML = '<div class="autocomplete-item text-muted">Nama tidak ditemukan</div>';
       }
       autoList.classList.add('show');
-    }, 100); // Sangat responsif (100ms) karena filtrasinya lokal
+    }, 300);
   });
 }
 
