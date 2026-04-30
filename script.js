@@ -2903,6 +2903,11 @@ async function importSiswaExcel(jsonData) {
 }
 
 async function importSoalExcel(jsonData, bankId, imageMapping = {}) {
+    let soalUpdates = {};
+    let kunciUpdates = {};
+    let count = 0;
+    let warnings = [];
+    const letters = ['A', 'B', 'C', 'D', 'E'];
     
     let headerRow = jsonData[0] || [];
     let kunciIdx = -1;
