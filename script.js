@@ -2748,7 +2748,7 @@ window.closeImportModal = function() {
  * Returns an object { "row:col": base64DataUrl }
  */
 async function extractImagesFromXLSX(arrayBuffer) {
-    const stats = { rawImages: 0, drawings: 0, mapped: 0 };
+    const stats = { rawImages: 0, drawings: 0, mapped: 0, coords: [] };
     if (typeof JSZip === 'undefined') return { mapping: {}, stats };
     const zip = await JSZip.loadAsync(arrayBuffer);
     
@@ -2784,7 +2784,6 @@ async function extractImagesFromXLSX(arrayBuffer) {
         for (let rel of relTags) {
             let target = rel.getAttribute("Target");
             if (target) {
-                // Ensure target is absolute relative to xl/
                 let cleanTarget = target.replace(/^..\/media\//, "xl/media/").replace(/^media\//, "xl/media/");
                 if (!cleanTarget.startsWith('xl/')) cleanTarget = 'xl/' + cleanTarget;
                 rels[rel.getAttribute("Id")] = cleanTarget;
@@ -2809,6 +2808,7 @@ async function extractImagesFromXLSX(arrayBuffer) {
                 if (colTags.length > 0 && rowTags.length > 0) {
                     const col = parseInt(colTags[0].textContent || "0");
                     const row = parseInt(rowTags[0].textContent || "0");
+                    stats.coords.push(`${row}:${col}`);
                     
                     const blipTags = anchor.getElementsByTagNameNS("*", "blip");
                     if (blipTags.length > 0) {
@@ -2817,10 +2817,12 @@ async function extractImagesFromXLSX(arrayBuffer) {
                                     blip.getAttribute("embed") || 
                                     blip.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "embed");
 
-                        if (rId && rels[rId] && (imageMap[rels[rId]] || imageMap[rels[rId].replace('xl/','')] || imageMap[rels[rId].split('/').pop()])) {
+                        if (rId && rels[rId]) {
                             const imgData = imageMap[rels[rId]] || imageMap[rels[rId].replace('xl/','')] || imageMap[rels[rId].split('/').pop()];
-                            cellImageMap[`${row}:${col}`] = imgData;
-                            stats.mapped++;
+                            if (imgData) {
+                                cellImageMap[`${row}:${col}`] = imgData;
+                                stats.mapped++;
+                            }
                         }
                     }
                 }
@@ -3057,7 +3059,11 @@ async function importSoalExcel(jsonData, bankId, imageMapping = {}, stats = { ra
         if (imgTotal > 0) {
             msg = `Berhasil import ${count} soal (${imgTotal} gambar terdeteksi) ke bank ${bankId}.`;
         } else if (stats && stats.rawImages > 0) {
-            msg += `\n\n(Info: Ditemukan ${stats.rawImages} file gambar di Excel, tapi tidak ada yang menempel di sel soal/opsi. Pastikan gambar diletakkan tepat di dalam sel.)`;
+            msg += `\n\n(Info: Ditemukan ${stats.rawImages} file gambar di Excel.`;
+            if (stats.coords && stats.coords.length > 0) {
+                msg += `\nKoordinat ditemukan: ${stats.coords.join(', ')}`;
+            }
+            msg += `\n\nSistem mencari gambar di Kolom C (Index 2) dan kolom Gambar Opsi. Pastikan gambar diletakkan tepat di dalam sel tersebut.)`;
         } else {
             msg += `\n\n(Info: Tidak ditemukan file gambar di dalam file Excel ini.)`;
         }
