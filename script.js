@@ -1535,24 +1535,35 @@ function initPortal() {
           const snap = await db.ref('/config/security').once('value');
           State.security = snap.val() || {};
           
-          // Load Global Identity
-          try {
-             await withDB(async () => {
-                 const idenSnap = await db.ref('/config/identity').once('value');
-                 const iden = idenSnap.val() || {};
-                 if(iden.name) {
-                     document.title = "CBT Online – " + iden.name;
-                     const ph1 = document.getElementById('ph-sekolah');
-                     const ph2 = document.getElementById('ph-sekolah-2');
-                     if(ph1) ph1.textContent = iden.name;
-                     if(ph2) ph2.textContent = iden.name;
-                 }
-                 if(iden.sub) {
-                     const subEl = document.getElementById('portal-school-sub');
-                     if(subEl) subEl.textContent = iden.sub;
-                 }
-             });
-          } catch(e) { console.error(e); }
+            // Load Global Identity
+            try {
+               await withDB(async () => {
+                   const idenSnap = await db.ref('/config/identity').once('value');
+                   const iden = idenSnap.val() || {};
+                   if(iden.name) {
+                       document.title = "CBT Online – " + iden.name;
+                       const ph1 = document.getElementById('ph-sekolah');
+                       const ph2 = document.getElementById('ph-sekolah-2');
+                       if(ph1) ph1.textContent = iden.name;
+                       if(ph2) ph2.textContent = iden.name;
+                   }
+                   if(iden.sub) {
+                       const subEl = document.getElementById('portal-school-sub');
+                       if(subEl) subEl.textContent = iden.sub;
+                   }
+                   // Apply Logo
+                   const logoImg = document.getElementById('school-logo-img');
+                   const defaultIcon = document.getElementById('default-school-icon');
+                   if(iden.logo && logoImg && defaultIcon) {
+                       logoImg.src = iden.logo;
+                       logoImg.style.display = 'block';
+                       defaultIcon.style.display = 'none';
+                   } else if(defaultIcon) {
+                       defaultIcon.style.display = 'block';
+                       if(logoImg) logoImg.style.display = 'none';
+                   }
+               });
+            } catch(e) { console.error(e); }
           
           // PWA Enforcer Check (Hanya untuk Mobile)
           if (State.security.pwa) {
@@ -2204,6 +2215,17 @@ window.loadAdminSettings = async function() {
            if(iden.name) document.getElementById('cfgSchoolName').value = iden.name;
            if(iden.sub) document.getElementById('cfgSchoolSub').value = iden.sub;
 
+           const logoPreview = document.getElementById('admin-logo-preview');
+           const logoPlaceholder = document.getElementById('admin-logo-placeholder');
+           if(iden.logo) {
+               logoPreview.src = iden.logo;
+               logoPreview.style.display = 'block';
+               logoPlaceholder.style.display = 'none';
+           } else {
+               logoPreview.style.display = 'none';
+               logoPlaceholder.style.display = 'block';
+           }
+
            // Load Firebase Config from UI local state
            document.getElementById('fbApiKey').value = firebaseConfig.apiKey || '';
            document.getElementById('fbAuthDomain').value = firebaseConfig.authDomain || '';
@@ -2235,6 +2257,29 @@ window.saveAdminSettings = async function() {
                name: document.getElementById('cfgSchoolName').value.trim(),
                sub: document.getElementById('cfgSchoolSub').value.trim()
            };
+           
+           // Handle Logo Upload
+           const logoInput = document.getElementById('cfgSchoolLogo');
+           if(logoInput.files && logoInput.files[0]) {
+               const file = logoInput.files[0];
+               if(file.size > 200 * 1024) { // Limit 200KB for Base64 in Realtime DB
+                   alert("Ukuran logo terlalu besar (Maks 200KB).");
+                   hideLoading();
+                   return;
+               }
+               const base64 = await new Promise((resolve) => {
+                   const reader = new FileReader();
+                   reader.onload = (e) => resolve(e.target.result);
+                   reader.readAsDataURL(file);
+               });
+               iden.logo = base64;
+           } else {
+               // Keep existing logo if no new file selected
+               const idenSnap = await db.ref('/config/identity').once('value');
+               const currentIden = idenSnap.val() || {};
+               if(currentIden.logo) iden.logo = currentIden.logo;
+           }
+
            await db.ref('/config/identity').set(iden);
 
            // Save Firebase Config to LocalStorage (Browser specific)
@@ -2267,6 +2312,26 @@ window.saveAdminSettings = async function() {
    }
     hideLoading();
 };
+
+// Add listener for live preview (Global Init)
+document.addEventListener('change', (e) => {
+    if(e.target && e.target.id === 'cfgSchoolLogo') {
+        const file = e.target.files[0];
+        if(file) {
+            const reader = new FileReader();
+            reader.onload = (re) => {
+                const preview = document.getElementById('admin-logo-preview');
+                const placeholder = document.getElementById('admin-logo-placeholder');
+                if(preview && placeholder) {
+                    preview.src = re.target.result;
+                    preview.style.display = 'block';
+                    placeholder.style.display = 'none';
+                }
+            };
+            reader.readAsDataURL(file);
+        }
+    }
+});
 
 window.resetFirebaseConfig = function() {
     if (confirm("Reset konfigurasi Firebase ke bawaan sistem? Aplikasi akan dimuat ulang.")) {
