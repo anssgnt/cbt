@@ -2756,7 +2756,10 @@ async function extractImagesFromXLSX(arrayBuffer) {
     stats.xlFiles = allPaths.filter(p => p.startsWith("xl/")).map(p => p.split('/').pop());
 
     const imageMap = {}; 
-    const mediaFiles = allPaths.filter(path => path.toLowerCase().includes("media/"));
+    const mediaFiles = allPaths.filter(path => {
+        const p = path.toLowerCase();
+        return p.includes("media/") || p.endsWith(".jpeg") || p.endsWith(".jpg") || p.endsWith(".png") || p.endsWith(".gif");
+    });
     stats.rawImages = mediaFiles.length;
     
     for (const path of mediaFiles) {
@@ -2774,12 +2777,53 @@ async function extractImagesFromXLSX(arrayBuffer) {
 
     const cellImageMap = {}; 
 
-    // --- STRATEGY 1: Place in Cell (Modern Excel) ---
-    const cellImgPath = allPaths.find(p => p.toLowerCase().endsWith("cellimages.xml"));
-    if (cellImgPath) {
-        stats.hasCellImages = true;
+    // --- STRATEGY: Relationship Discovery (Brute Force) ---
+    try {
+        const sheetRels = allPaths.filter(p => p.toLowerCase().includes("sheet1.xml.rels"));
+        const sheetXmls = allPaths.filter(p => p.toLowerCase().includes("sheet1.xml") && !p.includes(".rels"));
+        
+        if (sheetRels.length > 0 && sheetXmls.length > 0) {
+            const relsXml = await zip.file(sheetRels[0]).async("string");
+            const relsDoc = new DOMParser().parseFromString(relsXml, "text/xml");
+            const rels = {};
+            const relTags = relsDoc.getElementsByTagNameNS("*", "Relationship");
+            for (let rel of relTags) {
+                rels[rel.getAttribute("Id")] = rel.getAttribute("Target");
+            }
+
+            const sheetXml = await zip.file(sheetXmls[0]).async("string");
+            const sheetDoc = new DOMParser().parseFromString(sheetXml, "text/xml");
+            const cTags = sheetDoc.getElementsByTagNameNS("*", "c");
+            
+            for (let c of cTags) {
+                const r = c.getAttribute("r");
+                // Check for various attributes that might link to images in non-standard files
+                const rId = c.getAttribute("r:id") || c.getAttribute("id");
+                if (rId && rels[rId]) {
+                    const target = rels[rId];
+                    const imgData = imageMap[target] || imageMap[target.split('/').pop()];
+                    if (imgData && r) {
+                        const colMatch = r.match(/^[A-Z]+/);
+                        const rowMatch = r.match(/[0-9]+/);
+                        if (colMatch && rowMatch) {
+                            let colStr = colMatch[0], col = 0;
+                            for(let j=0; j<colStr.length; j++) col = col * 26 + (colStr.charCodeAt(j) - 64);
+                            let row = parseInt(rowMatch[0]) - 1;
+                            cellImageMap[`${row}:${col-1}`] = imgData;
+                            stats.coords.push(`${row}:${col-1}`);
+                            stats.mapped++;
+                        }
+                    }
+                }
+            }
+        }
+    } catch(e) { console.warn("Brute force rels error:", e); }
+
+    // --- STRATEGY 2: Legacy/Standard Drawings ---
+    const drawingFiles = allPaths.filter(path => path.toLowerCase().includes("drawings/") && path.endsWith(".xml") && !path.includes("_rels"));
+    for (const drawingPath of drawingFiles) {
         try {
-            const relsPath = cellImgPath.replace("cellimages.xml", "_rels/cellimages.xml.rels");
+            const relsPath = drawingPath.replace(/drawings\/([^\/]+)\.xml$/, "drawings/_rels/$1.xml.rels");
             const relsFile = zip.file(relsPath);
             const rels = {};
             if (relsFile) {
@@ -2787,58 +2831,36 @@ async function extractImagesFromXLSX(arrayBuffer) {
                 const relsDoc = new DOMParser().parseFromString(relsXml, "text/xml");
                 const relTags = relsDoc.getElementsByTagNameNS("*", "Relationship");
                 for (let rel of relTags) {
-                    let target = rel.getAttribute("Target");
-                    rels[rel.getAttribute("Id")] = target.replace(/^..\/media\//, "xl/media/").replace(/^media\//, "xl/media/");
+                    rels[rel.getAttribute("Id")] = rel.getAttribute("Target").replace(/^..\/media\//, "xl/media/");
                 }
             }
 
-            const xml = await zip.file(cellImgPath).async("string");
+            const xml = await zip.file(drawingPath).async("string");
             const doc = new DOMParser().parseFromString(xml, "text/xml");
-            const imgTags = doc.getElementsByTagNameNS("*", "cellImage");
-            
-            const cellImageMedia = [];
-            for (let img of imgTags) {
-                const blip = img.getElementsByTagNameNS("*", "blip")[0];
-                if (blip) {
-                    const rId = blip.getAttribute("r:embed") || blip.getAttribute("embed") || 
-                                blip.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "embed");
-                    cellImageMedia.push(rels[rId] ? (imageMap[rels[rId]] || imageMap[rels[rId].split('/').pop()]) : null);
-                } else {
-                    cellImageMedia.push(null);
-                }
-            }
-
-            const sheet1File = allPaths.find(p => p.toLowerCase().endsWith("sheet1.xml"));
-            if (sheet1File) {
-                const sXml = await zip.file(sheet1File).async("string");
-                const sDoc = new DOMParser().parseFromString(sXml, "text/xml");
-                const cTags = sDoc.getElementsByTagNameNS("*", "c");
-                for (let c of cTags) {
-                    const vm = c.getAttribute("vm");
-                    if (vm) {
-                        const r = c.getAttribute("r");
-                        if (r) {
-                            const colMatch = r.match(/^[A-Z]+/);
-                            const rowMatch = r.match(/[0-9]+/);
-                            if (colMatch && rowMatch) {
-                                let colStr = colMatch[0];
-                                let col = 0;
-                                for(let j=0; j<colStr.length; j++) col = col * 26 + (colStr.charCodeAt(j) - 64);
-                                col -= 1;
-                                let row = parseInt(rowMatch[0]) - 1;
-                                const vmIdx = parseInt(vm);
-                                if (vmIdx >= 0 && vmIdx < cellImageMedia.length && cellImageMedia[vmIdx]) {
-                                    cellImageMap[`${row}:${col}`] = cellImageMedia[vmIdx];
-                                    stats.coords.push(`${row}:${col}`);
-                                    stats.mapped++;
-                                }
+            const anchors = [...Array.from(doc.getElementsByTagNameNS("*", "twoCellAnchor")), ...Array.from(doc.getElementsByTagNameNS("*", "oneCellAnchor"))];
+            anchors.forEach(anchor => {
+                const rowTags = anchor.getElementsByTagNameNS("*", "row"), colTags = anchor.getElementsByTagNameNS("*", "col");
+                if (rowTags.length > 0 && colTags.length > 0) {
+                    const row = parseInt(rowTags[0].textContent), col = parseInt(colTags[0].textContent);
+                    const blips = anchor.getElementsByTagNameNS("*", "blip");
+                    for (let blip of blips) {
+                        const rId = blip.getAttribute("r:embed") || blip.getAttribute("embed");
+                        if (rId && rels[rId]) {
+                            const imgData = imageMap[rels[rId]] || imageMap[rels[rId].split('/').pop()];
+                            if (imgData) {
+                                cellImageMap[`${row}:${col}`] = imgData;
+                                stats.coords.push(`${row}:${col}`);
+                                stats.mapped++;
                             }
                         }
                     }
                 }
-            }
-        } catch(e) { console.warn("CellImage deep parse error:", e); }
+            });
+        } catch(e) {}
     }
+
+    return { mapping: cellImageMap, stats };
+}
 
     // --- STRATEGY 2: Standard Drawings (Place over Cells) ---
     const drawingFiles = allPaths.filter(path => path.toLowerCase().includes("drawings/") && path.endsWith(".xml") && !path.includes("_rels"));
