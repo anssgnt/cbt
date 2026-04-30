@@ -1,4 +1,3 @@
-
 // --- Dynamic PWA Manifest for Google Apps Script ---
 (function () {
   const manifestData = {
@@ -658,11 +657,13 @@ async function gasRun(funcName, ...args) {
 
     else if (funcName === 'submitExam') {
       const [payload] = args;
-      // Use the score calculated by the client to avoid massive database reads
-      // (1000 students x (Questions + Keys) = Heavy load on Spark Plan)
+      // Gunakan path deterministik untuk mencegah duplikasi dan mempercepat proses
+      const resultPath = `/hasil/${payload.examId}_${payload.user.id}`;
+      
+      // Trust client score to avoid massive DB reads (Armor 1000)
       const finalScore = payload.score || 0;
 
-      await db.ref('/hasil').push({
+      await db.ref(resultPath).set({
         timestamp: firebase.database.ServerValue.TIMESTAMP,
         userId: payload.user.id,
         nama: payload.user.name,
