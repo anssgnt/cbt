@@ -533,7 +533,11 @@ window.withDB = async function (promiseFunc) {
 
 // --- AUTOMATIC FIREBASE PROTOTYPE PATCHING ---
 // Mengambil alih semua metode Firebase agar otomatis nyala-mati saat dipanggil
-(function patchFirebase() {
+let isAuthReady = false;
+let authPromise = null;
+
+function patchFirebase() {
+  if (typeof firebase === 'undefined' || !firebase.database) return;
   const Ref = firebase.database.Reference.prototype;
   const methods = ['once', 'set', 'update', 'remove'];
   methods.forEach(m => {
@@ -548,13 +552,16 @@ window.withDB = async function (promiseFunc) {
     if (args.length > 0) return window.withDB(() => originalPush.apply(this, args));
     return originalPush.apply(this, args);
   };
-})();
+}
 
-let isAuthReady = false;
-let authPromise = auth.signInAnonymously().then(() => { isAuthReady = true; }).catch(err => console.error(err));
+function initAuth() {
+  if (typeof firebase === 'undefined' || !firebase.auth) return;
+  const auth = firebase.auth();
+  authPromise = auth.signInAnonymously().then(() => { isAuthReady = true; }).catch(err => console.error(err));
+}
 
 async function gasRun(funcName, ...args) {
-  if (!isAuthReady) await authPromise;
+  if (!isAuthReady && authPromise) await authPromise;
 
   // dbConnect() dihapus karena sudah di-patch otomatis oleh patchFirebase via withDB
   try {
@@ -1814,6 +1821,8 @@ safeAddListener('btnLogout', 'click', () => {
 let portalClockInterval = null;
 
 function initPortal() {
+  patchFirebase();
+  initAuth();
   updateClock();
   if (!portalClockInterval) {
     portalClockInterval = setInterval(updateClock, 1000);
