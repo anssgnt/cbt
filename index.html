@@ -1232,52 +1232,10 @@
 
   </div> <!-- End app-container -->
 
-  <div class="overlay" id="admin-overlay"></div>
-  <div class="card modal-card" id="admin-login-modal" style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%) scale(0.95);z-index:1001;display:none;flex-direction:column;width:90%;max-width:400px;opacity:0;transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);padding:24px;">
-      <h3 style="margin-bottom:8px;">Akses Admin</h3>
-      <p class="text-muted" style="font-size:0.9rem;margin-bottom:20px;">Masukkan token keamanan untuk masuk ke dashboard.</p>
-      <input type="password" id="adminTokenInput" class="form-control" placeholder="••••" style="text-align:center; letter-spacing:8px; font-size:1.5rem; height:60px;">
-      <div style="display:flex;gap:10px;margin-top:20px;">
-          <button class="btn btn-outline" style="flex:1;" onclick="closeAdminModal()">Batal</button>
-          <button class="btn btn-primary" style="flex:1;" onclick="verifyAdminToken()">Masuk Panel</button>
-      </div>
-  </div>
+  <script defer src="script.js"></script>
+</body>
 
-  <div class="overlay" id="cheat-alert-overlay" style="z-index:2000; background:rgba(239, 68, 68, 0.95); display:none; align-items:center; justify-content:center; flex-direction:column; color:white; text-align:center; padding:20px;">
-      <div style="font-size:4rem; margin-bottom:20px;">⚠️</div>
-      <h1 style="font-weight:800; font-size:2rem; margin-bottom:10px;">PERINGATAN!</h1>
-      <p style="font-size:1.1rem; max-width:400px; line-height:1.6;">Anda terdeteksi keluar dari layar ujian. Pelanggaran telah dicatat.</p>
-      <div style="background:rgba(255,255,255,0.2); padding:15px 30px; border-radius:12px; margin-top:30px;">
-          <div style="font-size:0.9rem; text-transform:uppercase; font-weight:700; opacity:0.8;">Layar kembali aktif dalam</div>
-          <div id="cheat-countdown" style="font-size:3rem; font-weight:900;">5</div>
-      </div>
-  </div>
-
-  <div class="overlay" id="zoom-overlay" onclick="closeZoomModal()" style="z-index:3000; background:rgba(0,0,0,0.9); display:none; align-items:center; justify-content:center;">
-      <img id="zoomed-image" style="max-width:95vw; max-height:95vh; object-fit:contain; border-radius:8px;">
-      <div style="position:absolute; top:20px; right:20px; color:white; font-size:2.5rem; cursor:pointer;">×</div>
-  </div>
-
-  <div id="pwa-blocker-overlay" style="display:none; position:fixed; inset:0; background:#f8fafc; z-index:9999; align-items:center; justify-content:center; padding:20px; text-align:center;">
-      <div class="card" style="max-width:400px; padding:32px; border-radius:24px; box-shadow:0 20px 50px rgba(0,0,0,0.1);">
-          <div style="font-size:3rem; margin-bottom:20px;">📱</div>
-          <h2 style="font-weight:800; color:#1e293b; margin-bottom:12px;">Wajib Gunakan Aplikasi</h2>
-          <p style="color:#64748b; line-height:1.6; margin-bottom:24px;">Silakan install/tambahkan halaman ini ke layar utama (Add to Home Screen) untuk memulai ujian.</p>
-          <button class="btn btn-primary btn-block" onclick="window.location.reload()">Saya Sudah Install, Muat Ulang</button>
-      </div>
-  </div>
-
-  <div id="custom-alert-modal" style="display:none; position:fixed; inset:0; z-index:9999; align-items:center; justify-content:center; padding:20px;">
-      <div class="overlay" onclick="closeCustomAlert()"></div>
-      <div class="card modal-card" style="max-width:400px; padding:32px; border-radius:24px; position:relative; z-index:10000; text-align:center;">
-          <div id="custom-alert-icon" style="font-size:3rem; margin-bottom:16px;">⚠️</div>
-          <h3 id="custom-alert-title" style="font-weight:800; margin-bottom:12px;">Peringatan</h3>
-          <p id="custom-alert-message" style="color:#64748b; line-height:1.6; margin-bottom:24px;"></p>
-          <button class="btn btn-primary btn-block" onclick="closeCustomAlert()">Mengerti</button>
-      </div>
-  </div>
-
-  <!-- Guide Modal (ID Duplicates Removed) -->
+</html>
 
   <script defer src="script.js"></script>
 </body>
