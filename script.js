@@ -2508,15 +2508,9 @@ function renderPreviewOptions(q) {
            
            const div = document.createElement('div');
            div.className = `option-item ${isCorrect ? 'answer-correct' : ''}`;
-           if(isCorrect) {
-
-
-
-
-
+            
            let imgHTML = '';
                imgHTML = `<img src="${opt.gambar}" class="q-image" style="max-height:140px; margin-top:8px; display:block;" onclick="openZoomModal('${opt.gambar}'); event.stopPropagation();" />`;
-           }
            
            div.innerHTML = `
                <div style="display:flex; align-items:flex-start; width:100%;">
