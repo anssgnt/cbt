@@ -1,4 +1,3 @@
-
 // --- Dynamic PWA Manifest for Google Apps Script ---
 (function() {
   const manifestData = {
@@ -1596,8 +1595,11 @@ function initPortal() {
           if (State.security.pwa) {
              const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
              const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+             const hasBypass = sessionStorage.getItem('pwa_bypass_granted') === '1';
              // Jika perangkat adalah Mobile dan bukan mode standalone, maka blokir. PC dibebaskan.
-             if (isMobile && !isStandalone && !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')) {
+             if (isMobile && !isStandalone && !hasBypass &&
+                 !window.location.hostname.includes('localhost') &&
+                 !window.location.hostname.includes('127.0.0.1')) {
                  document.getElementById('pwa-blocker-overlay').style.display = 'flex';
              }
           }
@@ -2236,6 +2238,7 @@ window.loadAdminSettings = async function() {
            document.getElementById('cfgFullscreen').checked = !!sec.fullscreen;
            document.getElementById('cfgAntiCheat').checked = !!sec.anticheat;
            document.getElementById('cfgMinTime').value = sec.minTime || 0;
+           document.getElementById('cfgBypassCode').value = sec.bypassCode || '';
            
            const idenSnap = await db.ref('/config/identity').once('value');
            const iden = idenSnap.val() || {};
@@ -2295,7 +2298,8 @@ window.saveAdminSettings = async function() {
                pwa: document.getElementById('cfgPWA').checked,
                fullscreen: document.getElementById('cfgFullscreen').checked,
                anticheat: document.getElementById('cfgAntiCheat').checked,
-               minTime: parseInt(document.getElementById('cfgMinTime').value) || 0
+               minTime: parseInt(document.getElementById('cfgMinTime').value) || 0,
+               bypassCode: document.getElementById('cfgBypassCode').value.trim().toUpperCase() || null
            };
            await db.ref('/config/security').set(sec);
            
@@ -3237,21 +3241,60 @@ let deferredPrompt;
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredPrompt = e;
+  // Tampilkan tombol install di PWA blocker overlay jika sedang tampil
   const btnInstall = document.getElementById('btnTriggerInstall');
   if (btnInstall) {
-      btnInstall.style.display = 'inline-block';
-      btnInstall.addEventListener('click', async () => {
-          if (deferredPrompt) {
-              deferredPrompt.prompt();
-              const { outcome } = await deferredPrompt.userChoice;
-              if (outcome === 'accepted') {
-                  deferredPrompt = null;
-                  btnInstall.style.display = 'none';
-              }
-          }
-      });
+    btnInstall.style.display = 'block';
+    // Pastikan listener tidak duplikat
+    btnInstall.onclick = async () => {
+      if (!deferredPrompt) return;
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        deferredPrompt = null;
+        btnInstall.style.display = 'none';
+      }
+    };
   }
 });
+
+// Jika sudah installed, sembunyikan blocker (event appinstalled)
+window.addEventListener('appinstalled', () => {
+  const overlay = document.getElementById('pwa-blocker-overlay');
+  if (overlay) overlay.style.display = 'none';
+});
+
+// --- Bypass PWA Blocker ---
+window.verifyPwaBypass = async function() {
+  const input = document.getElementById('pwaBypassInput');
+  const errEl = document.getElementById('pwaBypassError');
+  if (!input || !errEl) return;
+
+  const code = input.value.trim().toUpperCase();
+  if (!code) { errEl.textContent = 'Masukkan kode bypass terlebih dahulu.'; errEl.style.display = 'block'; return; }
+
+  try {
+    const snap = await db.ref('/config/security/bypassCode').once('value');
+    const validCode = snap.val();
+
+    if (validCode && code === String(validCode).toUpperCase()) {
+      // Simpan bypass di sessionStorage agar tidak perlu ulang dalam sesi ini
+      sessionStorage.setItem('pwa_bypass_granted', '1');
+      errEl.style.display = 'none';
+      const overlay = document.getElementById('pwa-blocker-overlay');
+      if (overlay) overlay.style.display = 'none';
+    } else {
+      errEl.textContent = 'Kode bypass tidak valid. Hubungi pengawas.';
+      errEl.style.display = 'block';
+      input.value = '';
+      input.focus();
+    }
+  } catch(e) {
+    errEl.textContent = 'Gagal verifikasi, periksa koneksi internet.';
+    errEl.style.display = 'block';
+    console.error(e);
+  }
+};
 function showCustomAlert(title, message, icon = '⚠️') {
     const modal = document.getElementById('custom-alert-modal');
     if (!modal) return;
