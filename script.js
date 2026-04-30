@@ -1,3 +1,4 @@
+
 // --- Dynamic PWA Manifest for Google Apps Script ---
 (function() {
   const manifestData = {
@@ -2752,6 +2753,72 @@ window.closeImportModal = function() {
     }, 300);
 }
 
+/**
+ * Extract images from XLSX using JSZip and map them to cell coordinates.
+ * Returns an object { "row:col": base64DataUrl }
+ */
+async function extractImagesFromXLSX(arrayBuffer) {
+    if (typeof JSZip === 'undefined') return {};
+    const zip = await JSZip.loadAsync(arrayBuffer);
+    
+    // 1. Get all images in xl/media/ and convert to Base64
+    const imageMap = {}; // { "xl/media/image1.png": base64 }
+    const mediaFiles = Object.keys(zip.files).filter(path => path.startsWith("xl/media/"));
+    
+    for (const path of mediaFiles) {
+        const file = zip.file(path);
+        if (file) {
+            const blob = await file.async("base64");
+            const ext = path.split('.').pop().toLowerCase();
+            let mime = 'image/png';
+            if (ext === 'jpg' || ext === 'jpeg') mime = 'image/jpeg';
+            else if (ext === 'gif') mime = 'image/gif';
+            else if (ext === 'svg') mime = 'image/svg+xml';
+            
+            imageMap[path] = `data:${mime};base64,${blob}`;
+        }
+    }
+
+    // 2. Parse drawings to find cell mapping
+    const drawingFiles = Object.keys(zip.files).filter(path => path.startsWith("xl/drawings/") && path.endsWith(".xml") && !path.includes("_rels"));
+    const cellImageMap = {}; // { "row:col": base64 }
+
+    for (const drawingPath of drawingFiles) {
+        const relsPath = drawingPath.replace("xl/drawings/", "xl/drawings/_rels/") + ".rels";
+        const relsFile = zip.file(relsPath);
+        if (!relsFile) continue;
+
+        const relsXml = await relsFile.async("string");
+        const relsParser = new DOMParser();
+        const relsDoc = relsParser.parseFromString(relsXml, "text/xml");
+        const rels = {};
+        relsDoc.querySelectorAll("Relationship").forEach(rel => {
+            rels[rel.getAttribute("Id")] = rel.getAttribute("Target").replace("../media/", "xl/media/");
+        });
+
+        const drawingXml = await zip.file(drawingPath).async("string");
+        const drawingDoc = new DOMParser().parseFromString(drawingXml, "text/xml");
+        
+        // Handle twoCellAnchor and oneCellAnchor
+        drawingDoc.querySelectorAll("twoCellAnchor, oneCellAnchor").forEach(anchor => {
+            const from = anchor.querySelector("from");
+            if (from) {
+                const col = parseInt(from.querySelector("col")?.textContent || "0");
+                const row = parseInt(from.querySelector("row")?.textContent || "0");
+                const blip = anchor.querySelector("blip");
+                if (blip) {
+                    const rId = blip.getAttribute("r:embed") || blip.getAttribute("embed");
+                    if (rId && rels[rId] && imageMap[rels[rId]]) {
+                        cellImageMap[`${row}:${col}`] = imageMap[rels[rId]];
+                    }
+                }
+            }
+        });
+    }
+
+    return cellImageMap;
+}
+
 window.processImport = async function() {
     const fileInput = document.getElementById('importFileInput');
     if(fileInput.files.length === 0) return alert('Pilih file terlebih dahulu.');
@@ -2776,6 +2843,14 @@ window.processImport = async function() {
             try {
                 if (typeof XLSX === 'undefined') return alert("Library Excel belum termuat, periksa koneksi internet Anda.");
                 const data = new Uint8Array(e.target.result);
+                
+                let imageMapping = {};
+                try {
+                    imageMapping = await extractImagesFromXLSX(e.target.result);
+                } catch(imgErr) {
+                    console.warn("Image extraction failed:", imgErr);
+                }
+
                 const workbook = XLSX.read(data, {type: 'array'});
                 const firstSheet = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[firstSheet];
@@ -2786,7 +2861,7 @@ window.processImport = async function() {
                 } else if(currentImportType === 'soal') {
                     const bankId = document.getElementById('importBankId').value.trim();
                     if(!bankId) return alert('Kode Bank Soal wajib diisi!');
-                    await importSoalExcel(jsonData, bankId);
+                    await importSoalExcel(jsonData, bankId, imageMapping);
                 }
             } catch(err) {
                 alert("Gagal membaca file Excel. Pastikan file tidak rusak.");
@@ -2827,7 +2902,7 @@ async function importSiswaExcel(jsonData) {
     }
 }
 
-async function importSoalExcel(jsonData, bankId) {
+async function importSoalExcel(jsonData, bankId, imageMapping = {}) {
     let soalUpdates = {};
     let kunciUpdates = {};
     let count = 0;
@@ -2859,6 +2934,9 @@ async function importSoalExcel(jsonData, bankId) {
         
         let pertanyaan = String(row[1]).trim();
         let gambarSoal = String(row[2] || '').trim();
+        if (!gambarSoal && imageMapping[`${i}:2`]) {
+            gambarSoal = imageMapping[`${i}:2`];
+        }
         // Kolom 3 (Audio/Video) diabaikan sementara
         
         let opsi = [];
@@ -2868,6 +2946,10 @@ async function importSoalExcel(jsonData, bankId) {
             let teks = row[colIndex] !== undefined ? String(row[colIndex]).trim() : '';
             let gmb = row[imgColIndex] !== undefined ? String(row[imgColIndex]).trim() : '';
             
+            if (!gmb && imageMapping[`${i}:${imgColIndex}`]) {
+                gmb = imageMapping[`${i}:${imgColIndex}`];
+            }
+
             if(teks || gmb) {
                 opsi.push({ id: letters[j], text: teks, gambar: gmb });
             }
