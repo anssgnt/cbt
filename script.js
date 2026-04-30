@@ -2748,14 +2748,12 @@ window.closeImportModal = function() {
  * Returns an object { "row:col": base64DataUrl }
  */
 async function extractImagesFromXLSX(arrayBuffer) {
-    const stats = { rawImages: 0, drawings: 0, mapped: 0, coords: [], folders: [], hasCellImages: false };
+    const stats = { rawImages: 0, drawings: 0, mapped: 0, coords: [], folders: [], hasCellImages: false, xlFiles: [] };
     if (typeof JSZip === 'undefined') return { mapping: {}, stats };
     const zip = await JSZip.loadAsync(arrayBuffer);
     
     const allPaths = Object.keys(zip.files);
-    const folderSet = new Set();
-    allPaths.forEach(p => { if(p.includes('/')) folderSet.add(p.split('/')[0]); });
-    stats.folders = Array.from(folderSet);
+    stats.xlFiles = allPaths.filter(p => p.startsWith("xl/")).map(p => p.split('/').pop());
 
     const imageMap = {}; 
     const mediaFiles = allPaths.filter(path => path.toLowerCase().includes("media/"));
@@ -2777,11 +2775,12 @@ async function extractImagesFromXLSX(arrayBuffer) {
     const cellImageMap = {}; 
 
     // --- STRATEGY 1: Place in Cell (Modern Excel) ---
-    const cellImgFile = zip.file("xl/cellimages.xml");
-    if (cellImgFile) {
+    const cellImgPath = allPaths.find(p => p.toLowerCase().endsWith("cellimages.xml"));
+    if (cellImgPath) {
         stats.hasCellImages = true;
         try {
-            const relsFile = zip.file("xl/_rels/cellimages.xml.rels");
+            const relsPath = cellImgPath.replace("cellimages.xml", "_rels/cellimages.xml.rels");
+            const relsFile = zip.file(relsPath);
             const rels = {};
             if (relsFile) {
                 const relsXml = await relsFile.async("string");
@@ -2793,7 +2792,7 @@ async function extractImagesFromXLSX(arrayBuffer) {
                 }
             }
 
-            const xml = await cellImgFile.async("string");
+            const xml = await zip.file(cellImgPath).async("string");
             const doc = new DOMParser().parseFromString(xml, "text/xml");
             const imgTags = doc.getElementsByTagNameNS("*", "cellImage");
             
@@ -2809,34 +2808,25 @@ async function extractImagesFromXLSX(arrayBuffer) {
                 }
             }
 
-            // Map cells in sheet1 to cellImage indices
-            // This requires parsing metadata and richValue. Very complex, but let's try a heuristic:
-            // Often, if the user has 8 images and we have 8 cellImages, we can find their cell locations 
-            // by looking at cells that have a "vm" (Value Metadata) attribute in sheet1.xml
-            const sheet1File = zip.file("xl/worksheets/sheet1.xml");
+            const sheet1File = allPaths.find(p => p.toLowerCase().endsWith("sheet1.xml"));
             if (sheet1File) {
-                const sXml = await sheet1File.async("string");
+                const sXml = await zip.file(sheet1File).async("string");
                 const sDoc = new DOMParser().parseFromString(sXml, "text/xml");
                 const cTags = sDoc.getElementsByTagNameNS("*", "c");
                 for (let c of cTags) {
                     const vm = c.getAttribute("vm");
                     if (vm) {
-                        const r = c.getAttribute("r"); // e.g. "C2"
+                        const r = c.getAttribute("r");
                         if (r) {
                             const colMatch = r.match(/^[A-Z]+/);
                             const rowMatch = r.match(/[0-9]+/);
                             if (colMatch && rowMatch) {
-                                // Convert A1 to 0-based row/col
                                 let colStr = colMatch[0];
                                 let col = 0;
                                 for(let j=0; j<colStr.length; j++) col = col * 26 + (colStr.charCodeAt(j) - 64);
                                 col -= 1;
                                 let row = parseInt(rowMatch[0]) - 1;
-                                
-                                // Get metadata index
                                 const vmIdx = parseInt(vm);
-                                // Fallback mapping: use vmIdx as index into cellImageMedia if it's within range
-                                // This is a simplification but often works for simple sheets
                                 if (vmIdx >= 0 && vmIdx < cellImageMedia.length && cellImageMedia[vmIdx]) {
                                     cellImageMap[`${row}:${col}`] = cellImageMedia[vmIdx];
                                     stats.coords.push(`${row}:${col}`);
@@ -3136,11 +3126,14 @@ async function importSoalExcel(jsonData, bankId, imageMapping = {}, stats = { ra
             msg = `Berhasil import ${count} soal (${imgTotal} gambar terdeteksi) ke bank ${bankId}.`;
         } else if (stats && stats.rawImages > 0) {
             if (stats.hasCellImages) {
-                msg += `\n\n[PENTING] Terdeteksi gambar format "Place in Cell".\nSistem tidak mendukung format ini. Mohon klik kanan gambar di Excel lalu pilih "Place over Cells" (Tempatkan di Atas Sel), lalu simpan dan import ulang.`;
+                msg += `\n\n[PENTING] Terdeteksi gambar format "Place in Cell".\nSistem sedang mencoba membacanya. Jika gagal, mohon ubah ke "Place over Cells".`;
             } else {
                 msg += `\n\n(Info: Ditemukan ${stats.rawImages} file gambar di Excel.`;
                 if (stats.coords && stats.coords.length > 0) {
                     msg += `\nKoordinat ditemukan: ${stats.coords.join(', ')}`;
+                }
+                if (stats.xlFiles && stats.xlFiles.length > 0) {
+                    msg += `\nIsi folder XL: ${stats.xlFiles.slice(0, 10).join(', ')}`;
                 }
                 msg += `\n\nSistem mencari gambar di Kolom C (Index 2) dan kolom Gambar Opsi. Pastikan gambar diletakkan tepat di dalam sel tersebut.)`;
             }
