@@ -404,11 +404,21 @@ async function getExamDataOptimized(examId, token, forceRefresh = false) {
    💾 AUTO SAVE (ANTI DATA HILANG)
 ================================ */
 
+// Periodic backup (every 5s)
 setInterval(() => {
   if (State.examActive) {
     saveStateLocal();
   }
 }, 5000);
+
+// Debounced save for interactions (anti-lag on low-end devices)
+let saveTimeout = null;
+function debouncedSave() {
+  if (saveTimeout) clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => {
+    saveStateLocal();
+  }, 1000);
+}
 
 // Question rendering optimizations
 
@@ -485,8 +495,8 @@ window.dbConnect = async function () {
   activeDbRequests++;
   if (activeDbRequests === 1) {
     if (dbDisconnectTimer) clearTimeout(dbDisconnectTimer);
-    // Jitter: Delay acak 0-500ms untuk memecah gelombang trafik simultan
-    await sleep(Math.floor(Math.random() * 500));
+    // Jitter: Delay acak 0-1500ms untuk memecah gelombang trafik simultan (Skala 1000)
+    await sleep(Math.floor(Math.random() * 1500));
     db.goOnline();
   }
 };
@@ -539,7 +549,7 @@ let authPromise = auth.signInAnonymously().then(() => { isAuthReady = true; }).c
 async function gasRun(funcName, ...args) {
   if (!isAuthReady) await authPromise;
 
-  dbConnect();
+  // dbConnect() dihapus karena sudah di-patch otomatis oleh patchFirebase via withDB
   try {
     if (funcName === 'getAllPeserta') {
       // Cek Cache Local Storage (Valid 30 Menit)
@@ -1149,6 +1159,7 @@ async function loadDashboard(examId, token) {
 // --- Exam Flow ---
 safeAddListener('btnStartExam', 'click', () => {
   State.examActive = true;
+  State.pingOffset = Math.floor(Math.random() * 600); // Random offset for pings (0-10 min)
   document.getElementById('exam-title').textContent = State.config.nama_ujian;
 
   // Request Fullscreen
@@ -1182,8 +1193,8 @@ function startTimer() {
     // Auto save periodic backup every 5 seconds
     if (State.timeRemaining % 5 === 0) saveStateLocal();
 
-    // Ping online connection status every 180 seconds to reduce server load
-    if (State.timeRemaining % 180 === 0) {
+    // Ping online connection status every 10 minutes with jitter to reduce server load
+    if (State.timeRemaining > 0 && (State.timeRemaining + State.pingOffset) % 600 === 0) {
       gasRun('setStudentOnline', State.config.id_ujian, State.user.id).then(res => {
         if (res && res.success && res.broadcast) {
           showBroadcastMessage(res.broadcast);
@@ -1366,7 +1377,7 @@ function renderOptions(q) {
       div.onclick = () => {
         State.answers[q.id] = opt.id;
         renderOptions(q);
-        saveStateLocal();
+        debouncedSave();
       };
       container.appendChild(div);
     });
@@ -1404,7 +1415,7 @@ function renderOptions(q) {
         if (arr.length === 0) delete State.answers[q.id];
         else State.answers[q.id] = arr;
         renderOptions(q);
-        saveStateLocal();
+        debouncedSave();
       };
       container.appendChild(div);
     });
@@ -1419,7 +1430,7 @@ function renderOptions(q) {
       const val = e.target.value.trim();
       if (val) State.answers[q.id] = val;
       else delete State.answers[q.id];
-      saveStateLocal();
+      debouncedSave();
     };
     container.appendChild(div);
   }
@@ -1451,7 +1462,7 @@ function renderOptions(q) {
         }
         // cleanup empty objects to trigger answered state correctly
         if (Object.keys(State.answers[q.id]).length === 0) delete State.answers[q.id];
-        saveStateLocal(); // Auto-save
+        debouncedSave(); // Auto-save
       };
 
       row.appendChild(lbl);
@@ -1483,7 +1494,7 @@ safeAddListener('btnDoubt', 'click', () => {
     State.doubts.add(qId);
   }
   renderQuestion(State.currentIndex); // Re-render to update UI and grid
-  saveStateLocal(); // Auto-save
+  debouncedSave(); // Auto-save
 });
 
 function isAnswered(index) {
@@ -1541,9 +1552,15 @@ function initGrid() {
   });
 }
 
+const bubbleCache = {};
+
 function updateGridUI() {
   State.questions.forEach((q, idx) => {
-    const b = document.getElementById(`bubble-${idx}`);
+    let b = bubbleCache[idx];
+    if (!b) {
+      b = document.getElementById(`bubble-${idx}`);
+      if (b) bubbleCache[idx] = b;
+    }
     if (!b) return;
 
     b.className = 'q-bubble'; // reset
@@ -1652,7 +1669,7 @@ async function submitExam(isAutoSubmit) {
   // Setiap HP akan mengacak jeda uniknya sendiri antara 0-55 detik.
   // Ini memecah "Tsunami 1000 Submit" menjadi gelombang ~18 /detik.
   if (isAutoSubmit) {
-    const jitterMs = Math.floor(Math.random() * 55000); // 0 - 55.000 ms
+    const jitterMs = Math.floor(Math.random() * 120000); // 0 - 120.000 ms (Armor 1000 Siswa)
     const jitterSec = Math.ceil(jitterMs / 1000);
     showLoading(`Waktu habis. Mengirim dalam ${jitterSec} detik...`);
     await sleep(jitterMs);
@@ -1715,7 +1732,7 @@ function getUsedTimeStr() {
 // --- Image Zoom Handlers ---
 window.openZoomModal = function (src) {
   const overlay = document.getElementById('zoom-overlay');
-  const img = document.getElementById('zoom-image');
+  const img = document.getElementById('zoomed-image');
   if (overlay && img) {
     img.src = src;
     overlay.style.display = 'flex';
@@ -1726,7 +1743,7 @@ window.closeZoomModal = function () {
   const overlay = document.getElementById('zoom-overlay');
   if (overlay) {
     overlay.style.display = 'none';
-    document.getElementById('zoom-image').src = '';
+    document.getElementById('zoomed-image').src = '';
   }
 };
 
@@ -3620,12 +3637,11 @@ window.openPrintModal = async function (examId, examName) {
 
   // Fetch distinct classes
   try {
-    const snap = await db.ref('/peserta').once('value');
-    const data = snap.val() || {};
+    const data = await gasRun('getAllPeserta');
     const kelasSet = new Set();
-    for (let key in data) {
-      if (data[key].kelas) kelasSet.add(data[key].kelas);
-    }
+    data.forEach(p => {
+      if (p.kelas) kelasSet.add(p.kelas);
+    });
 
     let html = '<option value="ALL">-- Cetak Semua Kelas --</option>';
     Array.from(kelasSet).sort().forEach(k => {
