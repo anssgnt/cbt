@@ -1240,8 +1240,9 @@ function startTimer() {
     // Auto save periodic backup every 5 seconds
     if (State.timeRemaining % 5 === 0) saveStateLocal();
 
-    // Ping online connection status every 10 minutes with jitter to reduce server load
-    if (State.timeRemaining > 0 && (State.timeRemaining + State.pingOffset) % 600 === 0) {
+    // Ping online status every 3 minutes (180s) to keep proctor dashboard updated.
+    // Randomized offset ensures 1000 students don't hit the server at once.
+    if (State.timeRemaining > 0 && (State.timeRemaining + State.pingOffset) % 180 === 0) {
       gasRun('setStudentOnline', State.config.id_ujian, State.user.id).then(res => {
         if (res && res.success && res.broadcast) {
           showBroadcastMessage(res.broadcast);
@@ -2130,8 +2131,9 @@ function renderAdminDashboard(data = window.adminState.monitor) {
     const rRaw = data.peserta.map(p => {
       let d = 'BELUM';
       let badgeClass = 'status-belum';
+      const isOnline = (data.onlines && data.onlines[ex.id] && (p.id in data.onlines[ex.id]));
       if (completedSet.has(p.id)) { d = 'SELESAI'; badgeClass = 'status-selesai'; selesai++; }
-      else if (data.onlines && data.onlines[ex.id] && data.onlines[ex.id].includes(p.id)) { d = 'MENGERJAKAN'; badgeClass = 'status-online'; mengerjakan++; }
+      else if (isOnline) { d = 'MENGERJAKAN'; badgeClass = 'status-online'; mengerjakan++; }
       else { blmSelesai++; }
       return { html: `<tr><td>${p.nama}</td><td>${p.kelas}</td><td><span class="status-badge ${badgeClass}">${d}</span></td></tr>`, stat: d };
     });
