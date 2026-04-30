@@ -93,8 +93,27 @@
     <!-- ══════════════════════════════════════
        1b. LOGIN CONFIRM VIEW
   ══════════════════════════════════════ -->
-    <div id="login-confirm-view" class="view login-layout">
-      <div class="confirm-card">
+    <div id="login-confirm-view" class="view portal-layout" style="padding:0;">
+      <!-- Wavy Header Background -->
+      <div class="wave-bg-container" style="min-height: 30vh; padding-bottom: 60px;">
+        <div class="wave-content">
+          <div class="centric-header stagger-1">
+            <div class="centric-logo">
+              <svg fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2L2 7L12 12L22 7L12 2Z" /><path d="M2 9V14C2 14 7.5 17.5 12 19.5C16.5 17.5 22 14 22 14V9L12 14L2 9Z" /></svg>
+            </div>
+            <div class="centric-identity">
+              <h1 id="portal-school-sub">Konfirmasi</h1>
+              <p>Pastikan data Anda benar</p>
+            </div>
+          </div>
+        </div>
+        <!-- SVG Wave -->
+        <svg class="wave-svg" viewBox="0 0 1440 320" preserveAspectRatio="none">
+          <path fill="#FFFFFF" fill-opacity="1" d="M0,256L48,245.3C96,235,192,213,288,213.3C384,213,480,235,576,234.7C672,235,768,213,864,186.7C960,160,1056,128,1152,122.7C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
+        </svg>
+      </div>
+      <div class="saas-login-container stagger-2" style="margin-top: -60px; z-index: 2; width: 100%; padding: 20px;">
+        <div class="confirm-card" style="margin: 0; width: 100%;">
         <!-- Avatar area -->
         <div class="confirm-avatar-wrap">
           <div class="confirm-avatar">
@@ -137,8 +156,9 @@
     <!-- ══════════════════════════════════════
        1c. SCHEDULE VIEW
   ══════════════════════════════════════ -->
-    <div id="schedule-view" class="view">
-      <div class="schedule-header">
+    <div id="schedule-view" class="view" style="padding:0; background: #F3F4F6;">
+      <div class="wave-header-exam" style="padding-bottom: 80px;">
+        <div class="schedule-header" style="background: transparent; border: none; padding-bottom: 0;">
         <div class="schedule-header-left">
           <div class="schedule-header-icon">
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -156,8 +176,13 @@
           </svg>
           Keluar
         </button>
+        </div>
+        <!-- SVG Wave -->
+        <svg class="wave-svg" viewBox="0 0 1440 320" preserveAspectRatio="none">
+          <path fill="#F3F4F6" fill-opacity="1" d="M0,256L48,245.3C96,235,192,213,288,213.3C384,213,480,235,576,234.7C672,235,768,213,864,186.7C960,160,1056,128,1152,122.7C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
+        </svg>
       </div>
-      <div id="schedule-list" style="padding:20px;display:flex;flex-direction:column;gap:14px;"></div>
+      <div id="schedule-list" style="padding:20px;display:flex;flex-direction:column;gap:14px; position: relative; z-index: 2; margin-top: -60px;"></div>
     </div>
 
 
@@ -175,10 +200,9 @@
     <!-- ══════════════════════════════════════
        3. DASHBOARD VIEW
   ══════════════════════════════════════ -->
-    <div id="dashboard-view" class="view">
-      <div class="dash-wrap">
-        <!-- Page Header -->
-        <div class="dash-page-header">
+    <div id="dashboard-view" class="view" style="padding:0; background: #F3F4F6;">
+      <div class="wave-header-exam" style="padding-bottom: 80px;">
+        <div class="dash-page-header" style="background: transparent; border: none; padding-bottom: 0;">
           <div class="dash-page-icon">
             <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
@@ -189,6 +213,12 @@
             <p class="dash-page-sub">Periksa detail sebelum memulai</p>
           </div>
         </div>
+        <!-- SVG Wave -->
+        <svg class="wave-svg" viewBox="0 0 1440 320" preserveAspectRatio="none">
+          <path fill="#F3F4F6" fill-opacity="1" d="M0,256L48,245.3C96,235,192,213,288,213.3C384,213,480,235,576,234.7C672,235,768,213,864,186.7C960,160,1056,128,1152,122.7C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
+        </svg>
+      </div>
+      <div class="dash-wrap" style="position: relative; z-index: 2; margin-top: -60px;">
         <!-- Info Card -->
         <div class="dash-info-card">
           <div class="info-row">
@@ -225,20 +255,26 @@
        4. EXAM VIEW
   ══════════════════════════════════════ -->
     <div id="exam-view" class="view" style="padding:0; background: #FFFFFF;">
-      <!-- Modern Header -->
-      <div class="modern-exam-header">
-        <div class="header-left">
-          <button id="btnOpenMenu" class="header-menu-btn">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
-          </button>
-          <div class="header-info">
-            <div id="exam-title" class="exam-main-title">SIMULASI 1</div>
-            <div class="exam-status-sub">Ujian Sedang Berlangsung</div>
+      <!-- Wave Header for Exam View -->
+      <div class="wave-header-exam">
+        <div class="modern-exam-header">
+          <div class="header-left">
+            <button id="btnOpenMenu" class="header-menu-btn">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+            </button>
+            <div class="header-info">
+              <div id="exam-title" class="exam-main-title">SIMULASI 1</div>
+              <div class="exam-status-sub">Ujian Sedang Berlangsung</div>
+            </div>
+          </div>
+          <div class="header-right">
+            <div id="exam-timer" class="modern-timer">00:57:59</div>
           </div>
         </div>
-        <div class="header-right">
-          <div id="exam-timer" class="modern-timer">00:57:59</div>
-        </div>
+        <!-- SVG Wave -->
+        <svg class="wave-svg" viewBox="0 0 1440 320" preserveAspectRatio="none">
+          <path fill="#ffffff" fill-opacity="1" d="M0,256L48,245.3C96,235,192,213,288,213.3C384,213,480,235,576,234.7C672,235,768,213,864,186.7C960,160,1056,128,1152,122.7C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
+        </svg>
       </div>
 
       <!-- Progress Area -->
