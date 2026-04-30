@@ -249,7 +249,7 @@ function handleCheatDetection() {
     }
   }, 1000);
 
-  withDB(async () => {
+  withDB(async function () {
     await db.ref('/pelanggaran').push({
       waktu: new Date().toLocaleString('id-ID'),
       nama: State.user.name,
@@ -853,7 +853,7 @@ if (userNameInput) {
     // Login will use direct Firebase search fallback.
   });
 
-  userNameInput.addEventListener('input', async (e) => {
+  userNameInput.addEventListener('input', async function (e) {
     const val = e.target.value.trim().toLowerCase();
     autoList.innerHTML = '';
     autoList.classList.remove('show');
@@ -861,7 +861,7 @@ if (userNameInput) {
     if (searchTimeout) clearTimeout(searchTimeout);
     if (val.length < 2) return;
 
-    searchTimeout = setTimeout(async () => {
+    searchTimeout = setTimeout(async function () {
       let results = [];
       
       // UI Loading state
@@ -1218,7 +1218,7 @@ function updateTimerDisplay() {
 let lastForceRefresh = 0;
 const REFRESH_COOLDOWN_MS = 15 * 60 * 1000; // 15 menit
 
-safeAddListener('btnRefreshExam', 'click', async () => {
+safeAddListener('btnRefreshExam', 'click', async function () {
   if (!State.examActive) return;
   const now = Date.now();
 
@@ -1831,14 +1831,14 @@ function initPortal() {
   fetchPortalExams();
 
   // Load Global Security Settings
-  authPromise.then(async () => {
+  authPromise.then(async function () {
     try {
       const snap = await db.ref('/config/security').once('value');
       State.security = snap.val() || {};
 
       // Load Global Identity
       try {
-        await withDB(async () => {
+        await withDB(async function () {
           const idenSnap = await db.ref('/config/identity').once('value');
           const iden = idenSnap.val() || {};
           if (iden.name) {
@@ -1972,7 +1972,7 @@ function hideAdminAuthModal() {
 
 safeAddListener('btnCancelAdmin', 'click', hideAdminAuthModal);
 
-safeAddListener('btnSubmitAdmin', 'click', async () => {
+safeAddListener('btnSubmitAdmin', 'click', async function () {
   const pwd = document.getElementById('adminTokenInput').value.trim();
   if (!pwd) return;
   const btn = document.getElementById('btnSubmitAdmin');
@@ -2500,7 +2500,7 @@ function renderAdminRadarPage(page) {
 window.loadAdminSettings = async function () {
   showLoading('Memuat Pengaturan...');
   try {
-    await withDB(async () => {
+    await withDB(async function () {
       const snap = await db.ref('/config/security').once('value');
       const sec = snap.val() || {};
       document.getElementById('cfgPWA').checked = !!sec.pwa;
@@ -2562,7 +2562,7 @@ safeAddListener('cfgLogoInput', 'change', (e) => {
 window.saveAdminSettings = async function () {
   showLoading('Menyimpan...');
   try {
-    await withDB(async () => {
+    await withDB(async function () {
       const sec = {
         pwa: document.getElementById('cfgPWA').checked,
         fullscreen: document.getElementById('cfgFullscreen').checked,
@@ -3516,7 +3516,7 @@ window.addEventListener('beforeinstallprompt', (e) => {
   if (btnInstall) {
     btnInstall.style.display = 'block';
     // Pastikan listener tidak duplikat
-    btnInstall.onclick = async () => {
+    btnInstall.onclick = async function () {
       if (!deferredPrompt) return;
       deferredPrompt.prompt();
       const { outcome } = await deferredPrompt.userChoice;
