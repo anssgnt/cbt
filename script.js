@@ -2855,6 +2855,30 @@ async function extractImagesFromXLSX(arrayBuffer) {
             });
         } catch(e) {}
     }
+
+    // --- STRATEGY 3: Sequential Fallback (Non-standard files) ---
+    // If no coordinates were mapped but images exist, assign them sequentially to rows.
+    // Gambar di-sort berdasarkan nama file, lalu dipasangkan ke baris soal secara berurutan.
+    // Kolom 2 (C) adalah kolom gambar soal utama.
+    if (stats.mapped === 0 && Object.keys(imageMap).length > 0) {
+        // Get unique image entries (by basename only, to avoid counting duplicates)
+        const uniqueImages = mediaFiles
+            .map(p => p.split('/').pop())
+            .filter((name, idx, arr) => arr.indexOf(name) === idx) // deduplicate
+            .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        
+        uniqueImages.forEach((name, idx) => {
+            const imgData = imageMap[name];
+            if (imgData) {
+                // Assign to row (idx+1, since row 0 is header), col 2 (Kolom C = gambar soal)
+                const rowKey = `${idx + 1}:2`;
+                cellImageMap[rowKey] = imgData;
+                stats.coords.push(rowKey);
+                stats.mapped++;
+            }
+        });
+    }
+
     return { mapping: cellImageMap, stats };
 }
 async function importSoalExcel(jsonData, bankId, imageMapping = {}, stats = { rawImages: 0, drawings: 0, mapped: 0 }) {
