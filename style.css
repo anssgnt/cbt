@@ -1396,7 +1396,7 @@ h4 {
   border-top: 1px solid #E5E7EB;
   box-shadow: 0 -8px 40px rgba(15, 23, 90, 0.1);
   transition: bottom 0.35s var(--ease);
-  z-index: 100;
+  z-index: 1100;
   max-width: 620px;
   margin: 0 auto;
   max-height: 74vh;
