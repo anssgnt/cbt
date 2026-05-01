@@ -126,6 +126,21 @@ function safeSetText(id, text) {
   if (el) el.textContent = text;
 }
 
+function safeSetValue(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.value = val;
+}
+
+function safeSetChecked(id, bool) {
+  const el = document.getElementById(id);
+  if (el) el.checked = !!bool;
+}
+
+function safeGetValue(id) {
+  const el = document.getElementById(id);
+  return el ? el.value : '';
+}
+
 function showAlert(msg, type = 'danger') {
   const alertEl = document.getElementById('login-alert');
   alertEl.textContent = msg;
@@ -2721,16 +2736,16 @@ window.loadAdminSettings = async function () {
     await withDB(async function () {
       const snap = await db.ref('/config/security').once('value');
       const sec = snap.val() || {};
-      document.getElementById('cfgPWA').checked = !!sec.pwa;
-      document.getElementById('cfgFullscreen').checked = !!sec.fullscreen;
-      document.getElementById('cfgAntiCheat').checked = !!sec.anticheat;
-      document.getElementById('cfgMinTime').value = sec.minTime || 0;
-      document.getElementById('cfgBypassCode').value = sec.bypassCode || '';
+      safeSetChecked('cfgPWA', sec.pwa);
+      safeSetChecked('cfgFullscreen', sec.fullscreen);
+      safeSetChecked('cfgAntiCheat', sec.anticheat);
+      safeSetValue('cfgMinTime', sec.minTime || 0);
+      safeSetValue('cfgBypassCode', sec.bypassCode || '');
 
       const idenSnap = await db.ref('/config/identity').once('value');
       const iden = idenSnap.val() || {};
-      if (iden.name) document.getElementById('cfgSchoolName').value = iden.name;
-      if (iden.sub) document.getElementById('cfgSchoolSub').value = iden.sub;
+      if (iden.name) safeSetValue('cfgSchoolName', iden.name);
+      if (iden.sub) safeSetValue('cfgSchoolSub', iden.sub);
 
       // Logo Preview
       const preview = document.getElementById('cfgLogoPreview');
@@ -2740,13 +2755,13 @@ window.loadAdminSettings = async function () {
       }
 
       // Load Firebase Config from UI local state
-      document.getElementById('fbApiKey').value = firebaseConfig.apiKey || '';
-      document.getElementById('fbAuthDomain').value = firebaseConfig.authDomain || '';
-      document.getElementById('fbDbUrl').value = firebaseConfig.databaseURL || '';
-      document.getElementById('fbProjectId').value = firebaseConfig.projectId || '';
-      document.getElementById('fbStorageBucket').value = firebaseConfig.storageBucket || '';
-      document.getElementById('fbMessagingId').value = firebaseConfig.messagingSenderId || '';
-      document.getElementById('fbAppId').value = firebaseConfig.appId || '';
+      safeSetValue('fbApiKey', firebaseConfig.apiKey || '');
+      safeSetValue('fbAuthDomain', firebaseConfig.authDomain || '');
+      safeSetValue('fbDbUrl', firebaseConfig.databaseURL || '');
+      safeSetValue('fbProjectId', firebaseConfig.projectId || '');
+      safeSetValue('fbStorageBucket', firebaseConfig.storageBucket || '');
+      safeSetValue('fbMessagingId', firebaseConfig.messagingSenderId || '');
+      safeSetValue('fbAppId', firebaseConfig.appId || '');
     });
   } catch (e) {
     console.error(e);
@@ -2782,30 +2797,30 @@ window.saveAdminSettings = async function () {
   try {
     await withDB(async function () {
       const sec = {
-        pwa: document.getElementById('cfgPWA').checked,
-        fullscreen: document.getElementById('cfgFullscreen').checked,
-        anticheat: document.getElementById('cfgAntiCheat').checked,
-        minTime: parseInt(document.getElementById('cfgMinTime').value) || 0,
-        bypassCode: document.getElementById('cfgBypassCode').value.trim().toUpperCase() || null
+        pwa: document.getElementById('cfgPWA') ? document.getElementById('cfgPWA').checked : false,
+        fullscreen: document.getElementById('cfgFullscreen') ? document.getElementById('cfgFullscreen').checked : false,
+        anticheat: document.getElementById('cfgAntiCheat') ? document.getElementById('cfgAntiCheat').checked : false,
+        minTime: parseInt(safeGetValue('cfgMinTime')) || 0,
+        bypassCode: safeGetValue('cfgBypassCode').trim().toUpperCase() || null
       };
       await db.ref('/config/security').set(sec);
 
       const iden = {
-        name: document.getElementById('cfgSchoolName').value.trim(),
-        sub: document.getElementById('cfgSchoolSub').value.trim(),
+        name: safeGetValue('cfgSchoolName').trim(),
+        sub: safeGetValue('cfgSchoolSub').trim(),
         logo: State.tempLogoBase64
       };
       await db.ref('/config/identity').set(iden);
 
       // Save Firebase Config to LocalStorage (Browser specific)
       const newFbConfig = {
-        apiKey: document.getElementById('fbApiKey').value.trim(),
-        authDomain: document.getElementById('fbAuthDomain').value.trim(),
-        databaseURL: document.getElementById('fbDbUrl').value.trim(),
-        projectId: document.getElementById('fbProjectId').value.trim(),
-        storageBucket: document.getElementById('fbStorageBucket').value.trim(),
-        messagingSenderId: document.getElementById('fbMessagingId').value.trim(),
-        appId: document.getElementById('fbAppId').value.trim()
+        apiKey: safeGetValue('fbApiKey').trim(),
+        authDomain: safeGetValue('fbAuthDomain').trim(),
+        databaseURL: safeGetValue('fbDbUrl').trim(),
+        projectId: safeGetValue('fbProjectId').trim(),
+        storageBucket: safeGetValue('fbStorageBucket').trim(),
+        messagingSenderId: safeGetValue('fbMessagingId').trim(),
+        appId: safeGetValue('fbAppId').trim()
       };
 
       // Only save if apiKey is present as a basic validation
