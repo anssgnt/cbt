@@ -1273,8 +1273,8 @@
   </div> <!-- End app-container -->
 
   <!-- Custom Alert Modal -->
-  <div class="overlay" id="custom-alert-modal" style="z-index:200001; display:none; align-items:center; justify-content:center;">
-    <div class="card" style="width:90%; max-width:400px; padding:24px; text-align:center; position:relative;">
+  <div id="custom-alert-modal" style="position:fixed; inset:0; z-index:999999; display:none; align-items:center; justify-content:center; background:rgba(15,23,90,0.6); opacity:1;">
+    <div class="card" style="width:90%; max-width:400px; padding:24px; text-align:center; position:relative; z-index:1000000;">
       <div id="custom-alert-icon" style="font-size:3rem; margin-bottom:16px;">⚠️</div>
       <h3 id="custom-alert-title" style="margin-bottom:12px; color:var(--text-main);">Peringatan</h3>
       <p id="custom-alert-message" style="color:var(--text-muted); line-height:1.6; margin-bottom:24px;">Pesan alert di sini.</p>
