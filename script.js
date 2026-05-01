@@ -435,56 +435,56 @@ async function getExamDataOptimized(examId, token, forceRefresh = false) {
   await dbConnectFast();
   try {
     const jSnap = await db.ref('/jadwal/' + examId).once('value');
-  const sch = jSnap.val();
-  if (!sch) throw new Error("Ujian tidak ditemukan");
+    const sch = jSnap.val();
+    if (!sch) throw new Error("Ujian tidak ditemukan");
 
-  // Cache Versioning (Armor 1000)
-  // Gunakan timestamp mulai sebagai versi untuk invalidasi otomatis jika jadwal diubah
-  const ver = sch.mulai || 0;
-  const CACHE_KEY = `SOAL_${examId}_v${ver}`;
+    // Cache Versioning (Armor 1000)
+    // Gunakan timestamp mulai sebagai versi untuk invalidasi otomatis jika jadwal diubah
+    const ver = sch.mulai || 0;
+    const CACHE_KEY = `SOAL_${examId}_v${ver}`;
 
-  if (!forceRefresh) {
-    const cached = localStorage.getItem(CACHE_KEY);
-    if (cached) {
-      try { return JSON.parse(cached); } catch { }
+    if (!forceRefresh) {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        try { return JSON.parse(cached); } catch { }
+      }
     }
-  }
 
-  if (sch.token && String(sch.token).toUpperCase() !== String(token).toUpperCase()) {
-    throw new Error("Token salah!");
-  }
+    if (sch.token && String(sch.token).toUpperCase() !== String(token).toUpperCase()) {
+      throw new Error("Token salah!");
+    }
 
-  const sDataPromise = cachedGet('/soal/' + sch.nama_soal);
-  const kDataPromise = cachedGet('/kunci/' + sch.nama_soal);
+    const sDataPromise = cachedGet('/soal/' + sch.nama_soal);
+    const kDataPromise = cachedGet('/kunci/' + sch.nama_soal);
 
-  const [sData, kData] = await Promise.all([sDataPromise, kDataPromise]);
+    const [sData, kData] = await Promise.all([sDataPromise, kDataPromise]);
 
-  const questions = [];
-  let idx = 0;
+    const questions = [];
+    let idx = 0;
 
-  for (let qId in sData) {
-    let q = sData[qId];
-    q._index = idx++;
-    if (!q.opsi) q.opsi = [];
-    q.id = qId;
-    questions.push(q);
-  }
+    for (let qId in sData) {
+      let q = sData[qId];
+      q._index = idx++;
+      if (!q.opsi) q.opsi = [];
+      q.id = qId;
+      questions.push(q);
+    }
 
-  const result = {
-    success: true,
-    config: {
-      id_ujian: examId,
-      nama_ujian: sch.nama,
-      durasi: sch.durasi,
-      end_ms: sch.selesai,
-      min_selesai: sch.min_selesai || 0  // wajib ada agar batas waktu minimal mengerjakan berlaku dari cache
-    },
-    questions,
-    keys: kData || {} // Cache keys for client-side scoring
-  };
+    const result = {
+      success: true,
+      config: {
+        id_ujian: examId,
+        nama_ujian: sch.nama,
+        durasi: sch.durasi,
+        end_ms: sch.selesai,
+        min_selesai: sch.min_selesai || 0  // wajib ada agar batas waktu minimal mengerjakan berlaku dari cache
+      },
+      questions,
+      keys: kData || {} // Cache keys for client-side scoring
+    };
 
-  localStorage.setItem(CACHE_KEY, JSON.stringify(result));
-  return result;
+    localStorage.setItem(CACHE_KEY, JSON.stringify(result));
+    return result;
   } finally {
     dbDisconnect();
   }
@@ -576,10 +576,10 @@ function updateInitStatusDisplay() {
 
   const statuses = [SystemStatus.auth, SystemStatus.peserta, SystemStatus.portal];
   dot.classList.remove('init-success', 'init-warning', 'init-error');
-  
+
   if (statuses.every(s => s === 'success')) {
     dot.classList.add('init-success');
-    dot.style.animation = 'none'; 
+    dot.style.animation = 'none';
     text.textContent = 'Sistem Siap. Ujian dapat dimulai!';
     text.style.color = '#10b981';
   } else if (statuses.some(s => s === 'error')) {
@@ -645,7 +645,7 @@ window.withDB = async function (promiseFunc) {
   await dbConnect();
   try {
     // Timeout 15 detik untuk mencegah request menggantung selamanya (Armor 1000)
-    const timeoutPromise = new Promise((_, reject) => 
+    const timeoutPromise = new Promise((_, reject) =>
       setTimeout(() => reject(new Error("Firebase Timeout")), 15000)
     );
     return await Promise.race([promiseFunc(), timeoutPromise]);
@@ -688,15 +688,15 @@ function initAuth() {
   }
   const auth = firebase.auth();
   authPromise = auth.signInAnonymously()
-    .then(() => { 
-       isAuthReady = true; 
-       SystemStatus.auth = 'success';
-       updateInitStatusDisplay();
+    .then(() => {
+      isAuthReady = true;
+      SystemStatus.auth = 'success';
+      updateInitStatusDisplay();
     })
     .catch(err => {
-       console.error(err);
-       SystemStatus.auth = 'error';
-       updateInitStatusDisplay();
+      console.error(err);
+      SystemStatus.auth = 'error';
+      updateInitStatusDisplay();
     });
 }
 
@@ -705,12 +705,12 @@ async function gasRun(funcName, ...args) {
 
   // Gunakan dbConnectFast untuk aksi interaktif (Siswa & Admin) agar tidak kena jitter 1.5 detik
   const interactiveFuncs = [
-    'getAllPeserta', 'getSchedules', 'getPortalInfo', 'getExamData', 
+    'getAllPeserta', 'getSchedules', 'getPortalInfo', 'getExamData',
     'validateAdmin', 'getAdminMonitoringData', 'getAdminJadwalFull',
     'getAdminLaporanLengkap', 'getAdminPreviewSoal'
   ];
   const isFast = interactiveFuncs.includes(funcName);
-  
+
   if (isFast) await dbConnectFast();
 
   try {
@@ -2153,9 +2153,9 @@ safeAddListener('btnSubmitAdmin', 'click', async function () {
     } else {
       showCustomAlert('Gagal', 'Gagal: ' + (res.message || 'Unknown error'), '❌');
     }
-  } catch (e) { 
+  } catch (e) {
     console.error("Admin Auth Error:", e);
-    showCustomAlert('Network Error', 'Network Error: ' + e.message, '🌐'); 
+    showCustomAlert('Network Error', 'Network Error: ' + e.message, '🌐');
   }
   if (btn) btn.textContent = 'Verifikasi';
 });
@@ -3835,14 +3835,12 @@ function showCustomAlert(title, message, icon = '⚠️') {
   if (titleEl) titleEl.textContent = title;
   if (msgEl) msgEl.textContent = (message !== undefined && message !== null) ? message : '';
   if (iconEl) iconEl.textContent = icon;
-  modal.style.display = 'flex';
-  modal.style.opacity = '1';       // Override opacity:0 dari class .overlay
-  modal.style.pointerEvents = 'auto';
+  // Tampilkan modal dengan class active (mengikuti sistem CSS overlay baru)
+  modal.classList.add('active');
 }
 
 function closeCustomAlert() {
   const modal = document.getElementById('custom-alert-modal');
   if (!modal) return;
-  modal.style.display = 'none';
-  modal.style.opacity = '0';
+  modal.classList.remove('active');
 }
