@@ -413,7 +413,9 @@ async function searchPeserta(keyword) {
 ================================ */
 
 async function getExamDataOptimized(examId, token, forceRefresh = false) {
-  const jSnap = await db.ref('/jadwal/' + examId).once('value');
+  await dbConnectFast();
+  try {
+    const jSnap = await db.ref('/jadwal/' + examId).once('value');
   const sch = jSnap.val();
   if (!sch) throw new Error("Ujian tidak ditemukan");
 
@@ -463,8 +465,10 @@ async function getExamDataOptimized(examId, token, forceRefresh = false) {
   };
 
   localStorage.setItem(CACHE_KEY, JSON.stringify(result));
-
   return result;
+  } finally {
+    dbDisconnect();
+  }
 }
 
 /* ================================
@@ -630,7 +634,12 @@ function initAuth() {
 async function gasRun(funcName, ...args) {
   if (!isAuthReady && authPromise) await authPromise;
 
-  // dbConnect() dihapus karena sudah di-patch otomatis oleh patchFirebase via withDB
+  // Gunakan dbConnectFast untuk aksi interaktif agar tidak kena jitter 1.5 detik
+  const interactiveFuncs = ['getAllPeserta', 'getSchedules', 'getPortalInfo', 'getExamData'];
+  const isFast = interactiveFuncs.includes(funcName);
+  
+  if (isFast) await dbConnectFast();
+
   try {
     if (funcName === 'getAllPeserta') {
       // Cek Cache Local Storage (Valid 30 Menit)
@@ -910,7 +919,7 @@ async function gasRun(funcName, ...args) {
     console.error("Firebase Error in", funcName, e);
     return { success: false, message: e.toString() };
   } finally {
-    dbDisconnect();
+    if (isFast) dbDisconnect();
   }
 }
 
