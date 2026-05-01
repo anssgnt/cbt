@@ -2270,7 +2270,7 @@ function renderAdminDashboard(data = window.adminState.monitor) {
     let rawTotal = 0;
     data.peserta.forEach(p => {
       const hasSelesai = completedSet.has(p.id);
-      const hasMengerjakan = (data.onlines && data.onlines[ex.id] && data.onlines[ex.id].includes(p.id));
+      const hasMengerjakan = (data.onlines && data.onlines[ex.id] && (p.id in data.onlines[ex.id]));
       const stat = hasSelesai ? 'SELESAI' : (hasMengerjakan ? 'MENGERJAKAN' : 'BELUM');
       if (!absenMode || stat === 'BELUM') rawTotal++;
     });
