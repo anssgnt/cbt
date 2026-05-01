@@ -1102,13 +1102,11 @@ async function loadSchedules() {
       }, 1000);
 
     } else {
-      hideLoading();
       showCustomAlert('Gagal Memuat Jadwal', 'Gagal memuat jadwal: ' + res.message, '❌');
       showView('login-view');
     }
   } catch (err) {
-    hideLoading();
-    showCustomAlert('Kesalahan Jaringan', 'Terjadi kesalahan sinkronisasi jaringan. Periksa koneksi Anda.', '🌐');
+    showCustomAlert('Kesalahan Jaringan', 'Terjadi kesalahan sinkronisasi jaringan.', '🌐');
     showView('login-view');
   }
 }
@@ -1201,7 +1199,7 @@ function renderSchedules() {
         document.getElementById('btnCancelToken').onclick = closeTokenModal;
         document.getElementById('btnSubmitToken').onclick = () => {
           const tk = document.getElementById('examTokenInput').value.trim();
-          if (!tk) { showCustomAlert('Token Diperlukan', 'Harap masukkan token ujian yang diberikan pengawas.', '🔑'); return; }
+          if (!tk) { showCustomAlert('Token Diperlukan', 'Harap masukkan token ujian dari pengawas.', '🔑'); return; }
           closeTokenModal();
           loadDashboard(sch.id, tk);
         };
@@ -1287,13 +1285,11 @@ async function loadDashboard(examId, token) {
       if (scheduleTimer) clearInterval(scheduleTimer);
       showView('dashboard-view');
     } else {
-      hideLoading();
-      showCustomAlert('Gagal Mengambil Data', 'Error mengambil data ujian: ' + res.message, '❌');
+      showCustomAlert('Gagal Mengambil Data', 'Error: ' + res.message, '❌');
       showView('schedule-view');
     }
   } catch (err) {
-    hideLoading();
-    showCustomAlert('Kesalahan Sinkronisasi', 'Terjadi kesalahan sinkronisasi. Coba muat ulang halaman.', '🔄');
+    showCustomAlert('Kesalahan Sinkronisasi', 'Terjadi kesalahan sinkronisasi. Coba muat ulang.', '🔄');
     showView('schedule-view');
   }
 }
@@ -1347,7 +1343,7 @@ function startTimer() {
 
     if (State.timeRemaining <= 0) {
       clearInterval(State.timerInterval);
-      showCustomAlert('Waktu Habis', 'Waktu ujian telah habis! Jawaban Anda akan otomatis dikirim ke server.', '⏰');
+      showCustomAlert('Waktu Habis', 'Waktu ujian telah habis! Jawaban Anda otomatis dikirim.', '⏰');
       submitExam(true);
     }
   }, 1000);
@@ -1371,7 +1367,7 @@ safeAddListener('btnRefreshExam', 'click', async function () {
 
   if (now - lastForceRefresh < REFRESH_COOLDOWN_MS) {
     const sisa = Math.ceil((REFRESH_COOLDOWN_MS - (now - lastForceRefresh)) / 60000);
-    showCustomAlert('Cooldown Refresh', `Anda baru saja melakukan refresh. Harap tunggu ${sisa} menit lagi untuk mencegah beban server berlebih.`, '⏳');
+    showCustomAlert('Cooldown Refresh', `Harap tunggu ${sisa} menit lagi sebelum refresh ulang.`, '⏳');
     return;
   }
 
@@ -1404,7 +1400,7 @@ safeAddListener('btnRefreshExam', 'click', async function () {
         showView('exam-view');
       }
     } catch (err) {
-      showCustomAlert('Kesalahan Jaringan', 'Terjadi kesalahan jaringan. Periksa koneksi internet Anda.', '🌐');
+      showCustomAlert('Kesalahan Jaringan', 'Terjadi kesalahan jaringan. Periksa koneksi.', '🌐');
       showView('exam-view');
     }
   }
@@ -1906,13 +1902,13 @@ async function submitExam(isAutoSubmit) {
       if (errMsg.includes('sudah')) {
         safeSetText('result-score', '✓');
       } else {
-        showCustomAlert('Gagal Mengirim Jawaban', 'Gagal mengirim jawaban: ' + errMsg, '❌');
+        showCustomAlert('Gagal Mengirim', 'Gagal mengirim jawaban: ' + errMsg, '❌');
         showView('exam-view');
       }
     }
   } catch (err) {
     // Gagal total setelah 3x retry — beri tahu siswa
-    showCustomAlert('Koneksi Terputus', 'Koneksi terputus setelah beberapa percobaan! Jawaban Anda masih AMAN di perangkat ini. Silakan tekan tombol Kirim Ulang.', '📡');
+    showCustomAlert('Koneksi Terputus', 'Jawaban Anda AMAN di perangkat. Tekan tombol Kirim Ulang.', '📡');
     State.examActive = true;
     State.submissionFailed = true;
     updateNavButtons();
@@ -2183,12 +2179,12 @@ async function loadAdminDashboard() {
       renderAdminDashboard(res);
     } else {
       console.error("Monitoring Fetch Failed:", res.message);
-      showCustomAlert('Gagal Memuat', 'Gagal memuat data monitoring: ' + res.message, '❌');
+      showCustomAlert('Gagal Memuat', 'Gagal memuat monitoring: ' + res.message, '❌');
       showView('login-view');
     }
   } catch (e) {
     console.error("Admin Dashboard Crash:", e);
-    showCustomAlert('Koneksi Gagal', 'Koneksi ke server gagal. Periksa internet Anda.', '🌐');
+    showCustomAlert('Koneksi Gagal', 'Koneksi ke server gagal. Periksa internet.', '🌐');
     showView('login-view');
   }
 }
@@ -2420,7 +2416,7 @@ window.editSiswa = async function (id) {
         document.getElementById('siswa-modal').style.transform = 'translate(-50%, -50%) scale(1)';
       }, 10);
     } else {
-      showCustomAlert('Tidak Ditemukan', 'Data siswa tidak ditemukan di database.', '🔍');
+      showCustomAlert('Tidak Ditemukan', 'Data siswa tidak ditemukan.', '🔍');
     }
   } catch (e) {
     hideLoading();
@@ -2433,7 +2429,7 @@ window.saveSiswa = async function () {
   const nama = document.getElementById('siswaNamaInput').value.trim();
   const kelas = document.getElementById('siswaKelasInput').value.trim();
 
-  if (!id || !nama || !kelas) return showCustomAlert('Data Tidak Lengkap', 'Semua kolom wajib diisi sebelum menyimpan.', '📝');
+  if (!id || !nama || !kelas) return showCustomAlert('Data Tidak Lengkap', 'Semua kolom wajib diisi.', '📝');
 
   showLoading('Menyimpan data...');
   try {
@@ -2447,7 +2443,7 @@ window.saveSiswa = async function () {
     loadAdminSiswa();
   } catch (e) {
     hideLoading();
-    showCustomAlert('Gagal Menyimpan', 'Gagal menyimpan data siswa. Coba lagi.', '❌');
+    showCustomAlert('Gagal Menyimpan', 'Gagal menyimpan data siswa.', '❌');
   }
 }
 
@@ -2476,19 +2472,19 @@ window.fixPesertaIndex = async function () {
     if (count > 0) {
       await db.ref('/peserta').update(updates);
       hideLoading();
-      showCustomAlert('Pemeliharaan Selesai', `Berhasil memperbaiki ${count} data siswa. Nama siswa seharusnya sudah muncul saat login.`, '✅');
+      showCustomAlert('Pemeliharaan Selesai', `Berhasil memperbaiki ${count} data siswa.`, '✅');
     } else {
       hideLoading();
-      showCustomAlert('Data Sudah Benar', 'Seluruh data siswa sudah memiliki indeks yang benar. Tidak ada yang perlu diperbaiki.', '✅');
+      showCustomAlert('Data Sudah Benar', 'Seluruh data sudah benar. Tidak ada yang perlu diperbaiki.', '✅');
     }
   } catch (e) {
     console.error(e);
     hideLoading();
-    showCustomAlert('Gagal', 'Gagal melakukan pemeliharaan database. Coba lagi.', '❌');
+    showCustomAlert('Gagal', 'Gagal melakukan pemeliharaan database.', '❌');
   }
 }
 
-function openBankSoalModal() { showCustomAlert('Segera Hadir', 'Fitur Bank Soal Builder segera hadir. Gunakan Import CSV untuk sementara.', 'ℹ️'); }
+function openBankSoalModal() { showCustomAlert('Segera Hadir', 'Fitur Bank Soal Builder segera hadir. Gunakan Import CSV.', 'ℹ️'); }
 
 window.deleteSiswa = async function (id) {
   if (confirm('Hapus siswa ' + id + '?')) {
@@ -2564,7 +2560,7 @@ window.previewSoal = async function (bankId) {
     }, 10);
   } catch (e) {
     hideLoading();
-    showCustomAlert('Gagal', 'Gagal mengambil data Bank Soal dari server.', '❌');
+    showCustomAlert('Gagal', 'Gagal mengambil data Bank Soal.', '❌');
     console.error(e);
   }
 }
@@ -2663,7 +2659,7 @@ async function saveAdminJadwal(id) {
     } else {
       showCustomAlert('Gagal Menyimpan', 'Gagal menyimpan: ' + res.message, '❌');
     }
-  } catch (e) { showCustomAlert('Kesalahan Jaringan', 'Terjadi kesalahan jaringan. Periksa koneksi internet Anda.', '🌐'); }
+  } catch (e) { showCustomAlert('Kesalahan Jaringan', 'Terjadi kesalahan jaringan. Periksa koneksi.', '🌐'); }
   showView('admin-dash-view');
 }
 
@@ -2782,7 +2778,7 @@ safeAddListener('cfgLogoInput', 'change', (e) => {
   if (!file) return;
 
   if (file.size > 1024 * 1024) { // 1MB Limit
-    showCustomAlert('File Terlalu Besar', 'Ukuran file melebihi batas maksimal 1MB. Kompres file dan coba lagi.', '📁');
+    showCustomAlert('File Terlalu Besar', 'Ukuran file melebihi 1MB. Kompres lalu coba lagi.', '📁');
     e.target.value = '';
     return;
   }
@@ -3126,7 +3122,7 @@ window.openSoalEditModal = async function (bankId, soalId) {
         document.getElementById('soal-edit-modal').style.transform = 'translate(-50%, -50%) scale(1)';
       }, 10);
     } else {
-      showCustomAlert('Tipe Tidak Didukung', 'Fitur edit cepat saat ini hanya mendukung tipe PG, Benar-Salah, dan PG Kompleks.', 'ℹ️');
+      showCustomAlert('Tipe Tidak Didukung', 'Edit cepat hanya mendukung tipe PG, Benar-Salah, dan PG Kompleks.', 'ℹ️');
     }
   } catch (e) {
     hideLoading();
@@ -3151,8 +3147,8 @@ window.saveSoalEdit = async function () {
   const gambar = document.getElementById('soalEditGambar').value.trim();
   const rawKunci = document.getElementById('soalEditKunci').value;
 
-  if (!pertanyaan) return showCustomAlert('Data Tidak Lengkap', 'Teks soal tidak boleh kosong!', '📝');
-  if (!rawKunci) return showCustomAlert('Data Tidak Lengkap', 'Kunci jawaban tidak boleh kosong!', '📝');
+  if (!pertanyaan) return showCustomAlert('Data Tidak Lengkap', 'Teks soal tidak boleh kosong.', '📝');
+  if (!rawKunci) return showCustomAlert('Data Tidak Lengkap', 'Kunci jawaban tidak boleh kosong.', '📝');
 
   // Format the key to uppercase and remove spaces
   const kunci = String(rawKunci).toUpperCase().replace(/\s+/g, '');
@@ -3189,7 +3185,7 @@ window.saveSoalEdit = async function () {
 let currentImportType = '';
 
 window.downloadTemplateExcel = function () {
-  if (typeof XLSX === 'undefined') return showCustomAlert('Library Belum Siap', 'Library Excel belum dimuat. Pastikan koneksi internet stabil dan coba lagi.', '⚠️');
+  if (typeof XLSX === 'undefined') return showCustomAlert('Library Belum Siap', 'Library Excel belum dimuat. Pastikan koneksi stabil.', '⚠️');
   let data = [];
   if (currentImportType === 'siswa') {
     data = [
@@ -3376,12 +3372,12 @@ async function importSoalExcel(jsonData, bankId) {
     showCustomAlert('Import Berhasil', msg, '✅');
     closeImportModal();
     loadAdminSoal();
-  } else showCustomAlert('Import Gagal', 'Tidak ada soal valid yang ditemukan. Periksa format file.', '❌');
+  } else showCustomAlert('Import Gagal', 'Tidak ada soal valid ditemukan. Periksa format file.', '❌');
 }
 
 window.processImport = async function () {
   const fileInput = document.getElementById('importFileInput');
-  if (fileInput.files.length === 0) return showCustomAlert('File Diperlukan', 'Pilih file terlebih dahulu sebelum melanjutkan.', '📂');
+  if (fileInput.files.length === 0) return showCustomAlert('File Diperlukan', 'Pilih file terlebih dahulu.', '📂');
 
   const file = fileInput.files[0];
   const reader = new FileReader();
@@ -3395,7 +3391,7 @@ window.processImport = async function () {
         if (currentImportType === 'siswa') await importSiswaCSV(text);
         else if (currentImportType === 'soal') {
           const bankId = document.getElementById('importBankId').value.trim();
-          if (!bankId) return showCustomAlert('Kode Wajib Diisi', 'Kode Bank Soal wajib diisi sebelum melanjutkan.', '📝');
+          if (!bankId) return showCustomAlert('Kode Wajib Diisi', 'Kode Bank Soal wajib diisi.', '📝');
           await importSoalCSV(text, bankId);
         }
       } finally {
@@ -3407,7 +3403,7 @@ window.processImport = async function () {
     reader.onload = async function (e) {
       showLoading('Memproses File Excel...');
       try {
-        if (typeof XLSX === 'undefined') return showCustomAlert('Library Belum Siap', 'Library Excel belum termuat. Periksa koneksi internet Anda.', '⚠️');
+        if (typeof XLSX === 'undefined') return showCustomAlert('Library Belum Siap', 'Library Excel belum termuat. Periksa koneksi internet.', '⚠️');
         const data = new Uint8Array(e.target.result);
 
         const workbook = XLSX.read(data, { type: 'array' });
@@ -3419,11 +3415,11 @@ window.processImport = async function () {
           await importSiswaExcel(jsonData);
         } else if (currentImportType === 'soal') {
           const bankId = document.getElementById('importBankId').value.trim();
-          if (!bankId) return showCustomAlert('Kode Wajib Diisi', 'Kode Bank Soal wajib diisi sebelum melanjutkan.', '📝');
+          if (!bankId) return showCustomAlert('Kode Wajib Diisi', 'Kode Bank Soal wajib diisi.', '📝');
           await importSoalExcel(jsonData, bankId);
         }
       } catch (err) {
-        showCustomAlert('Gagal Membaca File', 'Gagal membaca file Excel. Pastikan file tidak rusak atau dalam format yang benar.', '❌');
+        showCustomAlert('Gagal Membaca File', 'Gagal membaca file Excel. Pastikan file tidak rusak.', '❌');
         console.error(err);
       } finally {
         hideLoading();
@@ -3463,7 +3459,7 @@ async function importSiswaExcel(jsonData) {
     closeImportModal();
     loadAdminSiswa();
   } else {
-    showCustomAlert('Import Gagal', 'Tidak ada data valid ditemukan di Excel. Pastikan ID diisi di kolom A.', '❌');
+    showCustomAlert('Import Gagal', 'Tidak ada data valid di Excel. Pastikan ID ada di kolom A.', '❌');
   }
 }
 
@@ -3488,11 +3484,11 @@ async function importSiswaCSV(csvText) {
   }
   if (count > 0) {
     await db.ref('/peserta').update(updates);
-    showCustomAlert('Import Berhasil', 'Berhasil mengimpor ' + count + ' data siswa.', '✅');
+    showCustomAlert('Import Berhasil', 'Berhasil mengimpor ' + count + ' siswa.', '✅');
     closeImportModal();
     loadAdminSiswa();
   } else {
-    showCustomAlert('Import Gagal', 'Tidak ada data valid ditemukan di CSV. Pastikan ada header di baris pertama.', '❌');
+    showCustomAlert('Import Gagal', 'Tidak ada data valid di CSV. Pastikan ada header di baris 1.', '❌');
   }
 }
 
@@ -3532,7 +3528,7 @@ async function importSoalCSV(csvText, bankId) {
     closeImportModal();
     loadAdminSoal();
   } else {
-    showCustomAlert('Format Salah', 'Data kosong atau salah format. Pastikan menggunakan titik koma (;) sebagai pemisah.', '⚠️');
+    showCustomAlert('Format Salah', 'Data kosong/salah format. Gunakan titik koma (;) sebagai pemisah.', '⚠️');
   }
 }
 // --- Jadwal Builder Logic ---
@@ -3586,7 +3582,7 @@ window.saveJadwal = async function () {
   const selesaiStr = document.getElementById('jSelesai').value;
 
   if (!id || !nama || !soal || !mulaiStr || !selesaiStr) {
-    return showCustomAlert('Data Tidak Lengkap', 'Harap isi semua field yang wajib sebelum menyimpan.', '📝');
+    return showCustomAlert('Data Tidak Lengkap', 'Harap isi semua field yang wajib.', '📝');
   }
 
   const mulaiMs = new Date(mulaiStr).getTime();
@@ -3831,13 +3827,22 @@ window.verifyPwaBypass = async function () {
 function showCustomAlert(title, message, icon = '⚠️') {
   const modal = document.getElementById('custom-alert-modal');
   if (!modal) return;
-  document.getElementById('custom-alert-title').textContent = title;
-  document.getElementById('custom-alert-message').textContent = message;
-  document.getElementById('custom-alert-icon').textContent = icon;
+  // Pastikan loading overlay tertutup dulu sebelum modal tampil
+  hideLoading();
+  const titleEl = document.getElementById('custom-alert-title');
+  const msgEl = document.getElementById('custom-alert-message');
+  const iconEl = document.getElementById('custom-alert-icon');
+  if (titleEl) titleEl.textContent = title;
+  if (msgEl) msgEl.textContent = (message !== undefined && message !== null) ? message : '';
+  if (iconEl) iconEl.textContent = icon;
   modal.style.display = 'flex';
+  modal.style.opacity = '1';       // Override opacity:0 dari class .overlay
+  modal.style.pointerEvents = 'auto';
 }
 
 function closeCustomAlert() {
   const modal = document.getElementById('custom-alert-modal');
-  if (modal) modal.style.display = 'none';
+  if (!modal) return;
+  modal.style.display = 'none';
+  modal.style.opacity = '0';
 }
