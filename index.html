@@ -38,13 +38,17 @@
       <div class="wave-bg-container">
         <div class="wave-content">
           <div class="centric-header stagger-1">
-            <div class="centric-logo" id="school-logo-container">
+            <div class="centric-logo" id="school-logo-container" style="position: relative;">
               <img id="school-logo-img" src=""
                 style="display:none; max-width:100%; max-height:100%; object-fit:contain;">
               <svg id="default-logo-svg" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12 2L2 7L12 12L22 7L12 2Z" />
                 <path d="M2 9V14C2 14 7.5 17.5 12 19.5C16.5 17.5 22 14 22 14V9L12 14L2 9Z" />
               </svg>
+              <!-- Armor 1000 Sync Badge -->
+              <div id="sync-badge" style="position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); background: #10B981; color: white; font-size: 9px; padding: 3px 8px; border-radius: 12px; font-weight: 800; box-shadow: 0 4px 12px rgba(16,185,129,0.4); display: none; white-space: nowrap; border: 2px solid white; z-index: 10;">
+                OFFLINE READY
+              </div>
             </div>
             <div class="centric-identity">
               <h1 id="portal-school-sub">SMP Negeri 7</h1>
@@ -362,6 +366,16 @@
               <polyline points="9 18 15 12 9 6" />
             </svg>
           </button>
+
+          <div style="margin-bottom: 32px; position: relative;">
+            <div id="school-logo-img-container" 
+                 style="width: 88px; height: 88px; margin: 0 auto; background: white; border-radius: 24px; display: flex; align-items: center; justify-content: center; box-shadow: 0 8px 20px rgba(0,0,0,0.06); border: 1px solid rgba(0,0,0,0.03);">
+              <img id="school-logo-img" src="" style="width: 64px; height: 64px; display: none; object-fit: contain;">
+              <svg id="default-logo-svg" style="width: 48px; height: 48px; color: var(--primary);" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"></path>
+              </svg>
+            </div>
+          </div>
 
           <button id="btnSubmit" class="btn-footer btn-footer-success" style="display:none;">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
