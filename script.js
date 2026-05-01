@@ -352,6 +352,8 @@ async function loadPesertaCache() {
       const cached = localStorage.getItem(PESERTA_CACHE_KEY);
       if (cached) {
         cachedPeserta = JSON.parse(cached);
+        SystemStatus.peserta = 'success';
+        updateInitStatusDisplay();
         return cachedPeserta;
       }
     }
@@ -378,9 +380,13 @@ async function loadPesertaCache() {
       localStorage.setItem(PESERTA_CACHE_KEY, JSON.stringify(results));
       localStorage.setItem(PESERTA_CACHE_TIME_KEY, Date.now().toString());
     } catch (e) { /* storage penuh, skip */ }
+    SystemStatus.peserta = 'success';
+    updateInitStatusDisplay();
     return results;
   } catch (e) {
     console.error("Gagal memuat daftar peserta:", e);
+    SystemStatus.peserta = 'error';
+    updateInitStatusDisplay();
     return [];
   } finally {
     window.dbDisconnect();
@@ -542,6 +548,42 @@ function handleCheatDetectionOptimized() {
 }
 
 /* ================================
+   📡 SYSTEM INITIALIZATION TRACKER
+================================ */
+const SystemStatus = {
+  auth: 'pending',
+  peserta: 'pending',
+  portal: 'pending'
+};
+
+function updateInitStatusDisplay() {
+  const dot = document.getElementById('init-dot');
+  const text = document.getElementById('init-text');
+  if (!dot || !text) return;
+
+  const statuses = [SystemStatus.auth, SystemStatus.peserta, SystemStatus.portal];
+  dot.classList.remove('init-success', 'init-warning', 'init-error');
+  
+  if (statuses.every(s => s === 'success')) {
+    dot.classList.add('init-success');
+    dot.style.animation = 'none'; 
+    text.textContent = 'Sistem Siap. Ujian dapat dimulai!';
+    text.style.color = '#10b981';
+  } else if (statuses.some(s => s === 'error')) {
+    dot.classList.add('init-error');
+    text.textContent = 'Gagal memuat data. Mohon muat ulang halaman.';
+    text.style.color = '#ef4444';
+  } else if (statuses.some(s => s === 'success')) {
+    dot.classList.add('init-warning');
+    text.textContent = 'Sedang menyiapkan data...';
+    text.style.color = 'var(--text-muted)';
+  } else {
+    text.textContent = 'Menyiapkan sistem...';
+    text.style.color = 'var(--text-muted)';
+  }
+}
+
+/* ================================
    🚀 INIT
 ================================ */
 // initAutocomplete removed here, using original logic
@@ -626,9 +668,23 @@ function patchFirebase() {
 }
 
 function initAuth() {
-  if (typeof firebase === 'undefined' || !firebase.auth) return;
+  if (typeof firebase === 'undefined' || !firebase.auth) {
+    SystemStatus.auth = 'error';
+    updateInitStatusDisplay();
+    return;
+  }
   const auth = firebase.auth();
-  authPromise = auth.signInAnonymously().then(() => { isAuthReady = true; }).catch(err => console.error(err));
+  authPromise = auth.signInAnonymously()
+    .then(() => { 
+       isAuthReady = true; 
+       SystemStatus.auth = 'success';
+       updateInitStatusDisplay();
+    })
+    .catch(err => {
+       console.error(err);
+       SystemStatus.auth = 'error';
+       updateInitStatusDisplay();
+    });
 }
 
 async function gasRun(funcName, ...args) {
@@ -1902,11 +1958,13 @@ function initPortal() {
   }
   fetchPortalExams();
 
-  // Prefetch daftar peserta di background agar autocomplete login langsung responsif.
-  // Cache disimpan di localStorage (30 menit), jadi request berikutnya tidak hit Firebase sama sekali.
+  // Prefetch daftar peserta di background
   authPromise.then(() => {
     if (!cachedPeserta) {
       loadPesertaCache().catch(() => { });
+    } else {
+      SystemStatus.peserta = 'success';
+      updateInitStatusDisplay();
     }
   });
 
@@ -1924,28 +1982,34 @@ function initPortal() {
           const idenSnap = await db.ref('/config/identity').once('value');
           const iden = idenSnap.val() || {};
           if (iden.name) {
-            document.title = "CBT Online – " + iden.name;
-            const ph1 = document.getElementById('ph-sekolah');
-            const ph2 = document.getElementById('ph-sekolah-2');
-            if (ph1) ph1.textContent = iden.name;
-            if (ph2) ph2.textContent = iden.name;
+            safeSetText('ph-sekolah', iden.name);
+            safeSetText('ph-sekolah-2', iden.name);
+            safeSetText('portal-school-sub', iden.name);
+            if (iden.logo) {
+              const logos = ['school-logo-img', 'cfgLogoPreviewImg'];
+              logos.forEach(id => {
+                const el = document.getElementById(id);
+                if (el) { el.src = iden.logo; el.style.display = 'block'; }
+              });
+              const def = document.getElementById('default-logo-svg');
+              if (def) def.style.display = 'none';
+            }
           }
-          if (iden.sub) {
-            const subEl = document.getElementById('portal-school-sub');
-            if (subEl) subEl.textContent = iden.sub;
-          }
+          SystemStatus.portal = 'success';
+          updateInitStatusDisplay();
         });
-      } catch (e) { console.error(e); }
+      } catch (e) {
+        console.error("Gagal memuat identitas sekolah:", e);
+        SystemStatus.portal = 'error';
+        updateInitStatusDisplay();
+      }
 
-      // PWA Enforcer Check (Hanya untuk Mobile)
+      // PWA Enforcer Check
       if (State.security.pwa) {
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
         const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
         const hasBypass = sessionStorage.getItem('pwa_bypass_granted') === '1';
-        // Jika perangkat adalah Mobile dan bukan mode standalone, maka blokir. PC dibebaskan.
-        if (isMobile && !isStandalone && !hasBypass &&
-          !window.location.hostname.includes('localhost') &&
-          !window.location.hostname.includes('127.0.0.1')) {
+        if (isMobile && !isStandalone && !hasBypass && !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')) {
           document.getElementById('pwa-blocker-overlay').style.display = 'flex';
         }
       }
