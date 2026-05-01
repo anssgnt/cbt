@@ -1630,12 +1630,15 @@ safeAddListener('btnPrev', 'click', () => {
 
 safeAddListener('btnDoubt', 'click', () => {
   const qId = State.questions[State.currentIndex].id;
+  const btnDoubt = document.getElementById('btnDoubt');
   if (State.doubts.has(qId)) {
     State.doubts.delete(qId);
+    if (btnDoubt) btnDoubt.classList.remove('active');
   } else {
     State.doubts.add(qId);
+    if (btnDoubt) btnDoubt.classList.add('active');
   }
-  renderQuestion(State.currentIndex); // Re-render to update UI and grid
+  updateGridUI(); // Hanya update grid, jangan render ulang soal
   debouncedSave(); // Auto-save
 });
 
