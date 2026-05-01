@@ -3473,7 +3473,7 @@ window.saveJadwal = async function () {
     selesai: selesaiMs,
     aktif: true,
     token: token,
-    min_selesai: 0
+    min_selesai: parseInt(document.getElementById('jMinSelesai').value) || 0
   };
 
   await db.ref('/jadwal/' + id).set(payload);
