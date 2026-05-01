@@ -572,27 +572,62 @@ const SystemStatus = {
 function updateInitStatusDisplay() {
   const dot = document.getElementById('init-dot');
   const text = document.getElementById('init-text');
+  const container = document.getElementById('init-status-container');
   if (!dot || !text) return;
 
   const statuses = [SystemStatus.auth, SystemStatus.peserta, SystemStatus.portal];
+  const doneCount = statuses.filter(s => s === 'success').length;
+  const hasError = statuses.some(s => s === 'error');
+  const allDone = statuses.every(s => s === 'success');
+
   dot.classList.remove('init-success', 'init-warning', 'init-error');
 
-  if (statuses.every(s => s === 'success')) {
+  if (allDone) {
     dot.classList.add('init-success');
+    dot.style.background = '#10b981';
     dot.style.animation = 'none';
-    text.textContent = 'Sistem Siap. Ujian dapat dimulai!';
+    dot.style.boxShadow = '0 0 0 3px rgba(16,185,129,0.25)';
+    text.innerHTML = '<strong style="color:#10b981;">✓ Sistem Siap — Ujian dapat dimulai!</strong>';
     text.style.color = '#10b981';
-  } else if (statuses.some(s => s === 'error')) {
+    text.style.fontSize = '0.8rem';
+    // Tampilkan banner sukses yang lebih mencolok
+    if (container) {
+      container.style.background = 'rgba(16,185,129,0.08)';
+      container.style.border = '1px solid rgba(16,185,129,0.3)';
+      container.style.borderRadius = '10px';
+      container.style.padding = '10px 14px';
+      container.style.opacity = '1';
+    }
+  } else if (hasError) {
     dot.classList.add('init-error');
-    text.textContent = 'Gagal memuat data. Mohon muat ulang halaman.';
+    dot.style.background = '#ef4444';
+    dot.style.animation = 'none';
+    text.innerHTML = '⚠ Gagal memuat data. Muat ulang halaman.';
     text.style.color = '#ef4444';
-  } else if (statuses.some(s => s === 'success')) {
-    dot.classList.add('init-warning');
-    text.textContent = 'Sedang menyiapkan data...';
-    text.style.color = 'var(--text-muted)';
+    if (container) {
+      container.style.background = 'rgba(239,68,68,0.06)';
+      container.style.border = '1px solid rgba(239,68,68,0.25)';
+      container.style.borderRadius = '10px';
+      container.style.padding = '10px 14px';
+    }
   } else {
-    text.textContent = 'Menyiapkan sistem...';
+    dot.classList.add('init-warning');
+    dot.style.background = '#f59e0b';
+    // Teks langkah-langkah yang lebih deskriptif
+    const steps = [
+      { key: 'auth',    label: 'Koneksi server' },
+      { key: 'peserta', label: 'Data peserta'   },
+      { key: 'portal',  label: 'Data sekolah'   },
+    ];
+    const stepTexts = steps.map(s => {
+      const st = SystemStatus[s.key];
+      if (st === 'success') return `<span style="color:#10b981">✓ ${s.label}</span>`;
+      if (st === 'error')   return `<span style="color:#ef4444">✗ ${s.label}</span>`;
+      return `<span style="color:var(--text-muted)">⋯ ${s.label}</span>`;
+    });
+    text.innerHTML = stepTexts.join(' &nbsp;·&nbsp; ');
     text.style.color = 'var(--text-muted)';
+    text.style.fontSize = '0.75rem';
   }
 }
 
@@ -1739,6 +1774,14 @@ if (overlay) overlay.addEventListener('click', closeGrid);
 
 // --- Submit ---
 safeAddListener('btnSubmit', 'click', () => {
+  // Bersihkan auto-retry timer jika ada (siswa pencet manual)
+  if (State._autoRetryTimer) {
+    clearInterval(State._autoRetryTimer);
+    State._autoRetryTimer = null;
+  }
+  const retryEl = document.getElementById('submit-retry-countdown');
+  if (retryEl) retryEl.style.display = 'none';
+
   // Aturan Waktu Minimal Mengerjakan (Dinamis dari Sheet Jadwal)
   const elapsedSeconds = (State.config.durasi * 60) - State.timeRemaining;
   const minLockMinutes = (State.security && State.security.minTime) ? State.security.minTime : (State.config.min_selesai || 0);
@@ -1786,24 +1829,35 @@ safeAddListener('btnSubmit', 'click', () => {
  * @param {number} maxRetries - Jumlah percobaan ulang maksimal (default: 3)
  * @param {number} retryDelayMs - Jeda tunggu antar percobaan (default: 5 detik)
  */
-async function gasRunWithRetry(funcName, args, maxRetries = 3, retryDelayMs = 5000) {
-  // args bisa berupa single value atau array — normalisasi ke array dulu
+async function gasRunWithRetry(funcName, args, maxRetries = 5, retryDelayMs = 4000) {
   const argsArray = Array.isArray(args) ? args : [args];
   let lastError = null;
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const res = await gasRun(funcName, ...argsArray); // spread agar gasRun menerima argumen individual
-      return res; // Sukses, kembalikan hasilnya
+      const res = await gasRun(funcName, ...argsArray);
+      return res;
     } catch (err) {
       lastError = err;
       if (attempt < maxRetries) {
-        // Tampilkan pesan menunggu yang menenangkan di Spinner
-        showLoading(`Server sibuk. Percobaan ke-${attempt + 1} dari ${maxRetries}...`);
-        await sleep(retryDelayMs);
+        // Hitung jeda berikutnya: makin lama makin panjang (exponential backoff ringan)
+        const jeda = retryDelayMs + (attempt - 1) * 2000;
+        const jedaSec = Math.ceil(jeda / 1000);
+
+        // Spinner informatif — siswa tidak perlu berbuat apa-apa
+        let dotAnim = '';
+        for (let i = 0; i < attempt; i++) dotAnim += '●';
+        for (let i = attempt; i < maxRetries; i++) dotAnim += '○';
+
+        showLoading(
+          `Mengirim jawaban... ${dotAnim}\n` +
+          `Server sedang padat. Otomatis coba lagi dalam ${jedaSec} detik.\n` +
+          `(Percobaan ${attempt} dari ${maxRetries} — jangan tekan apapun)`
+        );
+        await sleep(jeda);
       }
     }
   }
-  // Semua percobaan habis, lempar error terakhir
   throw lastError;
 }
 
@@ -1816,13 +1870,18 @@ async function submitExam(isAutoSubmit) {
   // Setiap HP akan mengacak jeda uniknya sendiri antara 0-55 detik.
   // Ini memecah "Tsunami 1000 Submit" menjadi gelombang ~18 /detik.
   if (isAutoSubmit) {
-    const jitterMs = Math.floor(Math.random() * 60000); // 0 - 60.000 ms: cukup untuk 1000 siswa (~17/detik), tidak membuat siswa panik
+    const jitterMs = Math.floor(Math.random() * 60000);
     const jitterSec = Math.ceil(jitterMs / 1000);
-    showLoading(`Waktu habis. Jawaban dikirim dalam ${jitterSec} detik...`);
+    showLoading(`Waktu habis. Jawaban dikirim dalam ${jitterSec} detik...\n(Harap tunggu, jangan tutup halaman ini)`);
     await sleep(jitterMs);
   } else {
-    // Manual jitter (0-2s) to prevent exact simultaneous clicks
-    await sleep(Math.floor(Math.random() * 2000));
+    // Jitter manual: 0–5 detik, menyebar beban saat banyak siswa pencet Selesai bersamaan
+    const jitterMs = Math.floor(Math.random() * 5000);
+    if (jitterMs > 1000) {
+      const jitterSec = Math.ceil(jitterMs / 1000);
+      showLoading(`Menyiapkan pengiriman jawaban... (${jitterSec} dtk)\nHarap tunggu, jangan tekan apapun.`);
+      await sleep(jitterMs);
+    }
   }
 
   saveStateLocal(); // Pastikan jawaban terbaru tersimpan di LocalStorage sebelum kirim
@@ -1907,13 +1966,41 @@ async function submitExam(isAutoSubmit) {
       }
     }
   } catch (err) {
-    // Gagal total setelah 3x retry — beri tahu siswa
-    showCustomAlert('Koneksi Terputus', 'Jawaban Anda AMAN di perangkat. Tekan tombol Kirim Ulang.', '📡');
+    // Gagal total setelah semua retry — data masih aman di localStorage
     State.examActive = true;
     State.submissionFailed = true;
+    State.submissionRetryCount = (State.submissionRetryCount || 0) + 1;
     updateNavButtons();
     hideLoading();
     showView('exam-view');
+
+    // Auto-retry otomatis dalam 30 detik, tanpa siswa perlu tekan apapun
+    if (State.submissionRetryCount < 8) {
+      let countdown = 30;
+      const retryTimerEl = document.getElementById('submit-retry-countdown');
+      if (retryTimerEl) {
+        retryTimerEl.style.display = 'block';
+        retryTimerEl.textContent = `Jawaban aman di perangkat. Otomatis coba kirim ulang dalam ${countdown} detik...`;
+      }
+      State._autoRetryTimer = setInterval(() => {
+        countdown--;
+        if (retryTimerEl) {
+          retryTimerEl.textContent = `Jawaban aman di perangkat. Otomatis coba kirim ulang dalam ${countdown} detik...`;
+        }
+        if (countdown <= 0) {
+          clearInterval(State._autoRetryTimer);
+          if (retryTimerEl) retryTimerEl.style.display = 'none';
+          submitExam(false); // coba lagi otomatis
+        }
+      }, 1000);
+    } else {
+      // Sudah terlalu banyak gagal — minta hubungi pengawas
+      showCustomAlert(
+        'Gagal Mengirim',
+        'Jawaban Anda AMAN tersimpan di perangkat ini. Hubungi pengawas untuk bantuan, atau coba tekan Kirim Ulang.',
+        '📡'
+      );
+    }
   }
 }
 
