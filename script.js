@@ -111,7 +111,9 @@ async function initSchoolIdentity() {
 // --- Utilities ---
 function showView(viewId) {
   document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  document.getElementById(viewId).classList.add('active');
+  const target = document.getElementById(viewId);
+  if (target) target.classList.add('active');
+  hideLoading(); // Pastikan loading tertutup saat ganti halaman
 }
 
 function safeAddListener(id, event, callback) {
@@ -133,21 +135,17 @@ function showAlert(msg, type = 'danger') {
 }
 
 function showLoading(text) {
-  document.getElementById('loading-text').textContent = text || 'Memuat...';
-  showView('loading-view');
+  const overlay = document.getElementById('loading-overlay');
+  const textEl = document.getElementById('loading-overlay-text');
+  if (overlay && textEl) {
+    textEl.textContent = text || 'Memuat...';
+    overlay.style.display = 'flex';
+  }
 }
 
 function hideLoading() {
-  // If we were showing the loading view, we usually want to go back to the previous view.
-  // We'll just remove the 'active' class from loading-view, and ensure the current view is visible.
-  // Wait, CBT uses showView() which hides others. We need a way to restore the last view or just hide the loading overlay.
-  // In CBT architecture, admin-dash-view is usually the fallback.
-  if (document.getElementById('admin-dash-view').classList.contains('active') === false &&
-    document.getElementById('loading-view').classList.contains('active')) {
-    showView('admin-dash-view');
-  } else {
-    document.getElementById('loading-view').classList.remove('active');
-  }
+  const overlay = document.getElementById('loading-overlay');
+  if (overlay) overlay.style.display = 'none';
 }
 
 // --- Seeded Randomizer & Shuffler ---
@@ -2472,15 +2470,29 @@ function openBankSoalModal() { showCustomAlert('Fitur Bank Soal Builder segera h
 
 window.deleteSiswa = async function (id) {
   if (confirm('Hapus siswa ' + id + '?')) {
-    await db.ref('/peserta/' + id).remove();
-    loadAdminSiswa();
+    showLoading('Menghapus Siswa...');
+    try {
+      await db.ref('/peserta/' + id).remove();
+      loadAdminSiswa();
+    } catch (e) {
+      showCustomAlert('Gagal menghapus: ' + e.message);
+    } finally {
+      hideLoading();
+    }
   }
 }
 window.deleteBankSoal = async function (id) {
   if (confirm('Hapus bank soal ' + id + '? Ini juga akan menghapus kunci jawaban.')) {
-    await db.ref('/soal/' + id).remove();
-    await db.ref('/kunci/' + id).remove();
-    loadAdminSoal();
+    showLoading('Menghapus Bank Soal...');
+    try {
+      await db.ref('/soal/' + id).remove();
+      await db.ref('/kunci/' + id).remove();
+      loadAdminSoal();
+    } catch (e) {
+      showCustomAlert('Gagal menghapus: ' + e.message);
+    } finally {
+      hideLoading();
+    }
   }
 }
 window.previewSoal = async function (bankId) {
@@ -2606,8 +2618,15 @@ async function loadAdminJadwal() {
 
 window.deleteJadwal = async function (id) {
   if (confirm('Hapus jadwal ujian ' + id + '?')) {
-    await db.ref('/jadwal/' + id).remove();
-    loadAdminJadwal();
+    showLoading('Menghapus Jadwal...');
+    try {
+      await db.ref('/jadwal/' + id).remove();
+      loadAdminJadwal();
+    } catch (e) {
+      showCustomAlert('Gagal menghapus: ' + e.message);
+    } finally {
+      hideLoading();
+    }
   }
 }
 
@@ -3348,16 +3367,22 @@ window.processImport = async function () {
   if (isCSV) {
     reader.onload = async function (e) {
       const text = e.target.result;
-      if (currentImportType === 'siswa') await importSiswaCSV(text);
-      else if (currentImportType === 'soal') {
-        const bankId = document.getElementById('importBankId').value.trim();
-        if (!bankId) return showCustomAlert('Kode Bank Soal wajib diisi!');
-        await importSoalCSV(text, bankId);
+      showLoading('Mengimpor Data...');
+      try {
+        if (currentImportType === 'siswa') await importSiswaCSV(text);
+        else if (currentImportType === 'soal') {
+          const bankId = document.getElementById('importBankId').value.trim();
+          if (!bankId) return showCustomAlert('Kode Bank Soal wajib diisi!');
+          await importSoalCSV(text, bankId);
+        }
+      } finally {
+        hideLoading();
       }
     };
     reader.readAsText(file);
   } else {
     reader.onload = async function (e) {
+      showLoading('Memproses File Excel...');
       try {
         if (typeof XLSX === 'undefined') return showCustomAlert("Library Excel belum termuat, periksa koneksi internet Anda.");
         const data = new Uint8Array(e.target.result);
@@ -3377,6 +3402,8 @@ window.processImport = async function () {
       } catch (err) {
         showCustomAlert("Gagal membaca file Excel. Pastikan file tidak rusak.");
         console.error(err);
+      } finally {
+        hideLoading();
       }
     };
     reader.readAsArrayBuffer(file);
@@ -3559,11 +3586,17 @@ window.saveJadwal = async function () {
     token: token,
     min_selesai: parseInt(document.getElementById('jMinSelesai').value) || 0
   };
-
-  await db.ref('/jadwal/' + id).set(payload);
-  showCustomAlert('Jadwal berhasil disimpan!');
-  closeJadwalModal();
-  loadAdminJadwal();
+  showLoading('Menyimpan Jadwal...');
+  try {
+    await db.ref('/jadwal/' + id).set(payload);
+    showCustomAlert('Jadwal berhasil disimpan!');
+    closeJadwalModal();
+    loadAdminJadwal();
+  } catch (e) {
+    showCustomAlert('Gagal menyimpan jadwal: ' + e.message);
+  } finally {
+    hideLoading();
+  }
 }
 
 // --- FITUR CETAK BERITA ACARA & PRESENSI ---
