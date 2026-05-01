@@ -684,6 +684,25 @@
                      maxlength="12"
                      oninput="this.value=this.value.toUpperCase()">
                 </div>
+              </div>
+
+              <!-- Firebase Config (Advanced) -->
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; margin-bottom:12px;">
+                 <h3 style="font-size:1.1rem;margin:0; color:var(--danger);">Koneksi & Database (Advanced)</h3>
+              </div>
+              <div class="card" style="display:flex; flex-direction:column; gap:12px; border: 1px solid var(--danger-soft); margin-bottom: 20px;">
+                 <p style="font-size:0.8rem; color:var(--danger); font-weight:600;">⚠️ Peringatan: Jangan ubah data di bawah ini kecuali Anda memindahkan server database ke Firebase lain.</p>
+                 <div class="grid-2" style="gap:12px;">
+                    <div class="form-group"><label style="font-size:0.8rem;">API Key</label><input type="password" id="fbApiKey" class="form-control" style="font-size:0.85rem;"></div>
+                    <div class="form-group"><label style="font-size:0.8rem;">Auth Domain</label><input type="text" id="fbAuthDomain" class="form-control" style="font-size:0.85rem;"></div>
+                    <div class="form-group"><label style="font-size:0.8rem;">Database URL</label><input type="text" id="fbDbUrl" class="form-control" style="font-size:0.85rem;"></div>
+                    <div class="form-group"><label style="font-size:0.8rem;">Project ID</label><input type="text" id="fbProjectId" class="form-control" style="font-size:0.85rem;"></div>
+                    <div class="form-group"><label style="font-size:0.8rem;">Storage Bucket</label><input type="text" id="fbStorageBucket" class="form-control" style="font-size:0.85rem;"></div>
+                    <div class="form-group"><label style="font-size:0.8rem;">Messaging ID</label><input type="text" id="fbMessagingId" class="form-control" style="font-size:0.85rem;"></div>
+                    <div class="form-group" style="grid-column: span 2;"><label style="font-size:0.8rem;">App ID</label><input type="text" id="fbAppId" class="form-control" style="font-size:0.85rem;"></div>
+                 </div>
+                 <button class="btn btn-outline" onclick="resetFirebaseConfig()" style="color:var(--danger); border-color:var(--danger); margin-top:8px; font-size:0.8rem;">🔄 Reset ke Bawaan Sistem</button>
+              </div>
           </div>
 
         </div>
