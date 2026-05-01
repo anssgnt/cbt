@@ -1145,7 +1145,31 @@ let scheduleTimer = null;
 async function loadSchedules() {
   document.getElementById('schedule-user-name').textContent = State.user.name + ' - ' + State.user.kelas;
   showLoading('Memeriksa Jadwal...');
+  
+  // Armor 1000: Mencoba ambil dari cache lokal dulu agar responsif
   try {
+    const cachedJadwal = localStorage.getItem('CBT_CACHE_JADWAL');
+    if (cachedJadwal) {
+      const jadwals = JSON.parse(cachedJadwal);
+      const list = [];
+      for(let id in jadwals) {
+        let s = jadwals[id];
+        s.id = id;
+        // Filter jadwal yang relevan untuk kelas siswa (atau ALL)
+        if (!s.kelas || s.kelas === 'ALL' || s.kelas === State.user.kelas) {
+           list.push(s);
+        }
+      }
+      State.schedules = list;
+      State.schedules.forEach(s => s._lastRenderedStatus = s.status);
+      renderSchedules();
+      showView('schedule-view');
+      hideLoading(); // Sembunyikan loading jika data cache sudah tampil
+    }
+  } catch(e) {}
+
+  try {
+    // Tetap fetch dari server untuk status terbaru (misal: apakah sudah SELESAI di server)
     const res = await gasRun('getSchedules', State.user.id, State.user.kelas);
     if (res.success) {
       State.serverTimeOffset = (res.serverTime || Date.now()) - Date.now();
@@ -1154,7 +1178,6 @@ async function loadSchedules() {
       renderSchedules();
       showView('schedule-view');
 
-      // Auto-update UI every 1 second locally without hitting server
       if (scheduleTimer) clearInterval(scheduleTimer);
       scheduleTimer = setInterval(() => {
         if (document.getElementById('schedule-view').classList.contains('active')) {
@@ -1165,12 +1188,19 @@ async function loadSchedules() {
       }, 1000);
 
     } else {
-      showCustomAlert('Gagal Memuat Jadwal', 'Gagal memuat jadwal: ' + res.message, '❌');
-      showView('login-view');
+      // Jika gagal fetch tapi sudah ada data dari cache, tidak perlu mental ke login
+      if (!State.schedules || State.schedules.length === 0) {
+         showCustomAlert('Gagal Memuat Jadwal', 'Gagal memuat jadwal: ' + res.message, '❌');
+         showView('login-view');
+      }
     }
   } catch (err) {
-    showCustomAlert('Kesalahan Jaringan', 'Terjadi kesalahan sinkronisasi jaringan.', '🌐');
-    showView('login-view');
+    if (!State.schedules || State.schedules.length === 0) {
+       showCustomAlert('Kesalahan Jaringan', 'Terjadi kesalahan sinkronisasi jaringan.', '🌐');
+       showView('login-view');
+    }
+  } finally {
+    hideLoading();
   }
 }
 
@@ -1231,15 +1261,21 @@ function renderSchedules() {
     const endObj = new Date(sch.selesai);
     const pad = (n) => n.toString().padStart(2, '0');
     const timeStr = `${pad(startObj.getHours())}:${pad(startObj.getMinutes())} - ${pad(endObj.getHours())}:${pad(endObj.getMinutes())}`;
+    
+    // Format Tanggal (untuk ujian 6 hari)
+    const days = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
+    const months = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+    const dateStr = `${days[startObj.getDay()]}, ${startObj.getDate()} ${months[startObj.getMonth()]}`;
 
     const card = document.createElement('div');
     card.className = 'card';
     card.style.padding = '16px';
     card.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px;">
+      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
         <h3 style="font-size: 1.1rem; margin:0; line-height: 1.3;">${sch.nama}</h3>
         <div>${badge}</div>
       </div>
+      <div style="font-size: 0.85rem; font-weight: 600; color: var(--primary); margin-bottom: 8px;">📅 ${dateStr}</div>
       <p class="text-muted" style="font-size: 0.9rem; margin-bottom: 16px;">⏰ ${timeStr} | ⏳ ${sch.durasi} Menit</p>
       <button class="btn btn-primary" style="width: 100%;" ${btnDisabled}>${btnText}</button>
     `;
