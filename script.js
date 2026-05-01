@@ -350,6 +350,11 @@ window.dbConnectFast = async function () {
   }
 };
 
+window.dbOffline = function() {
+  activeDbRequests = 0;
+  db.goOffline();
+};
+
 // --- CACHE PESERTA PERSISTENT (localStorage, 30 menit) ---
 const PESERTA_CACHE_KEY = 'CBT_CACHE_PESERTA';
 const PESERTA_CACHE_TIME_KEY = 'CBT_CACHE_PESERTA_TIME';
@@ -404,6 +409,42 @@ async function loadPesertaCache() {
   }
 }
 
+async function syncAllDataForPortal() {
+  showLoading('Singkronisasi Data (Armor 1000)...');
+  try {
+    await dbConnectFast();
+    // 1. Fetch Identity
+    const idenSnap = await db.ref('/config/identity').once('value');
+    const iden = idenSnap.val();
+    if (iden) {
+        applySchoolIdentity(iden);
+        SystemStatus.portal = 'success';
+    }
+
+    // 2. Fetch Peserta
+    await loadPesertaCache();
+
+    // 3. Fetch Jadwal (Preview)
+    const jSnap = await db.ref('/jadwal').once('value');
+    const jadwals = jSnap.val() || {};
+    localStorage.setItem('CBT_CACHE_JADWAL', JSON.stringify(jadwals));
+    localStorage.setItem('CBT_CACHE_JADWAL_TIME', Date.now().toString());
+    
+    // 4. Force Offline to free up Firebase slots
+    dbOffline();
+    hideLoading();
+    
+    const badge = document.getElementById('sync-badge');
+    if (badge) badge.style.display = 'block';
+    
+    console.log("Armor 1000: Sync Complete. System is now Offline-First.");
+  } catch (e) {
+    console.error("Armor 1000 Sync Error:", e);
+    hideLoading();
+    // Tetap lanjut, mungkin ada cache lama
+  }
+}
+
 async function searchPeserta(keyword) {
   const key = keyword.trim().toLowerCase();
   if (key.length < 2) return [];
@@ -430,11 +471,28 @@ async function searchPeserta(keyword) {
 ================================ */
 
 async function getExamDataOptimized(examId, token, forceRefresh = false) {
-  await dbConnectFast();
+  // Armor 1000: Coba ambil dari cache jadwal dulu untuk menghemat koneksi
+  let sch = null;
   try {
-    const jSnap = await db.ref('/jadwal/' + examId).once('value');
-    const sch = jSnap.val();
-    if (!sch) throw new Error("Ujian tidak ditemukan");
+    const cachedJadwal = localStorage.getItem('CBT_CACHE_JADWAL');
+    if (cachedJadwal) {
+      const jadwals = JSON.parse(cachedJadwal);
+      sch = jadwals[examId];
+    }
+  } catch (e) { }
+
+  // Jika tidak ada di cache, baru ambil dari Firebase
+  if (!sch || forceRefresh) {
+    await dbConnectFast();
+    try {
+      const jSnap = await db.ref('/jadwal/' + examId).once('value');
+      sch = jSnap.val();
+    } finally {
+      dbDisconnect();
+    }
+  }
+
+  if (!sch) throw new Error("Ujian tidak ditemukan");
 
     // Cache Versioning (Armor 1000)
     // Gunakan timestamp mulai sebagai versi untuk invalidasi otomatis jika jadwal diubah
@@ -1781,27 +1839,25 @@ safeAddListener('btnSubmit', 'click', () => {
  * Fungsi pembantu: Wrapper gasRun dengan logika Auto-Retry senyap.
  * Jika server sedang overload (error jaringan), fungsi ini akan
  * menunggu beberapa saat dan mencoba lagi tanpa menampilkan alert.
- * @param {number} maxRetries - Jumlah percobaan ulang maksimal (default: 3)
- * @param {number} retryDelayMs - Jeda tunggu antar percobaan (default: 5 detik)
+ * @param {number} maxRetries - Jumlah percobaan ulang maksimal (default: 10)
+ * @param {number} retryDelayMs - Jeda dasar antar percobaan (default: 5 detik)
  */
-async function gasRunWithRetry(funcName, args, maxRetries = 3, retryDelayMs = 5000) {
-  // args bisa berupa single value atau array — normalisasi ke array dulu
+async function gasRunWithRetry(funcName, args, maxRetries = 10, retryDelayMs = 5000) {
   const argsArray = Array.isArray(args) ? args : [args];
   let lastError = null;
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const res = await gasRun(funcName, ...argsArray); // spread agar gasRun menerima argumen individual
-      return res; // Sukses, kembalikan hasilnya
+      const res = await gasRun(funcName, ...argsArray);
+      return res;
     } catch (err) {
       lastError = err;
       if (attempt < maxRetries) {
-        // Tampilkan pesan menunggu yang menenangkan di Spinner
-        showLoading(`Server sibuk. Percobaan ke-${attempt + 1} dari ${maxRetries}...`);
-        await sleep(retryDelayMs);
+        const waitTime = Math.ceil((retryDelayMs * attempt) / 1000);
+        showLoading(`Antrean Penuh. Mengantri di server... (Mencoba lagi dalam ${waitTime} detik)`);
+        await sleep(retryDelayMs * attempt);
       }
     }
   }
-  // Semua percobaan habis, lempar error terakhir
   throw lastError;
 }
 
@@ -1987,42 +2043,15 @@ function initPortal() {
     }
   });
 
-  // Load Global Security Settings
-  authPromise.then(async function () {
+  // ─── ARMOR 1000: Initial Sync & Offline First ───────────────────
+  authPromise.then(async () => {
+    await syncAllDataForPortal();
+    
+    // Load Security Settings
     try {
       const snap = await db.ref('/config/security').once('value');
       State.security = snap.val() || {};
-
-      // Load Global Identity (Safe after Auth & Patch)
-      initSchoolIdentity();
-
-      try {
-        await withDB(async function () {
-          const idenSnap = await db.ref('/config/identity').once('value');
-          const iden = idenSnap.val() || {};
-          if (iden.name) {
-            safeSetText('ph-sekolah', iden.name);
-            safeSetText('ph-sekolah-2', iden.name);
-            safeSetText('portal-school-sub', iden.name);
-            if (iden.logo) {
-              const logos = ['school-logo-img', 'cfgLogoPreviewImg'];
-              logos.forEach(id => {
-                const el = document.getElementById(id);
-                if (el) { el.src = iden.logo; el.style.display = 'block'; }
-              });
-              const def = document.getElementById('default-logo-svg');
-              if (def) def.style.display = 'none';
-            }
-          }
-          SystemStatus.portal = 'success';
-          updateInitStatusDisplay();
-        });
-      } catch (e) {
-        console.error("Gagal memuat identitas sekolah:", e);
-        SystemStatus.portal = 'error';
-        updateInitStatusDisplay();
-      }
-
+      
       // PWA Enforcer Check
       if (State.security.pwa) {
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -2033,7 +2062,7 @@ function initPortal() {
           if (pwaOverlay) pwaOverlay.classList.add('active');
         }
       }
-    } catch (e) { console.error("Gagal memuat config keamanan", e); }
+    } catch (e) { console.error("Armor 1000: Security Load Error", e); }
   });
 
   // Touchscreen Hotkey: 5x taps on the portal logo
