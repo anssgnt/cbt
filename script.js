@@ -33,10 +33,9 @@ window.openGuideModal = function () {
   const overlay = document.getElementById('guide-overlay');
   const modal = document.getElementById('guide-modal');
   if (!overlay || !modal) return;
-  overlay.style.display = 'block';
+  overlay.classList.add('active');
   modal.style.display = 'flex';
   setTimeout(() => {
-    overlay.style.opacity = '1';
     modal.style.opacity = '1';
     modal.style.transform = 'translate(-50%, -50%) scale(1)';
   }, 10);
@@ -46,11 +45,10 @@ window.closeGuideModal = function () {
   const overlay = document.getElementById('guide-overlay');
   const modal = document.getElementById('guide-modal');
   if (!overlay || !modal) return;
-  overlay.style.opacity = '0';
+  overlay.classList.remove('active');
   modal.style.opacity = '0';
   modal.style.transform = 'translate(-50%, -50%) scale(0.95)';
   setTimeout(() => {
-    overlay.style.display = 'none';
     modal.style.display = 'none';
   }, 300);
 };
@@ -154,13 +152,13 @@ function showLoading(text) {
   const textEl = document.getElementById('loading-overlay-text');
   if (overlay && textEl) {
     textEl.textContent = text || 'Memuat...';
-    overlay.style.display = 'flex';
+    overlay.classList.add('active');
   }
 }
 
 function hideLoading() {
   const overlay = document.getElementById('loading-overlay');
-  if (overlay) overlay.style.display = 'none';
+  if (overlay) overlay.classList.remove('active');
 }
 
 // --- Seeded Randomizer & Shuffler ---
@@ -242,7 +240,7 @@ function handleCheatDetection() {
   saveStateLocal();
 
   const overlay = document.getElementById('cheat-alert-overlay');
-  if (overlay) overlay.style.display = 'flex';
+  if (overlay) overlay.classList.add('active');
 
   try { playSiren(); } catch (e) { }
 
@@ -255,7 +253,7 @@ function handleCheatDetection() {
     if (countEl) countEl.textContent = count;
     if (count <= 0) {
       clearInterval(iv);
-      if (overlay) overlay.style.display = 'none';
+      if (overlay) overlay.classList.remove('active');
       if (State.security.fullscreen && !document.fullscreenElement) {
         document.documentElement.requestFullscreen().catch(e => { });
       }
@@ -572,62 +570,27 @@ const SystemStatus = {
 function updateInitStatusDisplay() {
   const dot = document.getElementById('init-dot');
   const text = document.getElementById('init-text');
-  const container = document.getElementById('init-status-container');
   if (!dot || !text) return;
 
   const statuses = [SystemStatus.auth, SystemStatus.peserta, SystemStatus.portal];
-  const doneCount = statuses.filter(s => s === 'success').length;
-  const hasError = statuses.some(s => s === 'error');
-  const allDone = statuses.every(s => s === 'success');
-
   dot.classList.remove('init-success', 'init-warning', 'init-error');
 
-  if (allDone) {
+  if (statuses.every(s => s === 'success')) {
     dot.classList.add('init-success');
-    dot.style.background = '#10b981';
     dot.style.animation = 'none';
-    dot.style.boxShadow = '0 0 0 3px rgba(16,185,129,0.25)';
-    text.innerHTML = '<strong style="color:#10b981;">✓ Sistem Siap — Ujian dapat dimulai!</strong>';
+    text.textContent = 'Sistem Siap. Ujian dapat dimulai!';
     text.style.color = '#10b981';
-    text.style.fontSize = '0.8rem';
-    // Tampilkan banner sukses yang lebih mencolok
-    if (container) {
-      container.style.background = 'rgba(16,185,129,0.08)';
-      container.style.border = '1px solid rgba(16,185,129,0.3)';
-      container.style.borderRadius = '10px';
-      container.style.padding = '10px 14px';
-      container.style.opacity = '1';
-    }
-  } else if (hasError) {
+  } else if (statuses.some(s => s === 'error')) {
     dot.classList.add('init-error');
-    dot.style.background = '#ef4444';
-    dot.style.animation = 'none';
-    text.innerHTML = '⚠ Gagal memuat data. Muat ulang halaman.';
+    text.textContent = 'Gagal memuat data. Mohon muat ulang halaman.';
     text.style.color = '#ef4444';
-    if (container) {
-      container.style.background = 'rgba(239,68,68,0.06)';
-      container.style.border = '1px solid rgba(239,68,68,0.25)';
-      container.style.borderRadius = '10px';
-      container.style.padding = '10px 14px';
-    }
-  } else {
+  } else if (statuses.some(s => s === 'success')) {
     dot.classList.add('init-warning');
-    dot.style.background = '#f59e0b';
-    // Teks langkah-langkah yang lebih deskriptif
-    const steps = [
-      { key: 'auth',    label: 'Koneksi server' },
-      { key: 'peserta', label: 'Data peserta'   },
-      { key: 'portal',  label: 'Data sekolah'   },
-    ];
-    const stepTexts = steps.map(s => {
-      const st = SystemStatus[s.key];
-      if (st === 'success') return `<span style="color:#10b981">✓ ${s.label}</span>`;
-      if (st === 'error')   return `<span style="color:#ef4444">✗ ${s.label}</span>`;
-      return `<span style="color:var(--text-muted)">⋯ ${s.label}</span>`;
-    });
-    text.innerHTML = stepTexts.join(' &nbsp;·&nbsp; ');
+    text.textContent = 'Sedang menyiapkan data...';
     text.style.color = 'var(--text-muted)';
-    text.style.fontSize = '0.75rem';
+  } else {
+    text.textContent = 'Menyiapkan sistem...';
+    text.style.color = 'var(--text-muted)';
   }
 }
 
@@ -1774,14 +1737,6 @@ if (overlay) overlay.addEventListener('click', closeGrid);
 
 // --- Submit ---
 safeAddListener('btnSubmit', 'click', () => {
-  // Bersihkan auto-retry timer jika ada (siswa pencet manual)
-  if (State._autoRetryTimer) {
-    clearInterval(State._autoRetryTimer);
-    State._autoRetryTimer = null;
-  }
-  const retryEl = document.getElementById('submit-retry-countdown');
-  if (retryEl) retryEl.style.display = 'none';
-
   // Aturan Waktu Minimal Mengerjakan (Dinamis dari Sheet Jadwal)
   const elapsedSeconds = (State.config.durasi * 60) - State.timeRemaining;
   const minLockMinutes = (State.security && State.security.minTime) ? State.security.minTime : (State.config.min_selesai || 0);
@@ -1829,35 +1784,24 @@ safeAddListener('btnSubmit', 'click', () => {
  * @param {number} maxRetries - Jumlah percobaan ulang maksimal (default: 3)
  * @param {number} retryDelayMs - Jeda tunggu antar percobaan (default: 5 detik)
  */
-async function gasRunWithRetry(funcName, args, maxRetries = 5, retryDelayMs = 4000) {
+async function gasRunWithRetry(funcName, args, maxRetries = 3, retryDelayMs = 5000) {
+  // args bisa berupa single value atau array — normalisasi ke array dulu
   const argsArray = Array.isArray(args) ? args : [args];
   let lastError = null;
-
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
-      const res = await gasRun(funcName, ...argsArray);
-      return res;
+      const res = await gasRun(funcName, ...argsArray); // spread agar gasRun menerima argumen individual
+      return res; // Sukses, kembalikan hasilnya
     } catch (err) {
       lastError = err;
       if (attempt < maxRetries) {
-        // Hitung jeda berikutnya: makin lama makin panjang (exponential backoff ringan)
-        const jeda = retryDelayMs + (attempt - 1) * 2000;
-        const jedaSec = Math.ceil(jeda / 1000);
-
-        // Spinner informatif — siswa tidak perlu berbuat apa-apa
-        let dotAnim = '';
-        for (let i = 0; i < attempt; i++) dotAnim += '●';
-        for (let i = attempt; i < maxRetries; i++) dotAnim += '○';
-
-        showLoading(
-          `Mengirim jawaban... ${dotAnim}\n` +
-          `Server sedang padat. Otomatis coba lagi dalam ${jedaSec} detik.\n` +
-          `(Percobaan ${attempt} dari ${maxRetries} — jangan tekan apapun)`
-        );
-        await sleep(jeda);
+        // Tampilkan pesan menunggu yang menenangkan di Spinner
+        showLoading(`Server sibuk. Percobaan ke-${attempt + 1} dari ${maxRetries}...`);
+        await sleep(retryDelayMs);
       }
     }
   }
+  // Semua percobaan habis, lempar error terakhir
   throw lastError;
 }
 
@@ -1870,18 +1814,13 @@ async function submitExam(isAutoSubmit) {
   // Setiap HP akan mengacak jeda uniknya sendiri antara 0-55 detik.
   // Ini memecah "Tsunami 1000 Submit" menjadi gelombang ~18 /detik.
   if (isAutoSubmit) {
-    const jitterMs = Math.floor(Math.random() * 60000);
+    const jitterMs = Math.floor(Math.random() * 60000); // 0 - 60.000 ms: cukup untuk 1000 siswa (~17/detik), tidak membuat siswa panik
     const jitterSec = Math.ceil(jitterMs / 1000);
-    showLoading(`Waktu habis. Jawaban dikirim dalam ${jitterSec} detik...\n(Harap tunggu, jangan tutup halaman ini)`);
+    showLoading(`Waktu habis. Jawaban dikirim dalam ${jitterSec} detik...`);
     await sleep(jitterMs);
   } else {
-    // Jitter manual: 0–5 detik, menyebar beban saat banyak siswa pencet Selesai bersamaan
-    const jitterMs = Math.floor(Math.random() * 5000);
-    if (jitterMs > 1000) {
-      const jitterSec = Math.ceil(jitterMs / 1000);
-      showLoading(`Menyiapkan pengiriman jawaban... (${jitterSec} dtk)\nHarap tunggu, jangan tekan apapun.`);
-      await sleep(jitterMs);
-    }
+    // Manual jitter (0-2s) to prevent exact simultaneous clicks
+    await sleep(Math.floor(Math.random() * 2000));
   }
 
   saveStateLocal(); // Pastikan jawaban terbaru tersimpan di LocalStorage sebelum kirim
@@ -1966,41 +1905,13 @@ async function submitExam(isAutoSubmit) {
       }
     }
   } catch (err) {
-    // Gagal total setelah semua retry — data masih aman di localStorage
+    // Gagal total setelah 3x retry — beri tahu siswa
+    showCustomAlert('Koneksi Terputus', 'Jawaban Anda AMAN di perangkat. Tekan tombol Kirim Ulang.', '📡');
     State.examActive = true;
     State.submissionFailed = true;
-    State.submissionRetryCount = (State.submissionRetryCount || 0) + 1;
     updateNavButtons();
     hideLoading();
     showView('exam-view');
-
-    // Auto-retry otomatis dalam 30 detik, tanpa siswa perlu tekan apapun
-    if (State.submissionRetryCount < 8) {
-      let countdown = 30;
-      const retryTimerEl = document.getElementById('submit-retry-countdown');
-      if (retryTimerEl) {
-        retryTimerEl.style.display = 'block';
-        retryTimerEl.textContent = `Jawaban aman di perangkat. Otomatis coba kirim ulang dalam ${countdown} detik...`;
-      }
-      State._autoRetryTimer = setInterval(() => {
-        countdown--;
-        if (retryTimerEl) {
-          retryTimerEl.textContent = `Jawaban aman di perangkat. Otomatis coba kirim ulang dalam ${countdown} detik...`;
-        }
-        if (countdown <= 0) {
-          clearInterval(State._autoRetryTimer);
-          if (retryTimerEl) retryTimerEl.style.display = 'none';
-          submitExam(false); // coba lagi otomatis
-        }
-      }, 1000);
-    } else {
-      // Sudah terlalu banyak gagal — minta hubungi pengawas
-      showCustomAlert(
-        'Gagal Mengirim',
-        'Jawaban Anda AMAN tersimpan di perangkat ini. Hubungi pengawas untuk bantuan, atau coba tekan Kirim Ulang.',
-        '📡'
-      );
-    }
   }
 }
 
@@ -2014,18 +1925,19 @@ function getUsedTimeStr() {
 // --- Image Zoom Handlers ---
 window.openZoomModal = function (src) {
   const overlay = document.getElementById('zoom-overlay');
-  const img = document.getElementById('zoomed-image');
+  const img = document.getElementById('zoom-image'); // Fix ID mismatch from HTML
   if (overlay && img) {
     img.src = src;
-    overlay.style.display = 'flex';
+    overlay.classList.add('active');
   }
 };
 
 window.closeZoomModal = function () {
   const overlay = document.getElementById('zoom-overlay');
   if (overlay) {
-    overlay.style.display = 'none';
-    document.getElementById('zoomed-image').src = '';
+    overlay.classList.remove('active');
+    const img = document.getElementById('zoom-image');
+    if (img) img.src = '';
   }
 };
 
@@ -2117,7 +2029,8 @@ function initPortal() {
         const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
         const hasBypass = sessionStorage.getItem('pwa_bypass_granted') === '1';
         if (isMobile && !isStandalone && !hasBypass && !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')) {
-          document.getElementById('pwa-blocker-overlay').style.display = 'flex';
+          const pwaOverlay = document.getElementById('pwa-blocker-overlay');
+          if (pwaOverlay) pwaOverlay.classList.add('active');
         }
       }
     } catch (e) { console.error("Gagal memuat config keamanan", e); }
@@ -2202,12 +2115,14 @@ document.addEventListener('keydown', (e) => {
 
 function showAdminAuthModal() {
   const overlay = document.getElementById('admin-overlay');
-  if (overlay) overlay.style.display = 'block';
+  if (overlay) overlay.classList.add('active');
   const modal = document.getElementById('admin-login-modal');
-  modal.style.display = 'flex';
-  void modal.offsetWidth;
-  modal.style.opacity = '1';
-  modal.style.transform = 'translate(-50%, -50%) scale(1)';
+  if (modal) {
+    modal.style.display = 'flex';
+    void modal.offsetWidth;
+    modal.style.opacity = '1';
+    modal.style.transform = 'translate(-50%, -50%) scale(1)';
+  }
   document.getElementById('adminTokenInput').value = '';
   document.getElementById('adminTokenInput').focus();
 }
@@ -2219,7 +2134,7 @@ function hideAdminAuthModal() {
   setTimeout(() => {
     modal.style.display = 'none';
     const overlay = document.getElementById('admin-overlay');
-    if (overlay) overlay.style.display = 'none';
+    if (overlay) overlay.classList.remove('active');
   }, 300);
 }
 
@@ -2462,21 +2377,19 @@ window.openSiswaModal = function () {
   document.getElementById('siswaNamaInput').value = '';
   document.getElementById('siswaKelasInput').value = '';
 
-  document.getElementById('siswa-overlay').style.display = 'block';
+  document.getElementById('siswa-overlay').classList.add('active');
   document.getElementById('siswa-modal').style.display = 'flex';
   setTimeout(() => {
-    document.getElementById('siswa-overlay').style.opacity = '1';
     document.getElementById('siswa-modal').style.opacity = '1';
     document.getElementById('siswa-modal').style.transform = 'translate(-50%, -50%) scale(1)';
   }, 10);
 }
 
 window.closeSiswaModal = function () {
-  document.getElementById('siswa-overlay').style.opacity = '0';
+  document.getElementById('siswa-overlay').classList.remove('active');
   document.getElementById('siswa-modal').style.opacity = '0';
   document.getElementById('siswa-modal').style.transform = 'translate(-50%, -50%) scale(0.95)';
   setTimeout(() => {
-    document.getElementById('siswa-overlay').style.display = 'none';
     document.getElementById('siswa-modal').style.display = 'none';
   }, 300);
 }
@@ -2495,10 +2408,9 @@ window.editSiswa = async function (id) {
       document.getElementById('siswaNamaInput').value = data.nama || '';
       document.getElementById('siswaKelasInput').value = data.kelas || '';
 
-      document.getElementById('siswa-overlay').style.display = 'block';
+      document.getElementById('siswa-overlay').classList.add('active');
       document.getElementById('siswa-modal').style.display = 'flex';
       setTimeout(() => {
-        document.getElementById('siswa-overlay').style.opacity = '1';
         document.getElementById('siswa-modal').style.opacity = '1';
         document.getElementById('siswa-modal').style.transform = 'translate(-50%, -50%) scale(1)';
       }, 10);
@@ -2639,12 +2551,14 @@ window.previewSoal = async function (bankId) {
 
     const overlay = document.getElementById('preview-overlay');
     const modal = document.getElementById('admin-preview-modal');
-    overlay.style.display = 'flex';
-    modal.style.display = 'flex';
-    setTimeout(() => {
-      modal.style.opacity = '1';
-      modal.style.transform = 'translate(-50%, -50%) scale(1)';
-    }, 10);
+    if (overlay) overlay.classList.add('active');
+    if (modal) {
+      modal.style.display = 'flex';
+      setTimeout(() => {
+        modal.style.opacity = '1';
+        modal.style.transform = 'translate(-50%, -50%) scale(1)';
+      }, 10);
+    }
   } catch (e) {
     hideLoading();
     showCustomAlert('Gagal', 'Gagal mengambil data Bank Soal.', '❌');
@@ -3012,7 +2926,7 @@ function hideAdminPreview() {
   setTimeout(() => {
     modal.style.display = 'none';
     const overlay = document.getElementById('preview-overlay');
-    if (overlay) overlay.style.display = 'none';
+    if (overlay) overlay.classList.remove('active');
   }, 300);
 }
 
@@ -3151,13 +3065,15 @@ async function showAdminPreview(examId) {
 
       const overlay = document.getElementById('preview-overlay');
       const modal = document.getElementById('admin-preview-modal');
-      overlay.style.display = 'flex';
-      modal.style.display = 'flex';
-      // trigger flow
-      setTimeout(() => {
-        modal.style.opacity = '1';
-        modal.style.transform = 'translate(-50%, -50%) scale(1)';
-      }, 10);
+      if (overlay) overlay.classList.add('active');
+      if (modal) {
+        modal.style.display = 'flex';
+        // trigger flow
+        setTimeout(() => {
+          modal.style.opacity = '1';
+          modal.style.transform = 'translate(-50%, -50%) scale(1)';
+        }, 10);
+      }
     } else {
       showCustomAlert('Gagal Membaca Soal', 'Gagal membaca lembar soal: ' + res.message, '❌');
     }
@@ -3201,10 +3117,9 @@ window.openSoalEditModal = async function (bankId, soalId) {
       const selectKunci = document.getElementById('soalEditKunci');
       selectKunci.value = kVal;
 
-      document.getElementById('soal-edit-overlay').style.display = 'block';
+      document.getElementById('soal-edit-overlay').classList.add('active');
       document.getElementById('soal-edit-modal').style.display = 'flex';
       setTimeout(() => {
-        document.getElementById('soal-edit-overlay').style.opacity = '1';
         document.getElementById('soal-edit-modal').style.opacity = '1';
         document.getElementById('soal-edit-modal').style.transform = 'translate(-50%, -50%) scale(1)';
       }, 10);
@@ -3218,11 +3133,10 @@ window.openSoalEditModal = async function (bankId, soalId) {
 }
 
 window.closeSoalEditModal = function () {
-  document.getElementById('soal-edit-overlay').style.opacity = '0';
+  document.getElementById('soal-edit-overlay').classList.remove('active');
   document.getElementById('soal-edit-modal').style.opacity = '0';
   document.getElementById('soal-edit-modal').style.transform = 'translate(-50%, -50%) scale(0.95)';
   setTimeout(() => {
-    document.getElementById('soal-edit-overlay').style.display = 'none';
     document.getElementById('soal-edit-modal').style.display = 'none';
   }, 300);
 }
@@ -3303,12 +3217,11 @@ window.downloadTemplateExcel = function () {
 
 window.openImportModal = function (type) {
   currentImportType = type;
-  document.getElementById('import-overlay').style.display = 'block';
+  document.getElementById('import-overlay').classList.add('active');
   document.getElementById('import-modal').style.display = 'flex';
   document.getElementById('importFileInput').value = '';
 
   setTimeout(() => {
-    document.getElementById('import-overlay').style.opacity = '1';
     document.getElementById('import-modal').style.opacity = '1';
     document.getElementById('import-modal').style.transform = 'translate(-50%, -50%) scale(1)';
   }, 10);
@@ -3326,11 +3239,10 @@ window.openImportModal = function (type) {
 }
 
 window.closeImportModal = function () {
-  document.getElementById('import-overlay').style.opacity = '0';
+  document.getElementById('import-overlay').classList.remove('active');
   document.getElementById('import-modal').style.opacity = '0';
   document.getElementById('import-modal').style.transform = 'translate(-50%, -50%) scale(0.95)';
   setTimeout(() => {
-    document.getElementById('import-overlay').style.display = 'none';
     document.getElementById('import-modal').style.display = 'none';
   }, 300);
 }
@@ -3449,13 +3361,6 @@ async function importSoalExcel(jsonData, bankId) {
 
     let msg = `Berhasil import ${count} soal ke bank ${bankId}.`;
     if (imgTotal > 0) msg = `Berhasil import ${count} soal (${imgTotal} gambar terdeteksi) ke bank ${bankId}.`;
-    else if (stats && stats.rawImages > 0) {
-      msg += `\n\n(Info: Ditemukan ${stats.rawImages} file gambar di Excel.`;
-      if (stats.coords && stats.coords.length > 0) msg += `\nKoordinat ditemukan: ${stats.coords.join(', ')}`;
-      if (stats.xlFiles && stats.xlFiles.length > 0) msg += `\nIsi folder XL: ${stats.xlFiles.slice(0, 10).join(', ')}`;
-      msg += `\n\nSistem mencari gambar di Kolom C dan kolom Gambar Opsi.)`;
-    } else msg += `\n\n(Info: Tidak ditemukan file gambar di dalam file Excel ini.)`;
-
     showCustomAlert('Import Berhasil', msg, '✅');
     closeImportModal();
     loadAdminSoal();
@@ -3620,7 +3525,7 @@ async function importSoalCSV(csvText, bankId) {
 }
 // --- Jadwal Builder Logic ---
 window.openJadwalModal = async function () {
-  document.getElementById('jadwal-overlay').style.display = 'block';
+  document.getElementById('jadwal-overlay').classList.add('active');
   document.getElementById('jadwal-modal').style.display = 'flex';
 
   setTimeout(() => {
@@ -3721,11 +3626,11 @@ window.openPrintModal = async function (examId, examName) {
 
   const overlay = document.getElementById('print-overlay');
   const modal = document.getElementById('print-config-modal');
-  overlay.style.display = 'block';
-  modal.style.display = 'flex';
-  setTimeout(() => {
-    overlay.style.opacity = '1';
-    modal.style.opacity = '1';
+  if (overlay) overlay.classList.add('active');
+  if (modal) {
+    modal.style.display = 'flex';
+    setTimeout(() => {
+      modal.style.opacity = '1';
     modal.style.transform = 'translate(-50%, -50%) scale(1)';
   }, 10);
 
@@ -3750,13 +3655,14 @@ window.openPrintModal = async function (examId, examName) {
 window.closePrintModal = function () {
   const overlay = document.getElementById('print-overlay');
   const modal = document.getElementById('print-config-modal');
-  overlay.style.opacity = '0';
-  modal.style.opacity = '0';
-  modal.style.transform = 'translate(-50%, -50%) scale(0.95)';
-  setTimeout(() => {
-    overlay.style.display = 'none';
-    modal.style.display = 'none';
-  }, 300);
+  if (overlay) overlay.classList.remove('active');
+  if (modal) {
+    modal.style.opacity = '0';
+    modal.style.transform = 'translate(-50%, -50%) scale(0.95)';
+    setTimeout(() => {
+      modal.style.display = 'none';
+    }, 300);
+  }
 }
 
 window.executePrint = async function () {
@@ -3877,7 +3783,7 @@ window.addEventListener('beforeinstallprompt', (e) => {
 // Jika sudah installed, sembunyikan blocker (event appinstalled)
 window.addEventListener('appinstalled', () => {
   const overlay = document.getElementById('pwa-blocker-overlay');
-  if (overlay) overlay.style.display = 'none';
+  if (overlay) overlay.classList.remove('active');
 });
 
 // --- Bypass PWA Blocker ---
@@ -3898,7 +3804,7 @@ window.verifyPwaBypass = async function () {
       sessionStorage.setItem('pwa_bypass_granted', '1');
       errEl.style.display = 'none';
       const overlay = document.getElementById('pwa-blocker-overlay');
-      if (overlay) overlay.style.display = 'none';
+      if (overlay) overlay.classList.remove('active');
     } else {
       errEl.textContent = 'Kode bypass tidak valid. Hubungi pengawas.';
       errEl.style.display = 'block';
