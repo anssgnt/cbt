@@ -1395,6 +1395,7 @@ safeAddListener('btnStartExam', 'click', () => {
   State.examActive = true;
   State.pingOffset = Math.floor(Math.random() * 600); // Random offset for pings (0-10 min)
   document.getElementById('exam-title').textContent = State.config.nama_ujian;
+  document.getElementById('exam-user-info').textContent = State.user.name + " (" + State.user.kelas + ")";
 
   // Request Fullscreen
   const root = document.documentElement;
