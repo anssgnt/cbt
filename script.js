@@ -884,7 +884,7 @@ async function gasRun(funcName, ...args) {
         // Normalisasi data karena sekarang berbentuk object {last_seen, uid}
         const normalized = {};
         for (let uid in raw) {
-          normalized[uid] = typeof raw[uid] === 'object' ? raw[uid].last_seen : raw[uid];
+          normalized[uid] = (raw[uid] && typeof raw[uid] === 'object') ? raw[uid].last_seen : raw[uid];
         }
         onlinesMap[ex.id] = normalized;
       });
@@ -2157,16 +2157,18 @@ async function loadAdminDashboard() {
       showView('admin-dash-view');
       renderAdminDashboard(res);
     } else {
+      console.error("Monitoring Fetch Failed:", res.message);
       showCustomAlert("Gagal memuat monitoring: " + res.message);
       showView('login-view');
     }
   } catch (e) {
+    console.error("Admin Dashboard Crash:", e);
     showCustomAlert("Koneksi gagal.");
     showView('login-view');
   }
 }
 
-window.adminState = { hasil: [], radar: [], monitor: null, monitorPage: {} };
+window.adminState = { hasil: [], radar: [], monitor: null, monitorPage: {}, peserta: [] };
 
 function renderPaginationControls(containerId, total, perPage, current, callbackName, idParam) {
   const container = document.getElementById(containerId);
