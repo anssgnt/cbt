@@ -849,7 +849,7 @@ async function gasRun(funcName, ...args) {
     else if (funcName === 'validateAdmin') {
       const [pwd] = args;
       const snap = await db.ref('/config/admin_pass').once('value');
-      return pwd === snap.val();
+      return { success: true, valid: pwd === snap.val() };
     }
 
     else if (funcName === 'getAdminMonitoringData') {
@@ -2129,13 +2129,18 @@ safeAddListener('btnSubmitAdmin', 'click', async function () {
   if (btn) btn.textContent = '...';
   try {
     const res = await gasRun('validateAdmin', pwd);
-    if (res) {
+    if (res.success && res.valid) {
       hideAdminAuthModal();
       loadAdminDashboard();
-    } else {
+    } else if (res.success && !res.valid) {
       showCustomAlert("Sandi Proktor Ditolak!");
+    } else {
+      showCustomAlert("Gagal: " + (res.message || "Unknown error"));
     }
-  } catch (e) { showCustomAlert("Network Error"); }
+  } catch (e) { 
+    console.error("Admin Auth Error:", e);
+    showCustomAlert("Network Error: " + e.message); 
+  }
   if (btn) btn.textContent = 'Verifikasi';
 });
 
