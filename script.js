@@ -509,7 +509,7 @@ async function getExamDataOptimized(examId, token, forceRefresh = false) {
     if (!forceRefresh) {
       const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
-        try { return JSON.parse(cached); } catch { }
+        try { return JSON.parse(cached); } catch (e) { }
       }
     }
 
