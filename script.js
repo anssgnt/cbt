@@ -548,9 +548,6 @@ async function getExamDataOptimized(examId, token, forceRefresh = false) {
 
     localStorage.setItem(CACHE_KEY, JSON.stringify(result));
     return result;
-  } finally {
-    dbDisconnect();
-  }
 }
 
 /* ================================
@@ -3703,8 +3700,9 @@ window.openPrintModal = async function (examId, examName) {
     modal.style.display = 'flex';
     setTimeout(() => {
       modal.style.opacity = '1';
-    modal.style.transform = 'translate(-50%, -50%) scale(1)';
-  }, 10);
+      modal.style.transform = 'translate(-50%, -50%) scale(1)';
+    }, 10);
+  }
 
   // Fetch distinct classes
   try {
