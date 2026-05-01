@@ -76,8 +76,10 @@ function applySchoolIdentity(iden) {
 
   if (iden.name) {
     document.title = `CBT Online – ${iden.name}`;
+    safeSetText('ph-sekolah', iden.name);
     safeSetText('ph-sekolah-2', iden.name);
     safeSetText('ph-sekolah-print', iden.name);
+    safeSetText('portal-school-sub', iden.name);
   }
 
   if (iden.sub) {
@@ -351,6 +353,10 @@ window.dbConnectFast = async function () {
 };
 
 window.dbOffline = function() {
+  // Hanya matikan koneksi jika TIDAK sedang di Admin Dashboard
+  const isAdmin = document.getElementById('admin-dash-view') && document.getElementById('admin-dash-view').classList.contains('active');
+  if (isAdmin) return; 
+
   activeDbRequests = 0;
   db.goOffline();
 };
@@ -430,14 +436,15 @@ async function syncAllDataForPortal() {
     localStorage.setItem('CBT_CACHE_JADWAL', JSON.stringify(jadwals));
     localStorage.setItem('CBT_CACHE_JADWAL_TIME', Date.now().toString());
     
-    // 4. Force Offline to free up Firebase slots
+    // 4. Force Offline to free up Firebase slots for students
     dbOffline();
     hideLoading();
     
     const badge = document.getElementById('sync-badge');
     if (badge) badge.style.display = 'block';
     
-    console.log("Armor 1000: Sync Complete. System is now Offline-First.");
+    SystemStatus.portal = 'success';
+    updateInitStatusDisplay();
   } catch (e) {
     console.error("Armor 1000 Sync Error:", e);
     hideLoading();
