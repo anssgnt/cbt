@@ -743,6 +743,7 @@ async function gasRun(funcName, ...args) {
 
       await db.ref(resultPath).set({
         timestamp: firebase.database.ServerValue.TIMESTAMP,
+        uid: firebase.auth().currentUser.uid, // Simpan UID untuk proteksi Firebase Rules
         userId: payload.user.id,
         nama: payload.user.name,
         kelas: payload.user.kelas || '-',
@@ -767,7 +768,10 @@ async function gasRun(funcName, ...args) {
 
     else if (funcName === 'setStudentOnline') {
       const [examId, userId] = args;
-      await db.ref(`/online_status/${examId}/${userId}`).set(firebase.database.ServerValue.TIMESTAMP);
+      await db.ref(`/online_status/${examId}/${userId}`).set({
+        last_seen: firebase.database.ServerValue.TIMESTAMP,
+        uid: firebase.auth().currentUser.uid
+      });
       const bSnap = await db.ref(`/broadcasts/${examId}`).once('value');
       if (bSnap.exists()) return { success: true, broadcast: bSnap.val() };
       return { success: true };
@@ -807,8 +811,13 @@ async function gasRun(funcName, ...args) {
       const onlinesMap = {};
       const onlineSnaps = snaps.slice(skipPeserta ? 1 : 2);
       activeExams.forEach((ex, idx) => {
-        const oData = onlineSnaps[idx] ? onlineSnaps[idx].val() || {} : {};
-        onlinesMap[ex.id] = Object.keys(oData);
+        const raw = onlineSnaps[idx] ? onlineSnaps[idx].val() || {} : {};
+        // Normalisasi data karena sekarang berbentuk object {last_seen, uid}
+        const normalized = {};
+        for (let uid in raw) {
+          normalized[uid] = typeof raw[uid] === 'object' ? raw[uid].last_seen : raw[uid];
+        }
+        onlinesMap[ex.id] = normalized;
       });
 
       const pData = pSnap ? pSnap.val() || {} : null;
