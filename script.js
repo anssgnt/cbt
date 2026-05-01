@@ -690,8 +690,12 @@ function initAuth() {
 async function gasRun(funcName, ...args) {
   if (!isAuthReady && authPromise) await authPromise;
 
-  // Gunakan dbConnectFast untuk aksi interaktif agar tidak kena jitter 1.5 detik
-  const interactiveFuncs = ['getAllPeserta', 'getSchedules', 'getPortalInfo', 'getExamData'];
+  // Gunakan dbConnectFast untuk aksi interaktif (Siswa & Admin) agar tidak kena jitter 1.5 detik
+  const interactiveFuncs = [
+    'getAllPeserta', 'getSchedules', 'getPortalInfo', 'getExamData', 
+    'validateAdmin', 'getAdminMonitoringData', 'getAdminJadwalFull',
+    'getAdminLaporanLengkap', 'getAdminPreviewSoal'
+  ];
   const isFast = interactiveFuncs.includes(funcName);
   
   if (isFast) await dbConnectFast();
@@ -2016,8 +2020,8 @@ function initPortal() {
     } catch (e) { console.error("Gagal memuat config keamanan", e); }
   });
 
-  // Touchscreen Hotkey: 5x taps on the portal logo (safe to re-bind here)
-  const logo = document.querySelector('.portal-logo-icon');
+  // Touchscreen Hotkey: 5x taps on the portal logo
+  const logo = document.querySelector('.centric-logo');
   if (logo && !logo._tapBound) {
     logo._tapBound = true;
     logo.addEventListener('click', () => {
