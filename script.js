@@ -1275,20 +1275,18 @@ if (userNameInput) {
           const div = document.createElement('div');
           div.className = 'autocomplete-item';
           div.textContent = (p.name || p.id) + ' - ' + (p.kelas || '');
-          const selectHandler = (evt) => {
+          div.addEventListener('click', (evt) => {
             evt.preventDefault();
             tempSelectedUser = p;
             document.getElementById('confirm-name-text').textContent = (p.name || p.id) + ' (' + (p.kelas || '') + ')';
             showView('login-confirm-view');
             userNameInput.value = '';
             autoList.classList.remove('show');
-          };
-          div.addEventListener('pointerdown', selectHandler);
-          div.addEventListener('click', selectHandler);
+          });
           autoList.appendChild(div);
         });
       } else {
-        autoList.innerHTML = '<div class="autocomplete-item text-muted">Nama tidak ditemukan. Coba kata lain atau hubungi pengawas.</div>';
+        autoList.innerHTML = '<div class="autocomplete-item text-muted" style="padding:12px; font-size:0.8rem;">Nama tidak ditemukan.</div>';
       }
       autoList.classList.add('show');
     }, 350); // Sedikit lebih lama agar prefetch sempat selesai
