@@ -352,10 +352,10 @@ window.dbConnectFast = async function () {
   }
 };
 
-window.dbOffline = function() {
+window.dbOffline = function () {
   // Hanya matikan koneksi jika TIDAK sedang di Admin Dashboard
   const isAdmin = document.getElementById('admin-dash-view') && document.getElementById('admin-dash-view').classList.contains('active');
-  if (isAdmin) return; 
+  if (isAdmin) return;
 
   activeDbRequests = 0;
   db.goOffline();
@@ -416,15 +416,15 @@ async function loadPesertaCache() {
 }
 
 async function syncAllDataForPortal() {
-  showLoading('Singkronisasi Data (Armor 1000)...');
+  showLoading('Singkronisasi Data Ujian...');
   try {
     await dbConnectFast();
     // 1. Fetch Identity
     const idenSnap = await db.ref('/config/identity').once('value');
     const iden = idenSnap.val();
     if (iden) {
-        applySchoolIdentity(iden);
-        SystemStatus.portal = 'success';
+      applySchoolIdentity(iden);
+      SystemStatus.portal = 'success';
     }
 
     // 2. Fetch Peserta
@@ -435,14 +435,14 @@ async function syncAllDataForPortal() {
     const jadwals = jSnap.val() || {};
     localStorage.setItem('CBT_CACHE_JADWAL', JSON.stringify(jadwals));
     localStorage.setItem('CBT_CACHE_JADWAL_TIME', Date.now().toString());
-    
+
     // 4. Force Offline to free up Firebase slots for students
     dbOffline();
     hideLoading();
-    
+
     const badge = document.getElementById('sync-badge');
     if (badge) badge.style.display = 'block';
-    
+
     SystemStatus.portal = 'success';
     updateInitStatusDisplay();
   } catch (e) {
@@ -477,7 +477,7 @@ async function searchPeserta(keyword) {
    📦 CACHE SOAL (SUPER CEPAT)
 ================================ */
 
-async function getExamDataOptimized(examId, token, forceRefresh = false) {
+async function getExamDataOptimized(examId, token, forceRefresh = false, skipTokenCheck = false) {
   // Armor 1000: Coba ambil dari cache jadwal dulu untuk menghemat koneksi
   let sch = null;
   try {
@@ -501,22 +501,25 @@ async function getExamDataOptimized(examId, token, forceRefresh = false) {
 
   if (!sch) throw new Error("Ujian tidak ditemukan");
 
-    // Cache Versioning (Armor 1000)
-    // Gunakan timestamp mulai sebagai versi untuk invalidasi otomatis jika jadwal diubah
-    const ver = sch.mulai || 0;
-    const CACHE_KEY = `SOAL_${examId}_v${ver}`;
+  // Cache Versioning (Armor 1000)
+  // Gunakan timestamp mulai sebagai versi untuk invalidasi otomatis jika jadwal diubah
+  const ver = sch.mulai || 0;
+  const CACHE_KEY = `SOAL_${examId}_v${ver}`;
 
-    if (!forceRefresh) {
-      const cached = localStorage.getItem(CACHE_KEY);
-      if (cached) {
-        try { return JSON.parse(cached); } catch (e) { }
-      }
+  if (!forceRefresh) {
+    const cached = localStorage.getItem(CACHE_KEY);
+    if (cached) {
+      try { return JSON.parse(cached); } catch (e) { }
     }
+  }
 
-    if (sch.token && String(sch.token).toUpperCase() !== String(token).toUpperCase()) {
-      throw new Error("Token salah!");
-    }
+  // Token check hanya dilakukan saat mau MENGERJAKAN (skipTokenCheck = false)
+  if (!skipTokenCheck && sch.token && String(sch.token).toUpperCase() !== String(token).toUpperCase()) {
+    throw new Error("Token salah!");
+  }
 
+  await dbConnect();
+  try {
     const sDataPromise = cachedGet('/soal/' + sch.nama_soal);
     const kDataPromise = cachedGet('/kunci/' + sch.nama_soal);
 
@@ -548,6 +551,55 @@ async function getExamDataOptimized(examId, token, forceRefresh = false) {
 
     localStorage.setItem(CACHE_KEY, JSON.stringify(result));
     return result;
+  } finally {
+    dbDisconnect();
+  }
+}
+
+// --- H-1 PRE-SYNC LOGIC ---
+async function syncAllQuestions() {
+  if (!State.schedules || State.schedules.length === 0) {
+    showCustomAlert('Informasi', 'Tidak ada jadwal ujian yang ditemukan untuk disinkronkan.', 'ℹ️');
+    return;
+  }
+
+  const btn = document.getElementById('btnSyncAllSoal');
+  const progressDiv = document.getElementById('sync-all-progress');
+  const bar = document.getElementById('sync-all-bar');
+  const text = document.getElementById('sync-all-text');
+
+  if (!btn || !progressDiv) return;
+
+  btn.disabled = true;
+  btn.style.opacity = '0.7';
+  btn.textContent = 'Sedang Sinkron...';
+  progressDiv.style.display = 'block';
+
+  let count = 0;
+  const total = State.schedules.length;
+
+  for (let i = 0; i < total; i++) {
+    const sch = State.schedules[i];
+    count++;
+    const percent = Math.round((count / total) * 100);
+    bar.style.width = percent + '%';
+    text.textContent = `Mengunduh (${count}/${total}): ${sch.nama}...`;
+
+    try {
+      // SkipTokenCheck = true agar bisa download H-1 tanpa tahu token
+      await getExamDataOptimized(sch.id, '', true, true);
+    } catch (e) {
+      console.warn("Gagal sinkron " + sch.nama, e);
+    }
+    // Jeda sejenak agar tidak membebani Firebase Free Tier
+    await sleep(800);
+  }
+
+  bar.style.width = '100%';
+  text.textContent = 'Semua Soal Berhasil Disimpan Offline!';
+  btn.textContent = '✅ Selesai Sinkron';
+  btn.style.background = '#059669';
+  showCustomAlert('Sinkronisasi Berhasil', 'Semua materi ujian telah disimpan di HP Anda. Besok Anda bisa langsung mulai ujian dengan lancar.', '✅');
 }
 
 /* ================================
@@ -1142,28 +1194,36 @@ let scheduleTimer = null;
 async function loadSchedules() {
   document.getElementById('schedule-user-name').textContent = State.user.name + ' - ' + State.user.kelas;
   showLoading('Memeriksa Jadwal...');
-  
+
   // Armor 1000: Mencoba ambil dari cache lokal dulu agar responsif
   try {
     const cachedJadwal = localStorage.getItem('CBT_CACHE_JADWAL');
     if (cachedJadwal) {
       const jadwals = JSON.parse(cachedJadwal);
       const list = [];
-      for(let id in jadwals) {
+      for (let id in jadwals) {
         let s = jadwals[id];
         s.id = id;
         // Filter jadwal yang relevan untuk kelas siswa (atau ALL)
         if (!s.kelas || s.kelas === 'ALL' || s.kelas === State.user.kelas) {
-           list.push(s);
+          list.push(s);
         }
       }
       State.schedules = list;
       State.schedules.forEach(s => s._lastRenderedStatus = s.status);
       renderSchedules();
+      
+      // Tampilkan tombol Pre-sync jika ada jadwal
+      const preSyncContainer = document.getElementById('pre-sync-container');
+      if (preSyncContainer && list.length > 0) {
+        preSyncContainer.style.display = 'block';
+        safeAddListener('btnSyncAllSoal', 'click', syncAllQuestions);
+      }
+      
       showView('schedule-view');
       hideLoading(); // Sembunyikan loading jika data cache sudah tampil
     }
-  } catch(e) {}
+  } catch (e) { }
 
   try {
     // Tetap fetch dari server untuk status terbaru (misal: apakah sudah SELESAI di server)
@@ -1187,14 +1247,14 @@ async function loadSchedules() {
     } else {
       // Jika gagal fetch tapi sudah ada data dari cache, tidak perlu mental ke login
       if (!State.schedules || State.schedules.length === 0) {
-         showCustomAlert('Gagal Memuat Jadwal', 'Gagal memuat jadwal: ' + res.message, '❌');
-         showView('login-view');
+        showCustomAlert('Gagal Memuat Jadwal', 'Gagal memuat jadwal: ' + res.message, '❌');
+        showView('login-view');
       }
     }
   } catch (err) {
     if (!State.schedules || State.schedules.length === 0) {
-       showCustomAlert('Kesalahan Jaringan', 'Terjadi kesalahan sinkronisasi jaringan.', '🌐');
-       showView('login-view');
+      showCustomAlert('Kesalahan Jaringan', 'Terjadi kesalahan sinkronisasi jaringan.', '🌐');
+      showView('login-view');
     }
   } finally {
     hideLoading();
@@ -1258,10 +1318,10 @@ function renderSchedules() {
     const endObj = new Date(sch.selesai);
     const pad = (n) => n.toString().padStart(2, '0');
     const timeStr = `${pad(startObj.getHours())}:${pad(startObj.getMinutes())} - ${pad(endObj.getHours())}:${pad(endObj.getMinutes())}`;
-    
+
     // Format Tanggal (untuk ujian 6 hari)
-    const days = ['Minggu','Senin','Selasa','Rabu','Kamis','Jumat','Sabtu'];
-    const months = ['Jan','Feb','Mar','Apr','Mei','Jun','Jul','Agu','Sep','Okt','Nov','Des'];
+    const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
     const dateStr = `${days[startObj.getDay()]}, ${startObj.getDate()} ${months[startObj.getMonth()]}`;
 
     const card = document.createElement('div');
@@ -2087,12 +2147,12 @@ function initPortal() {
   // ─── ARMOR 1000: Initial Sync & Offline First ───────────────────
   authPromise.then(async () => {
     await syncAllDataForPortal();
-    
+
     // Load Security Settings
     try {
       const snap = await db.ref('/config/security').once('value');
       State.security = snap.val() || {};
-      
+
       // PWA Enforcer Check
       if (State.security.pwa) {
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
