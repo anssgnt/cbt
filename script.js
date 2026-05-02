@@ -116,6 +116,21 @@ function showView(viewId) {
   hideLoading(); // Pastikan loading tertutup saat ganti halaman
 }
 
+// Helper untuk mencegah error memori penuh (Storage Quota)
+function safeSetLocalStorage(key, value) {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (e) {
+    if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
+      showCustomAlert('Memori HP Penuh', 'Penyimpanan browser Anda penuh. Harap hapus beberapa data browser untuk melanjutkan ujian.', '💾');
+    } else {
+      console.warn('Gagal menyimpan ke localStorage', e);
+    }
+    return false;
+  }
+}
+
 function safeAddListener(id, event, callback) {
   const el = document.getElementById(id);
   if (el) el.addEventListener(event, callback);
@@ -509,7 +524,18 @@ async function getExamDataOptimized(examId, token, forceRefresh = false, skipTok
   if (!forceRefresh) {
     const cached = localStorage.getItem(CACHE_KEY);
     if (cached) {
-      try { return JSON.parse(cached); } catch (e) { }
+      try { 
+        const parsedData = JSON.parse(cached); 
+        // Validasi ekstra: pastikan object punya array questions
+        if (parsedData && parsedData.questions && parsedData.questions.length > 0) {
+          return parsedData;
+        } else {
+          throw new Error("Cache kosong atau rusak");
+        }
+      } catch (e) {
+        console.warn("Cache rusak, melakukan auto re-download...", e);
+        showLoading('Memperbaiki Data yang Rusak...');
+      }
     }
   }
 
@@ -549,7 +575,7 @@ async function getExamDataOptimized(examId, token, forceRefresh = false, skipTok
       keys: kData || {} // Cache keys for client-side scoring
     };
 
-    localStorage.setItem(CACHE_KEY, JSON.stringify(result));
+    safeSetLocalStorage(CACHE_KEY, JSON.stringify(result));
     return result;
   } finally {
     dbDisconnect();
@@ -575,6 +601,13 @@ async function syncAllQuestions() {
   btn.textContent = 'Sedang Sinkron...';
   progressDiv.style.display = 'block';
 
+  // Adaptive Delay (Kecepatan Internet)
+  let baseDelay = 800;
+  if (navigator.connection && navigator.connection.downlink) {
+    if (navigator.connection.downlink < 1.5) baseDelay = 2000; // Sinyal lemah (3G/E)
+    else if (navigator.connection.downlink < 3) baseDelay = 1200; // Sinyal sedang
+  }
+
   let count = 0;
   const total = State.schedules.length;
 
@@ -591,9 +624,23 @@ async function syncAllQuestions() {
     } catch (e) {
       console.warn("Gagal sinkron " + sch.nama, e);
     }
-    // Jeda sejenak agar tidak membebani Firebase Free Tier
-    await sleep(800);
+    // Jeda adaptif agar tidak membebani Firebase Free Tier
+    await sleep(baseDelay);
   }
+
+  // Laporkan ke Firebase bahwa siswa ini sudah sync
+  try {
+    await dbConnectFast();
+    if (State.schedules[0]) {
+       // Catat di jadwal pertama atau secara general, kita simpan di path status khusus
+       await db.ref(`/status_sync/${State.schedules[0].id}/${State.user.id}`).set({
+         nama: State.user.name,
+         kelas: State.user.kelas,
+         time: new Date().getTime()
+       });
+    }
+  } catch(e) { console.warn("Gagal lapor status sync", e); }
+  finally { dbDisconnect(); }
 
   bar.style.width = '100%';
   text.textContent = 'Semua Soal Berhasil Disimpan Offline!';
@@ -1191,6 +1238,44 @@ safeAddListener('btnConfirmLogin', 'click', () => {
 
 let scheduleTimer = null;
 
+// Helper untuk mengecek status cache semua jadwal dan update UI
+function updatePreSyncUI(list) {
+  const preSyncContainer = document.getElementById('pre-sync-container');
+  if (preSyncContainer && list.length > 0) {
+    preSyncContainer.style.display = 'block';
+    
+    let allCached = true;
+    for (let sch of list) {
+      const ver = sch.mulai || 0;
+      const CACHE_KEY = `SOAL_${sch.id}_v${ver}`;
+      if (!localStorage.getItem(CACHE_KEY)) {
+         allCached = false;
+         break;
+      }
+    }
+    
+    const btnSync = document.getElementById('btnSyncAllSoal');
+    if (btnSync) {
+      if (allCached) {
+         btnSync.textContent = '✅ 100% Tersinkronisasi';
+         btnSync.style.background = '#059669';
+         btnSync.disabled = true;
+         btnSync.style.opacity = '1';
+         const prog = document.getElementById('sync-all-progress');
+         if(prog) prog.style.display = 'none';
+      } else {
+         btnSync.textContent = 'Sinkronkan Semua Soal Sekarang';
+         btnSync.style.background = '#4F46E5';
+         btnSync.disabled = false;
+         btnSync.style.opacity = '1';
+         // remove listener to avoid duplicates, then add
+         btnSync.removeEventListener('click', syncAllQuestions);
+         btnSync.addEventListener('click', syncAllQuestions);
+      }
+    }
+  }
+}
+
 async function loadSchedules() {
   document.getElementById('schedule-user-name').textContent = State.user.name + ' - ' + State.user.kelas;
   showLoading('Memeriksa Jadwal...');
@@ -1212,13 +1297,7 @@ async function loadSchedules() {
       State.schedules = list;
       State.schedules.forEach(s => s._lastRenderedStatus = s.status);
       renderSchedules();
-      
-      // Tampilkan tombol Pre-sync jika ada jadwal
-      const preSyncContainer = document.getElementById('pre-sync-container');
-      if (preSyncContainer && list.length > 0) {
-        preSyncContainer.style.display = 'block';
-        safeAddListener('btnSyncAllSoal', 'click', syncAllQuestions);
-      }
+      updatePreSyncUI(list);
       
       showView('schedule-view');
       hideLoading(); // Sembunyikan loading jika data cache sudah tampil
@@ -1233,6 +1312,7 @@ async function loadSchedules() {
       State.schedules = res.schedules;
       State.schedules.forEach(s => s._lastRenderedStatus = s.status);
       renderSchedules();
+      updatePreSyncUI(State.schedules);
       showView('schedule-view');
 
       if (scheduleTimer) clearInterval(scheduleTimer);
@@ -2032,12 +2112,14 @@ async function submitExam(isAutoSubmit) {
   const payload = {
     examId: State.config.id_ujian,
     namaUjian: State.config.nama_ujian,
-    user: State.user,
-    answers: State.answers,
+    user: {
+      id: State.user.id,
+      name: State.user.name,
+      kelas: State.user.kelas
+    },
     usedTime: getUsedTimeStr(),
     violations: State.violations,
-    score: score,
-    detail: JSON.stringify(detailEvals)
+    score: score
   };
 
   // ─── FASE 3: SUBMIT DENGAN AUTO-RETRY ────────────────────────────
@@ -2309,6 +2391,7 @@ async function loadAdminDashboard() {
     if (res.success) {
       showView('admin-dash-view');
       renderAdminDashboard(res);
+      loadAdminSyncStatus(); // Armor 1000: Muat status sinkronisasi H-1
     } else {
       console.error("Monitoring Fetch Failed:", res.message);
       showCustomAlert('Gagal Memuat', 'Gagal memuat monitoring: ' + res.message, '❌');
@@ -2320,6 +2403,42 @@ async function loadAdminDashboard() {
     showView('login-view');
   }
 }
+
+window.loadAdminSyncStatus = async function() {
+  const countEl = document.getElementById('admin-sync-count');
+  if (!countEl) return;
+  
+  try {
+    countEl.textContent = 'Memuat data...';
+    await dbConnectFast();
+    const snap = await db.ref('/status_sync').once('value');
+    const data = snap.val() || {};
+    
+    // Hitung total unik peserta dari semua jadwal
+    const uniqueStudents = new Set();
+    for (let examId in data) {
+       for (let studentId in data[examId]) {
+          uniqueStudents.add(studentId);
+       }
+    }
+    
+    const syncCount = uniqueStudents.size;
+    const totalSiswa = (window.adminState && window.adminState.peserta) ? window.adminState.peserta.length : 0;
+    
+    if (totalSiswa > 0) {
+      const pct = Math.min(100, Math.round((syncCount / totalSiswa) * 100));
+      countEl.textContent = `${syncCount} / ${totalSiswa} Siswa Siap (${pct}%)`;
+    } else {
+      countEl.textContent = `${syncCount} Siswa Siap`;
+    }
+    
+  } catch(e) {
+    console.warn("Gagal muat status sync", e);
+    countEl.textContent = 'Gagal memuat';
+  } finally {
+    dbDisconnect();
+  }
+};
 
 window.adminState = { hasil: [], radar: [], monitor: null, monitorPage: {}, peserta: [] };
 
