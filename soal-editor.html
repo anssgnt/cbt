@@ -1,0 +1,724 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Editor Soal – CBT Online</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600&display=swap" rel="stylesheet">
+<script defer src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.8.1/firebase-database-compat.js"></script>
+<script defer src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --primary:#4F46E5;--primary-dark:#3730A3;--primary-soft:#EEF2FF;
+  --success:#059669;--success-soft:#D1FAE5;
+  --warning:#D97706;--danger:#DC2626;--danger-soft:#FEE2E2;
+  --surface:#FFFFFF;--surface-2:#F8FAFC;--surface-3:#F1F5F9;
+  --border:#E2E8F0;--border-2:#CBD5E1;
+  --text:#0F172A;--text-2:#475569;--text-3:#94A3B8;
+  --sidebar-w:280px;--header-h:60px;
+  --radius:10px;--radius-lg:16px;
+  --shadow:0 1px 3px rgba(0,0,0,.08);--shadow-lg:0 10px 25px rgba(0,0,0,.12);
+  --mono:'JetBrains Mono',monospace;--font:'Inter',sans-serif;
+}
+body{font-family:var(--font);background:var(--surface-2);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column}
+
+/* ===== LOGIN SCREEN ===== */
+#login-screen{position:fixed;inset:0;z-index:9000;background:linear-gradient(135deg,#1E1B4B 0%,#312E81 50%,#1E1B4B 100%);display:flex;align-items:center;justify-content:center;padding:20px}
+#login-screen .login-card{background:#fff;border-radius:20px;padding:40px 36px;width:100%;max-width:420px;box-shadow:0 20px 60px rgba(0,0,0,.3);animation:card-in .4s cubic-bezier(.34,1.56,.64,1)}
+#login-screen .login-icon{width:56px;height:56px;background:var(--primary-soft);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;color:var(--primary)}
+#login-screen .login-icon svg{width:28px;height:28px}
+#login-screen h1{font-size:1.5rem;font-weight:800;text-align:center;color:var(--text);margin-bottom:6px}
+#login-screen p.subtitle{font-size:.875rem;color:var(--text-3);text-align:center;margin-bottom:28px;line-height:1.5}
+#login-screen .field-label{font-size:.8rem;font-weight:600;color:var(--text-2);margin-bottom:6px;display:block}
+#login-screen .token-wrap{position:relative;margin-bottom:8px}
+#login-screen #editor-token-input{width:100%;border:2px solid var(--border-2);border-radius:10px;padding:12px 44px 12px 14px;font-size:1rem;font-family:var(--mono);letter-spacing:.08em;color:var(--text);outline:none;transition:border-color .2s}
+#login-screen #editor-token-input:focus{border-color:var(--primary)}
+#login-screen .toggle-eye{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-3);padding:4px}
+#login-screen .toggle-eye svg{width:18px;height:18px}
+#login-screen #login-error{font-size:.8rem;color:var(--danger);margin-bottom:16px;display:none;padding:10px 12px;background:var(--danger-soft);border-radius:8px;border:1px solid #FECACA}
+#login-screen .btn-login{width:100%;padding:13px;border-radius:10px;background:var(--primary);color:#fff;font-size:.95rem;font-weight:700;border:none;cursor:pointer;font-family:var(--font);transition:background .2s;display:flex;align-items:center;justify-content:center;gap:8px}
+#login-screen .btn-login:hover{background:var(--primary-dark)}
+#login-screen .btn-login:disabled{opacity:.6;cursor:not-allowed}
+#login-screen .login-footer{margin-top:20px;text-align:center;font-size:.75rem;color:var(--text-3);line-height:1.5}
+
+/* ===== APP (hidden until auth) ===== */
+#app{display:none;flex-direction:column;height:100vh}
+#top-bar{height:var(--header-h);background:var(--surface);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:10px;flex-shrink:0;z-index:100}
+#top-bar .tb-brand{display:flex;align-items:center;gap:8px;font-weight:800;font-size:.95rem;color:var(--primary);flex-shrink:0}
+#top-bar .tb-brand svg{width:24px;height:24px}
+#top-bar .tb-sep{width:1px;height:26px;background:var(--border);margin:0 2px;flex-shrink:0}
+.bank-select{flex:1;max-width:260px}
+.bank-select select{width:100%;border:1.5px solid var(--border-2);border-radius:8px;padding:6px 10px;font-size:.85rem;font-family:var(--font);background:var(--surface-2);color:var(--text);outline:none;cursor:pointer}
+.bank-select select:focus{border-color:var(--primary)}
+#tb-actions{display:flex;align-items:center;gap:7px;margin-left:auto}
+#save-status{font-size:.75rem;color:var(--text-3);display:flex;align-items:center;gap:5px;white-space:nowrap}
+#save-status .dot{width:7px;height:7px;border-radius:50%;background:var(--text-3);flex-shrink:0}
+#save-status.saved .dot{background:var(--success)}
+#save-status.saving .dot{background:var(--warning);animation:spin .8s linear infinite}
+#editor-body{display:flex;flex:1;overflow:hidden}
+#sidebar{width:var(--sidebar-w);background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;flex-shrink:0}
+#sidebar-header{padding:12px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+#sidebar-header h3{font-size:.78rem;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.05em}
+#q-list{flex:1;overflow-y:auto;padding:6px}
+#q-list::-webkit-scrollbar{width:3px}
+#q-list::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:3px}
+.q-item{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:7px;cursor:pointer;border:1px solid transparent;margin-bottom:2px;transition:all .12s}
+.q-item:hover{background:var(--surface-2)}
+.q-item.active{background:var(--primary-soft);border-color:#C7D2FE}
+.q-num{width:26px;height:26px;border-radius:6px;background:var(--surface-3);display:flex;align-items:center;justify-content:center;font-size:.72rem;font-weight:700;flex-shrink:0;color:var(--text-2)}
+.q-item.active .q-num{background:var(--primary);color:#fff}
+.q-meta{flex:1;min-width:0}
+.q-meta-title{font-size:.78rem;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.q-meta-badges{display:flex;gap:3px;margin-top:2px}
+.qb{font-size:.62rem;padding:1px 5px;border-radius:4px;font-weight:600;background:var(--surface-3);color:var(--text-2)}
+.qb.img{background:#DBEAFE;color:#1D4ED8}
+.qb.ok{background:var(--success-soft);color:var(--success)}
+.qb.nok{background:var(--danger-soft);color:var(--danger)}
+#editor-main{flex:1;overflow-y:auto;display:flex;flex-direction:column}
+#editor-toolbar{padding:10px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;background:var(--surface);flex-shrink:0;flex-wrap:wrap}
+.et-info{font-size:.85rem;font-weight:700}
+.et-counter{font-size:.78rem;color:var(--text-3);font-weight:400}
+#sel-tipe{border:1.5px solid var(--border-2);border-radius:7px;padding:5px 9px;font-size:.8rem;font-family:var(--font);color:var(--text);background:var(--surface-2);outline:none}
+#sel-tipe:focus{border-color:var(--primary)}
+#editor-content{padding:20px;display:flex;flex-direction:column;gap:16px;max-width:860px;width:100%;margin:0 auto}
+.sec-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px;display:flex;flex-direction:column;gap:10px}
+.sec-lbl{font-size:.75rem;font-weight:700;color:var(--text-2);text-transform:uppercase;letter-spacing:.06em;display:flex;align-items:center;gap:5px}
+.sec-lbl svg{width:13px;height:13px}
+textarea.q-input{width:100%;border:1.5px solid var(--border-2);border-radius:8px;padding:11px;font-size:.95rem;font-family:var(--font);color:var(--text);resize:none;min-height:90px;outline:none;line-height:1.6}
+textarea.q-input:focus{border-color:var(--primary)}
+.img-drop{border:2px dashed var(--border-2);border-radius:10px;padding:14px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;transition:all .2s;text-align:center}
+.img-drop:hover,.img-drop.drag-over{border-color:var(--primary);background:var(--primary-soft)}
+.img-drop svg{width:28px;height:28px;color:var(--text-3)}
+.img-drop p{font-size:.8rem;color:var(--text-3)}
+.img-drop span{font-size:.72rem;color:var(--text-3)}
+.img-preview-wrap{position:relative;display:inline-block}
+.img-preview-wrap img{max-width:100%;max-height:180px;border-radius:8px;border:1px solid var(--border)}
+.img-del{position:absolute;top:-7px;right:-7px;width:20px;height:20px;border-radius:50%;background:var(--danger);color:#fff;border:none;cursor:pointer;font-size:11px;display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow)}
+.url-row{display:flex;gap:7px}
+.url-row input{flex:1;border:1.5px solid var(--border-2);border-radius:7px;padding:7px 10px;font-size:.82rem;font-family:var(--font);color:var(--text);outline:none}
+.url-row input:focus{border-color:var(--primary)}
+.opsi-row{display:flex;align-items:flex-start;gap:7px;padding:9px;border:1.5px solid var(--border);border-radius:8px;transition:all .15s}
+.opsi-row.correct{border-color:var(--success);background:var(--success-soft)}
+.opsi-lbl{width:30px;height:30px;border-radius:6px;background:var(--surface-3);display:flex;align-items:center;justify-content:center;font-size:.82rem;font-weight:800;color:var(--text-2);flex-shrink:0;margin-top:2px;cursor:pointer;transition:all .15s}
+.opsi-row.correct .opsi-lbl{background:var(--success);color:#fff}
+.opsi-inputs{flex:1;display:flex;flex-direction:column;gap:5px}
+.opsi-inputs input{width:100%;border:1.5px solid var(--border-2);border-radius:6px;padding:6px 9px;font-size:.82rem;font-family:var(--font);outline:none}
+.opsi-inputs input:focus{border-color:var(--primary)}
+.opsi-img-mini{max-height:48px;border-radius:4px;border:1px solid var(--border);margin-top:3px}
+.kunci-btns{display:flex;flex-wrap:wrap;gap:7px}
+.kunci-btn{padding:7px 14px;border-radius:8px;border:2px solid var(--border-2);background:var(--surface-2);font-size:.82rem;font-weight:700;color:var(--text-2);cursor:pointer;transition:all .15s}
+.kunci-btn:hover{border-color:var(--primary);color:var(--primary)}
+.kunci-btn.sel{border-color:var(--success);background:var(--success-soft);color:var(--success)}
+#kunci-txt{width:100%;border:1.5px solid var(--border-2);border-radius:8px;padding:9px 12px;font-size:.95rem;font-family:var(--mono);outline:none}
+#kunci-txt:focus{border-color:var(--primary)}
+.kunci-chk-row{display:flex;align-items:center;gap:8px;padding:6px 10px;border-radius:7px;border:1.5px solid var(--border);cursor:pointer;transition:all .12s}
+.kunci-chk-row input[type=checkbox]{width:15px;height:15px;accent-color:var(--success);cursor:pointer}
+.hint{font-size:.74rem;color:var(--text-3);line-height:1.4}
+#editor-footer{padding:14px 20px;border-top:1px solid var(--border);background:var(--surface);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;gap:10px}
+.btn{padding:7px 14px;border-radius:8px;font-size:.82rem;font-weight:600;border:none;cursor:pointer;display:inline-flex;align-items:center;gap:5px;transition:all .12s;font-family:var(--font)}
+.btn svg{width:15px;height:15px}
+.btn-primary{background:var(--primary);color:#fff}.btn-primary:hover{background:var(--primary-dark)}
+.btn-success{background:var(--success);color:#fff}.btn-success:hover{background:#047857}
+.btn-danger{background:var(--danger);color:#fff}.btn-danger:hover{background:#B91C1C}
+.btn-outline{background:var(--surface);color:var(--text-2);border:1.5px solid var(--border-2)}.btn-outline:hover{background:var(--surface-2)}
+.btn-soft{background:var(--primary-soft);color:var(--primary);border:1.5px solid #C7D2FE}.btn-soft:hover{background:#E0E7FF}
+.btn-sm{padding:5px 9px;font-size:.76rem}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.mo{position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(3px);z-index:500;display:none;align-items:center;justify-content:center;padding:16px}
+.mo.active{display:flex}
+.mo-box{background:var(--surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);width:100%;max-width:680px;max-height:90vh;display:flex;flex-direction:column;animation:modal-in .22s ease}
+.mo-hdr{padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.mo-hdr h3{font-size:.95rem;font-weight:700}
+.mo-cls{width:30px;height:30px;border-radius:7px;border:none;background:var(--surface-3);cursor:pointer;display:flex;align-items:center;justify-content:center;color:var(--text-2)}
+.mo-cls:hover{background:var(--border)}
+.mo-body{flex:1;overflow-y:auto;padding:18px}
+.mo-ftr{padding:12px 18px;border-top:1px solid var(--border);display:flex;justify-content:flex-end;gap:7px;flex-shrink:0}
+.fg{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}
+.fg label{font-size:.78rem;font-weight:600;color:var(--text-2)}
+.fg input{border:1.5px solid var(--border-2);border-radius:7px;padding:8px 11px;font-size:.88rem;font-family:var(--font);outline:none}
+.fg input:focus{border-color:var(--primary)}
+.fg small{font-size:.72rem;color:var(--text-3)}
+.prev-q-hdr{font-size:.78rem;color:var(--text-3);margin-bottom:5px;display:flex;justify-content:space-between}
+.prev-q-txt{font-size:.96rem;line-height:1.7;color:var(--text);margin-bottom:12px;white-space:pre-wrap}
+.prev-opt{padding:9px 12px;border-radius:8px;border:1.5px solid var(--border);margin-bottom:7px;font-size:.9rem;display:flex;align-items:center;gap:8px}
+.prev-opt.correct{border-color:var(--success);background:var(--success-soft);color:#065F46;font-weight:600}
+.prev-kunci{background:var(--success-soft);border:1.5px solid var(--success);border-radius:8px;padding:12px;text-align:center;color:var(--success);font-weight:700}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;padding:60px 20px;text-align:center;color:var(--text-3)}
+.empty-state svg{width:48px;height:48px;opacity:.35}
+.empty-state p{font-size:.88rem}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%) translateY(16px);background:#1E293B;color:#fff;padding:9px 18px;border-radius:10px;font-size:.82rem;font-weight:500;z-index:9500;opacity:0;transition:all .28s;pointer-events:none;white-space:nowrap}
+#toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+#loading{position:fixed;inset:0;background:rgba(248,250,252,.85);z-index:800;display:none;align-items:center;justify-content:center;flex-direction:column;gap:10px}
+#loading.active{display:flex}
+.spinner{width:34px;height:34px;border:3px solid var(--border-2);border-top-color:var(--primary);border-radius:50%;animation:spin .75s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes modal-in{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:scale(1)}}
+@keyframes card-in{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+@media(max-width:768px){
+  :root{--sidebar-w:260px}
+  #sidebar{position:fixed;left:-260px;top:0;height:100%;z-index:200;transition:left .22s;box-shadow:var(--shadow-lg)}
+  #sidebar.open{left:0}
+  #mob-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:199}
+  #mob-overlay.active{display:block}
+  #btn-mob-menu{display:flex!important}
+  #editor-content{padding:14px}
+}
+@media(min-width:769px){#btn-mob-menu{display:none!important}}
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-icon">
+      <svg fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125"/></svg>
+    </div>
+    <h1>Editor Soal CBT</h1>
+    <p class="subtitle">Masukkan token editor yang diberikan oleh administrator untuk mengakses halaman ini.</p>
+    <label class="field-label" for="editor-token-input">Token Editor</label>
+    <div class="token-wrap">
+      <input type="password" id="editor-token-input" placeholder="Masukkan token..." autocomplete="off" onkeydown="if(event.key==='Enter')doLogin()">
+      <button class="toggle-eye" onclick="togglePass()" title="Tampilkan/Sembunyikan">
+        <svg id="eye-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.641 0-8.574-3.007-9.964-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+      </button>
+    </div>
+    <div id="login-error">⚠️ <span id="login-error-msg">Token tidak valid. Coba lagi.</span></div>
+    <button class="btn-login" id="btn-login" onclick="doLogin()">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></svg>
+      Masuk ke Editor
+    </button>
+    <div class="login-footer">Gunakan <b>token editor</b> atau <b>password admin</b> untuk masuk.<br>Hubungi administrator jika belum memiliki akses.</div>
+  </div>
+</div>
+
+<!-- LOADING -->
+<div id="loading"><div class="spinner"></div><span style="font-size:.82rem;color:var(--text-2)" id="load-txt">Memuat...</span></div>
+
+<!-- APP (shown after auth) -->
+<div id="app">
+  <!-- TOP BAR -->
+  <div id="top-bar">
+    <button id="btn-mob-menu" class="btn btn-outline btn-sm" style="display:none" onclick="toggleSidebar()">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <div class="tb-brand">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125"/></svg>
+      Editor Soal
+    </div>
+    <div class="tb-sep"></div>
+    <div class="bank-select">
+      <select id="sel-bank" onchange="onBankChange()">
+        <option value="">— Pilih Bank Soal —</option>
+      </select>
+    </div>
+    <button class="btn btn-soft btn-sm" onclick="openNewBankModal()">
+      <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg> Bank Baru
+    </button>
+    <div class="tb-sep"></div>
+    <div id="tb-actions">
+      <div id="save-status"><div class="dot"></div><span id="save-txt">Siap</span></div>
+      <button class="btn btn-outline btn-sm" id="btn-preview" onclick="openPreviewModal()" disabled>
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.641 0-8.574-3.007-9.964-7.178z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        Preview
+      </button>
+      <button class="btn btn-success btn-sm" id="btn-save" onclick="saveCurrentSoal()" disabled>
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Simpan
+      </button>
+      <button class="btn btn-outline btn-sm" onclick="doLogout()" title="Keluar">
+        <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0013.5 3h-6a2.25 2.25 0 00-2.25 2.25v13.5A2.25 2.25 0 007.5 21h6a2.25 2.25 0 002.25-2.25V15M12 9l-3 3m0 0l3 3m-3-3h12.75"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- BODY -->
+  <div id="editor-body">
+    <div id="sidebar">
+      <div id="sidebar-header">
+        <h3 id="sidebar-title">Daftar Soal</h3>
+        <button class="btn btn-outline btn-sm" id="btn-add" onclick="addNewSoal()" disabled title="Tambah Soal">
+          <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M12 4v16m8-8H4"/></svg>
+        </button>
+      </div>
+      <div id="q-list">
+        <div class="empty-state">
+          <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.966 8.966 0 00-6 2.292m0-14.25v14.25"/></svg>
+          <p>Pilih Bank Soal untuk mulai</p>
+        </div>
+      </div>
+    </div>
+    <div id="mob-overlay" onclick="toggleSidebar()"></div>
+
+    <div id="editor-main">
+      <div id="editor-toolbar">
+        <span class="et-info" id="et-num">—</span>
+        <span class="et-counter" id="et-counter"></span>
+        <select id="sel-tipe" onchange="onTipeChange()" disabled>
+          <option value="PG">Pilihan Ganda</option>
+          <option value="BS">Benar / Salah</option>
+          <option value="KOMPLEKS">PG Kompleks</option>
+          <option value="ISIAN">Isian / Essay</option>
+          <option value="JODOH">Menjodohkan</option>
+        </select>
+        <div style="margin-left:auto;display:flex;gap:6px">
+          <button class="btn btn-outline btn-sm" onclick="navSoal(-1)" id="btn-prev" disabled>
+            <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <button class="btn btn-outline btn-sm" onclick="navSoal(1)" id="btn-next" disabled>
+            <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <button class="btn btn-danger btn-sm" onclick="deleteSoal()" id="btn-del" disabled>
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"/></svg>
+            Hapus
+          </button>
+        </div>
+      </div>
+
+      <div id="editor-content">
+        <div id="empty-ed" class="empty-state" style="margin:auto;padding:80px 20px">
+          <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"/></svg>
+          <p style="font-size:.95rem;font-weight:600;color:var(--text-2)">Pilih Bank Soal untuk mulai mengedit</p>
+          <p>Atau buat bank soal baru dengan tombol "Bank Baru"</p>
+        </div>
+        <div class="sec-card" id="sec-pertanyaan" style="display:none">
+          <div class="sec-lbl"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z"/></svg>Teks Pertanyaan</div>
+          <textarea class="q-input" id="inp-pertanyaan" placeholder="Ketik pertanyaan di sini..." oninput="autoResize(this);markDirty()"></textarea>
+        </div>
+        <div class="sec-card" id="sec-gambar" style="display:none">
+          <div class="sec-lbl"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"/></svg>Gambar Soal <span style="font-size:.7rem;font-weight:400;color:var(--text-3)">(opsional)</span></div>
+          <div id="gambar-preview-wrap" style="display:none"><div class="img-preview-wrap"><img id="gambar-preview" src="" alt=""><button class="img-del" onclick="removeGambar()" title="Hapus">✕</button></div></div>
+          <div id="gambar-drop" class="img-drop" onclick="document.getElementById('gambar-file').click()" ondragover="onDragOver(event,'gambar-drop')" ondragleave="onDragLeave('gambar-drop')" ondrop="onDrop(event)">
+            <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
+            <p><b>Klik</b> atau seret gambar ke sini</p>
+            <span>PNG/JPG — Maks 500KB (Base64)</span>
+            <input type="file" id="gambar-file" accept="image/*" style="display:none" onchange="onGambarFile(event)">
+          </div>
+          <div class="url-row">
+            <input type="text" id="gambar-url" placeholder="Atau tempel URL gambar eksternal..." oninput="markDirty()" onblur="applyGambarUrl()">
+            <button class="btn btn-outline btn-sm" onclick="applyGambarUrl()">Terapkan</button>
+          </div>
+        </div>
+        <div class="sec-card" id="sec-opsi" style="display:none">
+          <div class="sec-lbl"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 6.75h12M8.25 12h12m-12 5.25h12M3.75 6.75h.007v.008H3.75V6.75zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zM3.75 12h.007v.008H3.75V12zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0zm-.375 5.25h.007v.008H3.75v-.008zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"/></svg>Opsi Jawaban <span id="opsi-hint" style="font-size:.7rem;font-weight:400;color:var(--text-3);margin-left:4px">Klik huruf untuk set kunci</span></div>
+          <div id="opsi-container"></div>
+        </div>
+        <div class="sec-card" id="sec-kunci-txt" style="display:none">
+          <div class="sec-lbl"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25a3 3 0 013 3m3 0a6 6 0 01-7.029 5.912c-.563-.097-1.159.026-1.563.43L10.5 17.25H8.25v2.25H6v2.25H2.25v-2.818c0-.597.237-1.17.659-1.591l6.499-6.499c.404-.404.527-1 .43-1.563A6 6 0 1121.75 8.25z"/></svg>Kunci Jawaban</div>
+          <input type="text" id="kunci-txt" placeholder="Ketik jawaban yang benar..." oninput="markDirty()">
+          <p class="hint" id="kunci-hint">Untuk ISIAN: ketik jawaban. Untuk JODOH: format "1=A,2=C,3=B".</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODALS -->
+<div id="toast"></div>
+<div class="mo" id="mo-preview">
+  <div class="mo-box">
+    <div class="mo-hdr"><h3 id="prev-title">Preview Soal</h3>
+      <div style="display:flex;gap:8px;align-items:center">
+        <label style="display:flex;align-items:center;gap:5px;font-size:.78rem;cursor:pointer"><input type="checkbox" id="chk-kunci" onchange="renderPreview()" style="accent-color:var(--success)"> Tampilkan Kunci</label>
+        <button class="mo-cls" onclick="closePreview()">✕</button>
+      </div>
+    </div>
+    <div class="mo-body" id="prev-body"></div>
+    <div class="mo-ftr">
+      <button class="btn btn-outline btn-sm" onclick="navPrev(-1)" id="btn-pp">← Sebelumnya</button>
+      <span id="prev-ctr" style="font-size:.78rem;color:var(--text-3);align-self:center"></span>
+      <button class="btn btn-outline btn-sm" onclick="navPrev(1)" id="btn-pn">Berikutnya →</button>
+      <button class="btn btn-primary btn-sm" onclick="closePreview()">Tutup</button>
+    </div>
+  </div>
+</div>
+<div class="mo" id="mo-newbank">
+  <div class="mo-box" style="max-width:420px">
+    <div class="mo-hdr"><h3>Bank Soal Baru</h3><button class="mo-cls" onclick="closeNewBankModal()">✕</button></div>
+    <div class="mo-body">
+      <div class="fg"><label>Kode Bank Soal <span style="color:var(--danger)">*</span></label><input type="text" id="nb-id" placeholder="Contoh: MTK-9A-2026" style="text-transform:uppercase"><small>Hanya huruf, angka, tanda (-). Tidak bisa diubah setelah dibuat.</small></div>
+    </div>
+    <div class="mo-ftr"><button class="btn btn-outline" onclick="closeNewBankModal()">Batal</button><button class="btn btn-primary" onclick="createNewBank()">Buat</button></div>
+  </div>
+</div>
+<div class="mo" id="mo-del">
+  <div class="mo-box" style="max-width:360px">
+    <div class="mo-hdr"><h3 style="color:var(--danger)">Hapus Soal?</h3><button class="mo-cls" onclick="document.getElementById('mo-del').classList.remove('active')">✕</button></div>
+    <div class="mo-body"><p style="font-size:.88rem;color:var(--text-2);line-height:1.6">Soal <strong id="del-lbl"></strong> akan dihapus permanen. Tindakan ini <strong>tidak dapat dibatalkan</strong>.</p></div>
+    <div class="mo-ftr"><button class="btn btn-outline" onclick="document.getElementById('mo-del').classList.remove('active')">Batal</button><button class="btn btn-danger" onclick="doDeleteSoal()">Hapus</button></div>
+  </div>
+</div>
+<script>
+// ===== FIREBASE CONFIG =====
+const DEFAULT_FB = {
+  apiKey:"AIzaSyCWy2ihzu3Gk9lgryD-T8cx2V3EYGpTWYk",
+  authDomain:"cbt-spensada-9cdc2.firebaseapp.com",
+  databaseURL:"https://cbt-spensada-9cdc2-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId:"cbt-spensada-9cdc2",
+  storageBucket:"cbt-spensada-9cdc2.firebasestorage.app",
+  messagingSenderId:"491339904212",
+  appId:"1:491339904212:web:bac6087e3f0059a1547741"
+};
+let db = null;
+function initFB() {
+  let cfg = DEFAULT_FB;
+  const saved = localStorage.getItem('CBT_FB_CONFIG');
+  if (saved) { try { cfg = JSON.parse(saved); } catch(e){} }
+  if (!firebase.apps.length) firebase.initializeApp(cfg);
+  db = firebase.database();
+}
+
+// ===== AUTH =====
+const AUTH_KEY = 'CBT_EDITOR_AUTHED';
+let isAuthed = false;
+
+window.addEventListener('DOMContentLoaded', () => {
+  // Check sessionStorage for existing auth (survives refresh in same tab)
+  if (sessionStorage.getItem(AUTH_KEY) === '1') {
+    initFB();
+    showApp();
+  }
+  // Focus token input
+  const inp = document.getElementById('editor-token-input');
+  if (inp) setTimeout(() => inp.focus(), 200);
+});
+
+function togglePass() {
+  const inp = document.getElementById('editor-token-input');
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+}
+
+async function doLogin() {
+  const inp = document.getElementById('editor-token-input');
+  const token = inp.value.trim();
+  if (!token) return;
+
+  const btn = document.getElementById('btn-login');
+  btn.disabled = true;
+  btn.textContent = 'Memverifikasi...';
+  setLoginError('');
+
+  try {
+    // Firebase belum init saat login — init dulu
+    initFB();
+    // Ambil token editor dari Firebase /config/editor_token (Rule: .read true)
+    const snap = await db.ref('/config/editor_token').once('value');
+    const validToken = snap.val();
+    
+    if (validToken && token === String(validToken).trim()) {
+      // Token Benar! Sekarang login secara anonim agar 'auth != null' di Rules terpenuhi
+      await firebase.auth().signInAnonymously();
+      sessionStorage.setItem(AUTH_KEY, '1');
+      showApp();
+    } else {
+      setLoginError('Token tidak valid. Hubungi administrator.');
+      inp.value = '';
+      inp.focus();
+    }
+  } catch(e) {
+    setLoginError('Gagal terhubung ke server: ' + e.message);
+  }
+  btn.disabled = false;
+  btn.innerHTML = '<svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13.5 10.5V6.75a4.5 4.5 0 119 0v3.75M3.75 21.75h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H3.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"/></svg> Masuk ke Editor';
+}
+
+function setLoginError(msg) {
+  const el = document.getElementById('login-error');
+  const msg_el = document.getElementById('login-error-msg');
+  if (msg) { msg_el.textContent = msg; el.style.display = 'block'; }
+  else { el.style.display = 'none'; }
+}
+
+function showApp() {
+  isAuthed = true;
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('app').style.display = 'flex';
+  loadBankList();
+}
+
+function doLogout() {
+  if (ES.isDirty && !confirm('Ada perubahan belum disimpan. Keluar?')) return;
+  sessionStorage.removeItem(AUTH_KEY);
+  window.location.reload();
+}
+
+// ===== STATE =====
+const ES = {
+  bankId: '', questions: [], keys: {},
+  currentIndex: -1, isDirty: false, prevIdx: 0
+};
+
+// ===== HELPERS =====
+function showLoad(t='Memuat...') { document.getElementById('loading').classList.add('active'); document.getElementById('load-txt').textContent=t; }
+function hideLoad() { document.getElementById('loading').classList.remove('active'); }
+let toastTmr=null;
+function showToast(msg,dur=2500){ const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTmr);toastTmr=setTimeout(()=>t.classList.remove('show'),dur); }
+function setSaveStatus(s){ const w=document.getElementById('save-status'),tx=document.getElementById('save-txt');w.className=''; if(s){w.classList.add(s);} tx.textContent=s==='saved'?'Tersimpan ✓':s==='saving'?'Menyimpan...':'Ada perubahan'; }
+function markDirty(){ ES.isDirty=true; setSaveStatus('dirty'); }
+function esc(s){ return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function autoResize(el){ el.style.height='auto'; el.style.height=(el.scrollHeight+4)+'px'; }
+function enableCtrl(on){ ['btn-save','btn-preview','btn-add'].forEach(id=>{ const el=document.getElementById(id); if(el) el.disabled=!on; }); }
+
+// ===== BANK LIST =====
+async function loadBankList() {
+  try {
+    const snap = await db.ref('/soal').once('value');
+    const data = snap.val()||{};
+    const sel = document.getElementById('sel-bank');
+    while(sel.options.length>1) sel.remove(1);
+    for(let id in data){ const o=document.createElement('option');o.value=id;o.textContent=id+' ('+Object.keys(data[id]).length+' soal)';sel.appendChild(o); }
+  } catch(e) { showToast('⚠️ Gagal muat daftar bank soal',3000); }
+}
+
+async function onBankChange() {
+  if(ES.isDirty && !confirm('Ada perubahan belum disimpan. Pindah bank dan buang perubahan?')){ document.getElementById('sel-bank').value=ES.bankId; return; }
+  const id = document.getElementById('sel-bank').value;
+  if(!id){ resetEditor(); return; }
+  await loadBank(id);
+}
+
+async function loadBank(bankId) {
+  showLoad('Memuat Bank Soal...');
+  try {
+    const [sSnap,kSnap] = await Promise.all([db.ref('/soal/'+bankId).once('value'),db.ref('/kunci/'+bankId).once('value')]);
+    const sData=sSnap.val()||{}, kData=kSnap.val()||{};
+    ES.bankId=bankId; ES.keys=kData; ES.questions=[]; ES.isDirty=false; setSaveStatus('');
+    let idx=0;
+    for(let qId in sData){ const q=Object.assign({},sData[qId]); q.id=qId; q._index=idx++; if(!q.opsi)q.opsi=[]; q.kunci=kData[qId]||''; ES.questions.push(q); }
+    renderSidebar();
+    if(ES.questions.length>0) loadQ(0); else { ES.currentIndex=-1; showSections(false); }
+    enableCtrl(true);
+    hideLoad();
+    showToast('Bank soal '+bankId+' dimuat ('+ES.questions.length+' soal)');
+  } catch(e){ hideLoad(); showToast('❌ Gagal: '+e.message,4000); }
+}
+
+function resetEditor(){ ES.bankId='';ES.questions=[];ES.keys={};ES.currentIndex=-1;ES.isDirty=false; renderSidebar(); showSections(false); enableCtrl(false); setSaveStatus(''); }
+
+// ===== SIDEBAR =====
+function renderSidebar(){
+  const list=document.getElementById('q-list');
+  document.getElementById('sidebar-title').textContent=ES.bankId?'Soal ('+ES.questions.length+')':'Daftar Soal';
+  if(ES.questions.length===0){ list.innerHTML='<div class="empty-state" style="padding:40px 14px"><svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24" style="width:36px;height:36px"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15"/></svg><p style="font-size:.78rem">Belum ada soal. Klik + untuk tambah.</p></div>'; return; }
+  list.innerHTML=ES.questions.map((q,i)=>{
+    const active=i===ES.currentIndex?' active':'';
+    const hasImg=q.gambar&&q.gambar.trim()?'<span class="qb img">🖼</span>':'';
+    const hasKey=q.kunci&&q.kunci.trim()?'<span class="qb ok">✓</span>':'<span class="qb nok">!</span>';
+    return `<div class="q-item${active}" onclick="loadQ(${i})"><div class="q-num">${i+1}</div><div class="q-meta"><div class="q-meta-title">${esc((q.pertanyaan||'(kosong)').substring(0,34))}</div><div class="q-meta-badges"><span class="qb">${q.tipe}</span>${hasImg}${hasKey}</div></div></div>`;
+  }).join('');
+}
+
+// ===== LOAD QUESTION =====
+function loadQ(index){
+  ES.currentIndex=index; ES.isDirty=false; setSaveStatus('');
+  const q=ES.questions[index]; if(!q) return;
+  showSections(true);
+  document.getElementById('et-num').textContent='Soal ke-'+(index+1);
+  document.getElementById('et-counter').textContent='/'+ES.questions.length;
+  document.getElementById('sel-tipe').value=q.tipe||'PG';
+  document.getElementById('sel-tipe').disabled=false;
+  document.getElementById('btn-prev').disabled=(index===0);
+  document.getElementById('btn-next').disabled=(index===ES.questions.length-1);
+  document.getElementById('btn-del').disabled=false;
+  const ta=document.getElementById('inp-pertanyaan'); ta.value=q.pertanyaan||''; autoResize(ta);
+  setGambarPreview(q.gambar||'');
+  renderOpsi(q);
+  renderSidebar();
+  const items=document.querySelectorAll('.q-item'); if(items[index]) items[index].scrollIntoView({block:'nearest',behavior:'smooth'});
+}
+
+function showSections(show){
+  const empty=document.getElementById('empty-ed');
+  const secs=['sec-pertanyaan','sec-gambar','sec-opsi','sec-kunci-txt'];
+  if(show){ if(empty)empty.style.display='none'; secs.forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='flex';}); }
+  else{ if(empty)empty.style.display='flex'; secs.forEach(id=>{const el=document.getElementById(id);if(el)el.style.display='none';}); }
+}
+
+function onTipeChange(){
+  const idx=ES.currentIndex; if(idx<0) return;
+  ES.questions[idx].tipe=document.getElementById('sel-tipe').value;
+  ES.questions[idx].kunci='';
+  markDirty(); renderOpsi(ES.questions[idx]);
+}
+
+// ===== GAMBAR =====
+function setGambarPreview(url){
+  const wrap=document.getElementById('gambar-preview-wrap'),img=document.getElementById('gambar-preview'),drop=document.getElementById('gambar-drop'),urlInp=document.getElementById('gambar-url');
+  if(url&&url.trim()){ img.src=url;wrap.style.display='block';drop.style.display='none';urlInp.value=url.startsWith('data:')?'':url; }
+  else{ wrap.style.display='none';drop.style.display='flex';urlInp.value=''; }
+}
+function removeGambar(){ const idx=ES.currentIndex;if(idx<0)return;ES.questions[idx].gambar='';setGambarPreview('');markDirty(); }
+function applyGambarUrl(){ const url=document.getElementById('gambar-url').value.trim();if(!url)return;const idx=ES.currentIndex;if(idx<0)return;ES.questions[idx].gambar=url;setGambarPreview(url);markDirty(); }
+function onGambarFile(e){ const file=e.target.files[0];if(!file)return;if(file.size>500*1024){showToast('❌ Gambar >500KB, kompres dulu',3000);return;} const r=new FileReader();r.onload=ev=>{const idx=ES.currentIndex;if(idx>=0){ES.questions[idx].gambar=ev.target.result;setGambarPreview(ev.target.result);markDirty();}};r.readAsDataURL(file); }
+function onDragOver(e,id){e.preventDefault();document.getElementById(id).classList.add('drag-over');}
+function onDragLeave(id){document.getElementById(id).classList.remove('drag-over');}
+function onDrop(e){e.preventDefault();document.getElementById('gambar-drop').classList.remove('drag-over');const file=e.dataTransfer.files[0];if(!file||!file.type.startsWith('image/'))return;if(file.size>500*1024){showToast('❌ Gambar >500KB',3000);return;}const r=new FileReader();r.onload=ev=>{const idx=ES.currentIndex;if(idx>=0){ES.questions[idx].gambar=ev.target.result;setGambarPreview(ev.target.result);markDirty();}};r.readAsDataURL(file);}
+
+// ===== OPSI RENDERER =====
+function renderOpsi(q){
+  const tipe=q.tipe, oc=document.getElementById('opsi-container');
+  const ks=document.getElementById('sec-kunci-txt'), os=document.getElementById('sec-opsi');
+  if(tipe==='ISIAN'||tipe==='JODOH'){
+    os.style.display='none'; ks.style.display='flex';
+    document.getElementById('kunci-txt').value=q.kunci||'';
+    document.getElementById('kunci-hint').textContent=tipe==='ISIAN'?'Ketik jawaban yang benar. Pencocokan tidak case-sensitive.':'Format: "1=A,2=C,3=B" sesuai konvensi soal.';
+    return;
+  }
+  os.style.display='flex'; ks.style.display='none';
+  const labels=tipe==='BS'?['A','B']:tipe==='KOMPLEKS'?['A','B','C','D','E']:['A','B','C','D'];
+  const opsiMap={}; (q.opsi||[]).forEach(o=>opsiMap[o.id]=o);
+  const kArr=q.kunci?String(q.kunci).toUpperCase().split(',').map(s=>s.trim()).filter(Boolean):[];
+  document.getElementById('opsi-hint').textContent=tipe==='KOMPLEKS'?'Centang kotak untuk pilih kunci (boleh lebih dari satu)':'Klik huruf untuk set sebagai kunci';
+  oc.innerHTML='';
+  labels.forEach(lbl=>{
+    const opt=opsiMap[lbl]||{id:lbl,text:'',gambar:''};
+    const isC=kArr.includes(lbl);
+    const row=document.createElement('div'); row.className='opsi-row'+(isC?' correct':''); row.id='or-'+lbl;
+    const imgP=opt.gambar?`<img class="opsi-img-mini" src="${esc(opt.gambar)}" alt="">`:'';
+    if(tipe==='KOMPLEKS'){
+      row.innerHTML=`<div style="display:flex;align-items:center;margin-top:3px"><input type="checkbox" id="chk-${lbl}" ${isC?'checked':''} style="width:16px;height:16px;accent-color:var(--success)" onchange="onKompleksChk()"></div><div class="opsi-lbl" style="cursor:default">${lbl}</div><div class="opsi-inputs"><input type="text" id="ot-${lbl}" placeholder="Teks opsi ${lbl}..." value="${esc(opt.text||'')}" oninput="markDirty()"><input type="text" id="og-${lbl}" placeholder="URL gambar opsi (opsional)..." value="${esc(opt.gambar||'')}" oninput="onOpsiImg('${lbl}');markDirty()">${imgP}</div>`;
+    } else {
+      row.innerHTML=`<div class="opsi-lbl" onclick="setKunci('${lbl}')" title="Set kunci">${lbl}</div><div class="opsi-inputs"><input type="text" id="ot-${lbl}" placeholder="Teks opsi ${lbl}..." value="${esc(opt.text||'')}" oninput="markDirty()"><input type="text" id="og-${lbl}" placeholder="URL gambar opsi (opsional)..." value="${esc(opt.gambar||'')}" oninput="onOpsiImg('${lbl}');markDirty()">${imgP}</div><label style="display:flex;align-items:center;cursor:pointer;margin-top:2px"><input type="file" accept="image/*" style="display:none" onchange="onOpsiFile(event,'${lbl}')"><span class="btn btn-outline btn-sm" style="padding:3px 6px;font-size:.68rem" onclick="this.previousElementSibling.click()">📁</span></label>`;
+    }
+    oc.appendChild(row);
+  });
+}
+
+function setKunci(lbl){
+  const idx=ES.currentIndex; if(idx<0)return;
+  ES.questions[idx].kunci=lbl;
+  ['A','B','C','D','E'].forEach(l=>{ const r=document.getElementById('or-'+l); if(r){ if(l===lbl)r.classList.add('correct'); else r.classList.remove('correct'); } });
+  markDirty();
+}
+function onKompleksChk(){
+  const idx=ES.currentIndex; if(idx<0)return;
+  const lbls=['A','B','C','D','E'];
+  const sel=lbls.filter(l=>{ const c=document.getElementById('chk-'+l); return c&&c.checked; });
+  ES.questions[idx].kunci=sel.join(',');
+  lbls.forEach(l=>{ const r=document.getElementById('or-'+l); if(r){ if(sel.includes(l))r.classList.add('correct'); else r.classList.remove('correct'); } });
+  markDirty();
+}
+function onOpsiImg(lbl){
+  const url=document.getElementById('og-'+lbl).value.trim();
+  const row=document.getElementById('or-'+lbl); if(!row)return;
+  let ex=row.querySelector('.opsi-img-mini');
+  if(url){ if(!ex){const img=document.createElement('img');img.className='opsi-img-mini';img.src=url;row.querySelector('.opsi-inputs').appendChild(img);}else{ex.src=url;} }
+  else{ if(ex)ex.remove(); }
+}
+function onOpsiFile(e,lbl){ const file=e.target.files[0];if(!file)return;if(file.size>300*1024){showToast('❌ Gambar opsi max 300KB',3000);return;}const r=new FileReader();r.onload=ev=>{const el=document.getElementById('og-'+lbl);if(el){el.value=ev.target.result;onOpsiImg(lbl);markDirty();}};r.readAsDataURL(file); }
+</script>
+<script>
+// ===== SAVE =====
+async function saveCurrentSoal(){
+  const idx=ES.currentIndex; if(idx<0||!ES.bankId){showToast('Pilih soal dulu',2000);return;}
+  const q=ES.questions[idx];
+  q.pertanyaan=document.getElementById('inp-pertanyaan').value.trim();
+  q.tipe=document.getElementById('sel-tipe').value;
+  if(!q.pertanyaan){showToast('❌ Teks pertanyaan tidak boleh kosong',3000);return;}
+  if(q.tipe!=='ISIAN'&&q.tipe!=='JODOH'){
+    const lbls=q.tipe==='BS'?['A','B']:q.tipe==='KOMPLEKS'?['A','B','C','D','E']:['A','B','C','D'];
+    const opsi=[];
+    lbls.forEach(l=>{const t=(document.getElementById('ot-'+l)||{value:''}).value.trim(),g=(document.getElementById('og-'+l)||{value:''}).value.trim();if(t||g)opsi.push({id:l,text:t,gambar:g});});
+    q.opsi=opsi;
+  }
+  if(q.tipe==='ISIAN'||q.tipe==='JODOH') q.kunci=document.getElementById('kunci-txt').value.trim();
+  if(!q.kunci||!q.kunci.trim()){showToast('⚠️ Kunci jawaban belum diisi',3000);return;}
+  setSaveStatus('saving');
+  try{
+    await db.ref('/soal/'+ES.bankId+'/'+q.id).set({id:q.id,tipe:q.tipe,pertanyaan:q.pertanyaan,gambar:q.gambar||'',opsi:q.opsi||[],bobot:q.bobot||1});
+    await db.ref('/kunci/'+ES.bankId+'/'+q.id).set(q.kunci);
+    ES.isDirty=false; setSaveStatus('saved'); showToast('✅ Soal '+(idx+1)+' tersimpan!'); renderSidebar();
+  }catch(e){ setSaveStatus('dirty'); showToast('❌ Gagal simpan: '+e.message,4000); }
+}
+
+// ===== ADD / DELETE =====
+async function addNewSoal(){
+  if(!ES.bankId)return;
+  const newId='S-'+Date.now().toString(36).toUpperCase();
+  const nq={id:newId,tipe:'PG',pertanyaan:'',gambar:'',opsi:[{id:'A',text:'',gambar:''},{id:'B',text:'',gambar:''},{id:'C',text:'',gambar:''},{id:'D',text:'',gambar:''}],kunci:'',bobot:1,_index:ES.questions.length};
+  ES.questions.push(nq); renderSidebar(); loadQ(ES.questions.length-1); markDirty();
+  showToast('Soal baru ditambahkan. Isi dan simpan.',3000);
+}
+
+let pendDelIdx=-1;
+function deleteSoal(){ const idx=ES.currentIndex;if(idx<0)return;pendDelIdx=idx;document.getElementById('del-lbl').textContent='ke-'+(idx+1)+' (ID: '+ES.questions[idx].id+')';document.getElementById('mo-del').classList.add('active'); }
+async function doDeleteSoal(){
+  document.getElementById('mo-del').classList.remove('active');
+  const idx=pendDelIdx; if(idx<0)return;
+  const q=ES.questions[idx];
+  showLoad('Menghapus soal...');
+  try{
+    await db.ref('/soal/'+ES.bankId+'/'+q.id).remove();
+    await db.ref('/kunci/'+ES.bankId+'/'+q.id).remove();
+    ES.questions.splice(idx,1); ES.questions.forEach((q,i)=>q._index=i); ES.isDirty=false;
+    const ni=Math.min(idx,ES.questions.length-1);
+    if(ES.questions.length>0) loadQ(ni); else{ ES.currentIndex=-1; showSections(false); renderSidebar(); }
+    hideLoad(); showToast('🗑️ Soal dihapus.');
+    await loadBankList();
+  }catch(e){ hideLoad(); showToast('❌ Gagal hapus: '+e.message,4000); }
+}
+
+function navSoal(dir){ const ni=ES.currentIndex+dir; if(ni<0||ni>=ES.questions.length)return; loadQ(ni); }
+
+// ===== NEW BANK =====
+function openNewBankModal(){ document.getElementById('nb-id').value=''; document.getElementById('mo-newbank').classList.add('active'); setTimeout(()=>document.getElementById('nb-id').focus(),100); }
+function closeNewBankModal(){ document.getElementById('mo-newbank').classList.remove('active'); }
+async function createNewBank(){
+  const rawId=document.getElementById('nb-id').value.trim().toUpperCase().replace(/[^A-Z0-9\-_]/g,'');
+  if(!rawId){showToast('❌ Kode tidak boleh kosong',3000);return;}
+  showLoad('Membuat bank soal...');
+  try{
+    const snap=await db.ref('/soal/'+rawId).once('value');
+    if(snap.exists()){hideLoad();showToast('⚠️ Kode sudah dipakai',3000);return;}
+    await db.ref('/soal/'+rawId+'/__ph__').set({tipe:'PG',pertanyaan:'',opsi:[],bobot:1});
+    await db.ref('/soal/'+rawId+'/__ph__').remove();
+    closeNewBankModal(); await loadBankList();
+    document.getElementById('sel-bank').value=rawId; await loadBank(rawId);
+    hideLoad(); showToast('✅ Bank soal '+rawId+' dibuat!');
+  }catch(e){ hideLoad(); showToast('❌ Gagal: '+e.message,4000); }
+}
+
+// ===== PREVIEW =====
+function openPreviewModal(){
+  if(ES.questions.length===0)return;
+  ES.prevIdx=Math.max(0,ES.currentIndex);
+  document.getElementById('mo-preview').classList.add('active');
+  document.getElementById('chk-kunci').checked=true;
+  renderPreview();
+}
+function closePreview(){ document.getElementById('mo-preview').classList.remove('active'); }
+function navPrev(dir){ const ni=ES.prevIdx+dir; if(ni<0||ni>=ES.questions.length)return; ES.prevIdx=ni; renderPreview(); }
+function renderPreview(){
+  const qs=ES.questions, idx=ES.prevIdx, q=qs[idx]; if(!q)return;
+  const showK=document.getElementById('chk-kunci').checked;
+  document.getElementById('prev-title').textContent='Preview — Soal '+(idx+1)+' / '+qs.length;
+  document.getElementById('prev-ctr').textContent=(idx+1)+' / '+qs.length;
+  document.getElementById('btn-pp').disabled=(idx===0);
+  document.getElementById('btn-pn').disabled=(idx===qs.length-1);
+  const body=document.getElementById('prev-body');
+  let h=`<div class="prev-q-hdr"><span>Soal ${idx+1}</span><span class="qb">${q.tipe}</span></div>`;
+  h+=`<div class="prev-q-txt">${esc(q.pertanyaan||'(Teks kosong)')}</div>`;
+  if(q.gambar&&q.gambar.trim()) h+=`<img src="${q.gambar}" style="max-width:100%;border-radius:8px;margin-bottom:12px;border:1px solid var(--border)" alt="">`;
+  if(q.tipe==='PG'||q.tipe==='BS'||q.tipe==='KOMPLEKS'){
+    const lbls=['A','B','C','D','E'];
+    const kArr=q.kunci?String(q.kunci).toUpperCase().split(',').map(s=>s.trim()):[];
+    (q.opsi||[]).forEach((opt,i)=>{
+      const lbl=lbls[i]||opt.id, correct=showK&&kArr.includes(String(opt.id).toUpperCase());
+      h+=`<div class="prev-opt${correct?' correct':''}"><span style="font-weight:700;min-width:18px">${lbl}.</span><span>${esc(opt.text||'')}</span>${opt.gambar?`<img src="${opt.gambar}" style="max-height:48px;border-radius:4px;margin-left:8px">`:''}${correct?'<span style="margin-left:auto">✅</span>':''}</div>`;
+    });
+  } else {
+    if(showK) h+=`<div class="prev-kunci">🔑 Kunci Jawaban:<br><span style="display:block;margin-top:6px;font-size:1rem">${esc(q.kunci||'Belum diisi')}</span></div>`;
+  }
+  body.innerHTML=h;
+}
+
+// ===== SIDEBAR MOBILE =====
+function toggleSidebar(){ document.getElementById('sidebar').classList.toggle('open'); document.getElementById('mob-overlay').classList.toggle('active'); }
+
+// ===== BEFORE UNLOAD =====
+window.addEventListener('beforeunload',e=>{ if(ES.isDirty){e.preventDefault();e.returnValue='Ada perubahan belum disimpan.';} });
+</script>
+</body>
+</html>
