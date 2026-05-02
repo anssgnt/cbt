@@ -265,6 +265,42 @@ h4 {
   background-size: 16px 16px;
 }
 
+.wave-bg-container-mini {
+  position: relative;
+  background: #FACC15;
+  width: 100%;
+  padding: 40px 20px 60px 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  min-height: 20vh;
+}
+
+.wave-bg-container-mini::before {
+  content: '';
+  position: absolute;
+  top: 20px;
+  left: 10px;
+  width: 40px;
+  height: 80px;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.4) 2px, transparent 2px);
+  background-size: 16px 16px;
+}
+
+.wave-bg-container-mini::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  width: 60px;
+  height: 100px;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.4) 2px, transparent 2px);
+  background-size: 16px 16px;
+}
+
 /* Subtle large circle */
 .wave-content {
   position: relative;
@@ -756,10 +792,10 @@ h4 {
   width: 100%;
   max-width: 400px;
   background: #FFFFFF;
-  border-radius: 24px;
-  border: 1px solid #E5E7EB;
-  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.07);
-  padding: 40px 32px;
+  border-radius: 16px;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+  padding: 32px 24px;
   text-align: center;
   margin: 0 auto;
 }
@@ -2217,10 +2253,10 @@ h4 {
 /* ─── Modals ─── */
 /* Override .card defaults without needing !important */
 .modal-card {
-  background: var(--surface-0);
-  border: 1px solid #E5E7EB;
-  border-radius: var(--r-xl);
-  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.1);
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 16px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
   z-index: 1100;
 }
 
