@@ -234,10 +234,15 @@
             Mulai Sinkronisasi
           </button>
           <div id="sync-all-progress" style="display:none; margin-top:12px;">
-            <div style="height: 6px; background: #E0E7FF; border-radius: 10px; overflow: hidden; margin-bottom: 8px;">
-              <div id="sync-all-bar" style="width: 0%; height: 100%; background: #4F46E5; transition: width 0.3s;"></div>
+            <!-- Info Detail Storage -->
+            <div id="sync-storage-info" style="display:flex; justify-content:space-between; font-size:0.68rem; color:#6B7280; margin-bottom:6px; background:white; padding:4px 8px; border-radius:6px; border:1px solid #E5E7EB;">
+              <span>Memori HP: <b id="sync-storage-avail">-</b></span>
+              <span>Total Data: <b id="sync-storage-req">-</b></span>
             </div>
-            <div id="sync-all-text" style="font-size: 0.7rem; color: #6366F1; font-weight: 600; text-align: center;">
+            <div style="height: 8px; background: #E0E7FF; border-radius: 10px; overflow: hidden; margin-bottom: 8px; border: 1px solid #C7D2FE;">
+              <div id="sync-all-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #6366F1, #4F46E5); transition: width 0.3s; box-shadow: 0 0 8px rgba(79, 70, 229, 0.4);"></div>
+            </div>
+            <div id="sync-all-text" style="font-size: 0.72rem; color: #4338CA; font-weight: 700; text-align: center; text-transform: uppercase; letter-spacing: 0.02em;">
               Menyiapkan...</div>
           </div>
         </div>
@@ -687,11 +692,13 @@
             <div
               style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
               <h3 style="font-size:1.1rem;margin:0;">Bank Soal</h3>
-              <div style="display:flex; gap:8px;">
+              <div style="display:flex; gap:8px; flex-wrap:wrap;">
                 <button class="btn btn-outline" onclick="openImportModal('soal')"
                   style="padding:8px 12px; font-size:0.8rem;">📥 Import CSV</button>
+                <button class="btn btn-outline" onclick="openSoalEditorPage('')"
+                  style="padding:8px 12px; font-size:0.8rem; color:#4F46E5; border-color:#4F46E5;">✏️ Editor Soal</button>
                 <button class="btn btn-primary" onclick="openBankSoalModal()"
-                  style="padding:8px 12px; font-size:0.8rem;">➕ Bank Soal</button>
+                  style="padding:8px 12px; font-size:0.8rem;">➕ Bank Baru</button>
               </div>
             </div>
             <div class="table-responsive">
