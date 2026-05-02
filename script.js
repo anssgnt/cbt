@@ -582,6 +582,62 @@ async function getExamDataOptimized(examId, token, forceRefresh = false, skipTok
   }
 }
 
+// --- STORAGE & SYNC UTILS ---
+async function checkStorageQuota() {
+  if (!navigator.storage || !navigator.storage.estimate) return true;
+  try {
+    const { usage, quota } = await navigator.storage.estimate();
+    const available = quota - usage;
+    // Estimasi 1MB per paket soal (termasuk gambar base64)
+    const required = State.schedules.length * 1024 * 1024;
+
+    // Update UI jika ada
+    const availEl = document.getElementById('sync-storage-avail');
+    const reqEl = document.getElementById('sync-storage-req');
+    if (availEl) availEl.textContent = (available / 1024 / 1024).toFixed(0) + ' MB';
+    if (reqEl) reqEl.textContent = (required / 1024 / 1024).toFixed(1) + ' MB';
+
+    if (available < required) {
+      showCustomAlert(
+        'Memori Penuh',
+        `Butuh sekitar ${(required / 1024 / 1024).toFixed(1)}MB, namun sisa ruang hanya ${(available / 1024 / 1024).toFixed(1)}MB. Hapus beberapa foto atau aplikasi agar ujian lancar.`,
+        '💾'
+      );
+      return false;
+    }
+  } catch (e) { console.warn("Gagal cek kuota storage", e); }
+  return true;
+}
+
+function cleanupOldCache() {
+  if (!State.schedules || State.schedules.length === 0) return;
+  const activeIds = new Set(State.schedules.map(s => s.id));
+  let count = 0;
+
+  // Cari item di localStorage dengan prefix CBT_SOAL_ atau CBT_KUNCI_
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key.startsWith('CBT_SOAL_') || key.startsWith('CBT_KUNCI_')) {
+      const id = key.replace('CBT_SOAL_', '').replace('CBT_KUNCI_', '');
+      if (!activeIds.has(id)) {
+        localStorage.removeItem(key);
+        count++;
+        // Karena item dihapus, index bergeser
+        i--;
+      }
+    }
+  }
+  if (count > 0) console.log(`🧹 Cache cleanup: ${count} item lama dihapus.`);
+}
+
+function getMyStaggerDelay() {
+  if (!State.user || !State.user.id) return 0;
+  const userId = String(State.user.id);
+  const hash = userId.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+  const group = hash % 10; // Bagi menjadi 10 grup
+  return group * 20000; // Jeda 20 detik per grup (Total rentang 3 menit)
+}
+
 // --- H-1 PRE-SYNC LOGIC ---
 async function syncAllQuestions() {
   if (!State.schedules || State.schedules.length === 0) {
@@ -608,11 +664,27 @@ async function syncAllQuestions() {
     else if (navigator.connection.downlink < 3) baseDelay = 1200; // Sinyal sedang
   }
 
-  let count = 0;
+  if (!(await checkStorageQuota())) {
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    btn.textContent = 'Sinkron Semua Soal';
+    return;
+  }
+
+  // Bersihkan cache lama sebelum sync baru
+  cleanupOldCache();
+
+  // Resume Mechanism
+  const progressData = JSON.parse(localStorage.getItem('SYNC_PROGRESS') || '{}');
+  const completed = new Set(progressData.completed || []);
+
+  let count = completed.size;
   const total = State.schedules.length;
 
   for (let i = 0; i < total; i++) {
     const sch = State.schedules[i];
+    if (completed.has(sch.id)) continue;
+
     count++;
     const percent = Math.round((count / total) * 100);
     bar.style.width = percent + '%';
@@ -621,8 +693,14 @@ async function syncAllQuestions() {
     try {
       // SkipTokenCheck = true agar bisa download H-1 tanpa tahu token
       await getExamDataOptimized(sch.id, '', true, true);
+      completed.add(sch.id);
+      localStorage.setItem('SYNC_PROGRESS', JSON.stringify({
+        completed: [...completed],
+        timestamp: Date.now()
+      }));
     } catch (e) {
       console.warn("Gagal sinkron " + sch.nama, e);
+      count--; // Kurangi agar counter tetap akurat jika gagal
     }
     // Jeda adaptif agar tidak membebani Firebase Free Tier
     await sleep(baseDelay);
@@ -1279,7 +1357,7 @@ function updatePreSyncUI(list) {
          
          const btnSync = document.getElementById('btnSyncAllSoal');
          if (btnSync) {
-            btnSync.textContent = 'Sinkronkan Semua Soal Sekarang';
+            btnSync.textContent = 'Mulai Sinkronisasi';
             btnSync.style.background = '#4F46E5';
             btnSync.disabled = false;
             btnSync.style.opacity = '1';
@@ -1354,6 +1432,20 @@ async function loadSchedules() {
     }
   } finally {
     hideLoading();
+
+    // --- AUTO BACKGROUND SYNC (Distributed) ---
+    const TODAY = new Date().toISOString().split('T')[0];
+    if (localStorage.getItem('LAST_SYNC_DATE') !== TODAY) {
+      const delay = getMyStaggerDelay();
+      console.log(`Auto-sync dijadwalkan dalam ${(delay / 1000).toFixed(0)} detik...`);
+      setTimeout(async () => {
+        // Cek lagi apakah sudah sync di tab lain
+        if (localStorage.getItem('LAST_SYNC_DATE') !== TODAY) {
+          await syncAllQuestions();
+          localStorage.setItem('LAST_SYNC_DATE', TODAY);
+        }
+      }, delay);
+    }
   }
 }
 
@@ -2629,6 +2721,7 @@ async function loadAdminSoal() {
            <td><strong>${bankId}</strong> <br><small class="text-muted">${Object.keys(data[bankId]).length} soal</small></td>
            <td>
               <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem;" onclick="previewSoal('${bankId}')">👀 Preview</button>
+              <button class="btn btn-primary" style="padding:4px 8px; font-size:0.75rem;" onclick="openSoalEditorPage('${bankId}')">✏️ Editor</button>
               <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem; color:#EF4444; border-color:#EF4444;" onclick="deleteBankSoal('${bankId}')">🗑️</button>
            </td>
        </tr>`;
@@ -2752,7 +2845,20 @@ window.fixPesertaIndex = async function () {
   }
 }
 
-function openBankSoalModal() { showCustomAlert('Segera Hadir', 'Fitur Bank Soal Builder segera hadir. Gunakan Import CSV.', 'ℹ️'); }
+// --- SOAL EDITOR PAGE LAUNCHER ---
+function openBankSoalModal() {
+  openSoalEditorPage('');
+}
+
+window.openSoalEditorPage = function (bankId = '') {
+  // Editor kini punya login form sendiri — cukup buka URL-nya
+  const base = window.location.pathname.replace(/\/[^/]*$/, '/');
+  const editorUrl = window.location.origin + base + 'soal-editor.html';
+  const w = window.open(editorUrl, '_blank');
+  if (!w) {
+    showCustomAlert('Popup Diblokir', 'Izinkan popup untuk situs ini lalu coba lagi.', '⚠️');
+  }
+};
 
 window.deleteSiswa = async function (id) {
   if (confirm('Hapus siswa ' + id + '?')) {
