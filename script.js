@@ -1254,23 +1254,39 @@ function updatePreSyncUI(list) {
       }
     }
     
-    const btnSync = document.getElementById('btnSyncAllSoal');
-    if (btnSync) {
+    const notSyncedDiv = document.getElementById('pre-sync-content-not-synced');
+    const syncedDiv = document.getElementById('pre-sync-content-synced');
+    const nameSpan = document.getElementById('sync-synced-name');
+    
+    if (notSyncedDiv && syncedDiv) {
       if (allCached) {
-         btnSync.textContent = '✅ 100% Tersinkronisasi';
-         btnSync.style.background = '#059669';
-         btnSync.disabled = true;
-         btnSync.style.opacity = '1';
-         const prog = document.getElementById('sync-all-progress');
-         if(prog) prog.style.display = 'none';
+         notSyncedDiv.style.display = 'none';
+         syncedDiv.style.display = 'block';
+         if (nameSpan) nameSpan.textContent = State.user.name;
+         
+         // Tampilan minimalis hemat space
+         preSyncContainer.style.background = 'rgba(16, 185, 129, 0.05)';
+         preSyncContainer.style.border = '1px dashed #10B981';
+         preSyncContainer.style.padding = '10px 16px';
       } else {
-         btnSync.textContent = 'Sinkronkan Semua Soal Sekarang';
-         btnSync.style.background = '#4F46E5';
-         btnSync.disabled = false;
-         btnSync.style.opacity = '1';
-         // remove listener to avoid duplicates, then add
-         btnSync.removeEventListener('click', syncAllQuestions);
-         btnSync.addEventListener('click', syncAllQuestions);
+         notSyncedDiv.style.display = 'block';
+         syncedDiv.style.display = 'none';
+         
+         // Kembalikan ke tampilan default
+         preSyncContainer.style.background = '#EEF2FF';
+         preSyncContainer.style.border = '1px dashed #6366F1';
+         preSyncContainer.style.padding = '16px';
+         
+         const btnSync = document.getElementById('btnSyncAllSoal');
+         if (btnSync) {
+            btnSync.textContent = 'Sinkronkan Semua Soal Sekarang';
+            btnSync.style.background = '#4F46E5';
+            btnSync.disabled = false;
+            btnSync.style.opacity = '1';
+            // remove listener to avoid duplicates, then add
+            btnSync.removeEventListener('click', syncAllQuestions);
+            btnSync.addEventListener('click', syncAllQuestions);
+         }
       }
     }
   }
