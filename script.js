@@ -1,4089 +1,1592 @@
-// --- Dynamic PWA Manifest for Google Apps Script ---
-(function () {
-  const manifestData = {
-    "name": "CBT Online MGMP",
-    "short_name": "CBT",
-    "start_url": window.location.href, // Mengunci URL GAS yang panjang
-    "display": "standalone",
-    "background_color": "#F5F7FF",
-    "theme_color": "#1D4ED8",
-    "icons": [
-      {
-        "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzFEMEVEOCI+PHBhdGggZD0iTTEyIDJMMiA3TDEyIDEyTDIyIDdMMTIgMloiLz48cGF0aCBkPSJNMkEgOVYxNEMyIDE0IDcuNSAxNy41IDEyIDE5LjVDMTYuNSAxNy41IDIyIDE0IDIyIDE0VjlMMTIgMTRMMiA5WiIgb3BhY2l0eT0iMC43NSIvPjwvc3ZnPg==",
-        "sizes": "192x192",
-        "type": "image/svg+xml",
-        "purpose": "any maskable"
-      },
-      {
-        "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzFEMEVEOCI+PHBhdGggZD0iTTEyIDJMMiA3TDEyIDEyTDIyIDdMMTIgMloiLz48cGF0aCBkPSJNMkEgOVYxNEMyIDE0IDcuNSAxNy41IDEyIDE5LjVDMTYuNSAxNy41IDIyIDE0IDIyIDE0VjlMMTIgMTRMMiA5WiIgb3BhY2l0eT0iMC43NSIvPjwvc3ZnPg==",
-        "sizes": "512x512",
-        "type": "image/svg+xml",
-        "purpose": "any maskable"
-      }
-    ]
-  };
-  const stringManifest = JSON.stringify(manifestData);
-  const encodedManifest = encodeURIComponent(stringManifest);
-  const manifestURL = 'data:application/manifest+json;charset=utf-8,' + encodedManifest;
-  document.getElementById('pwa-manifest').setAttribute('href', manifestURL);
-})();
-
-// --- MODAL PANDUAN ---
-window.openGuideModal = function () {
-  const overlay = document.getElementById('guide-overlay');
-  const modal = document.getElementById('guide-modal');
-  if (!overlay || !modal) return;
-  overlay.classList.add('active');
-  modal.style.display = 'flex';
-  setTimeout(() => {
-    modal.style.opacity = '1';
-    modal.style.transform = 'translate(-50%, -50%) scale(1)';
-  }, 10);
-};
-
-window.closeGuideModal = function () {
-  const overlay = document.getElementById('guide-overlay');
-  const modal = document.getElementById('guide-modal');
-  if (!overlay || !modal) return;
-  overlay.classList.remove('active');
-  modal.style.opacity = '0';
-  modal.style.transform = 'translate(-50%, -50%) scale(0.95)';
-  setTimeout(() => {
-    modal.style.display = 'none';
-  }, 300);
-};
-
-// --- Global State ---
-const State = {
-  user: null,
-  config: null,
-  questions: [],
-  answers: {}, // { "qID": value }
-  doubts: new Set(),
-  currentIndex: 0,
-  timerInterval: null,
-  timeRemaining: 0, // In seconds
-  examActive: false,
-  violations: 0,
-  security: {},
-  tempLogoBase64: null,
-  submissionFailed: false
-};
-
-// --- School Logo & Identity Support ---
-function applySchoolIdentity(iden) {
-  if (!iden) return;
-
-  if (iden.name) {
-    document.title = `CBT Online – ${iden.name}`;
-    safeSetText('ph-sekolah', iden.name);
-    safeSetText('ph-sekolah-2', iden.name);
-    safeSetText('ph-sekolah-print', iden.name);
-    safeSetText('portal-school-sub', iden.name);
-  }
-
-  if (iden.sub) {
-    safeSetText('portal-school-sub', iden.sub);
-  }
-
-  if (iden.logo) {
-    const logoImg = document.getElementById('school-logo-img');
-    const defaultLogo = document.getElementById('default-logo-svg');
-    if (logoImg && defaultLogo) {
-      logoImg.src = iden.logo;
-      logoImg.style.display = 'block';
-      defaultLogo.style.display = 'none';
-    }
-  }
-}
-
-// Global initialization for School Identity
-async function initSchoolIdentity() {
-  try {
-    const idenSnap = await db.ref('/config/identity').once('value');
-    const iden = idenSnap.val();
-    if (iden) applySchoolIdentity(iden);
-  } catch (e) {
-    console.warn("Failed to load school identity:", e);
-  }
-}
-
-// --- Utilities ---
-function showView(viewId) {
-  document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
-  const target = document.getElementById(viewId);
-  if (target) target.classList.add('active');
-  hideLoading(); // Pastikan loading tertutup saat ganti halaman
-}
-
-// Helper untuk mencegah error memori penuh (Storage Quota)
-function safeSetLocalStorage(key, value) {
-  try {
-    localStorage.setItem(key, value);
-    return true;
-  } catch (e) {
-    if (e.name === 'QuotaExceededError' || e.name === 'NS_ERROR_DOM_QUOTA_REACHED') {
-      showCustomAlert('Memori HP Penuh', 'Penyimpanan browser Anda penuh. Harap hapus beberapa data browser untuk melanjutkan ujian.', '💾');
-    } else {
-      console.warn('Gagal menyimpan ke localStorage', e);
-    }
-    return false;
-  }
-}
-
-function safeAddListener(id, event, callback) {
-  const el = document.getElementById(id);
-  if (el) el.addEventListener(event, callback);
-}
-
-function safeSetText(id, text) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = text;
-}
-
-function safeSetValue(id, val) {
-  const el = document.getElementById(id);
-  if (el) el.value = val;
-}
-
-function safeSetChecked(id, bool) {
-  const el = document.getElementById(id);
-  if (el) el.checked = !!bool;
-}
-
-function safeGetValue(id) {
-  const el = document.getElementById(id);
-  return el ? el.value : '';
-}
-
-function showAlert(msg, type = 'danger') {
-  const alertEl = document.getElementById('login-alert');
-  alertEl.textContent = msg;
-  alertEl.className = `alert alert-${type}`;
-  alertEl.style.display = 'block';
-  setTimeout(() => { alertEl.style.display = 'none'; }, 3000);
-}
-
-function showLoading(text) {
-  const overlay = document.getElementById('loading-overlay');
-  const textEl = document.getElementById('loading-overlay-text');
-  if (overlay && textEl) {
-    textEl.textContent = text || 'Memuat...';
-    overlay.classList.add('active');
-  }
-}
-
-function hideLoading() {
-  const overlay = document.getElementById('loading-overlay');
-  if (overlay) overlay.classList.remove('active');
-}
-
-// --- Seeded Randomizer & Shuffler ---
-function getSeededRandom(seedStr) {
-  let h1 = 1779033703, h2 = 3144134277, h3 = 1013904242, h4 = 2773480762;
-  for (let i = 0, k; i < seedStr.length; i++) {
-    k = seedStr.charCodeAt(i);
-    h1 = h2 ^ Math.imul(h1 ^ k, 597399067);
-    h2 = h3 ^ Math.imul(h2 ^ k, 2869860233);
-    h3 = h4 ^ Math.imul(h3 ^ k, 951274213);
-    h4 = h1 ^ Math.imul(h4 ^ k, 2716044179);
-  }
-  let a = (h1 ^ h2 ^ h3 ^ h4) >>> 0;
-  let b = (h2 ^ h1) >>> 0;
-  let c = (h3 ^ h1) >>> 0;
-  let d = (h4 ^ h1) >>> 0;
-  return function () {
-    a >>>= 0; b >>>= 0; c >>>= 0; d >>>= 0;
-    let t = (a + b) | 0;
-    a = b ^ b >>> 9;
-    b = c + (c << 3) | 0;
-    c = (c << 21 | c >>> 11);
-    d = d + 1 | 0;
-    t = t + d | 0;
-    c = c + t | 0;
-    return (t >>> 0) / 4294967296;
-  }
-}
-
-function shuffleArray(array, randFn) {
-  for (let i = array.length - 1; i > 0; i--) {
-    let j = Math.floor(randFn() * (i + 1));
-    let temp = array[i];
-    array[i] = array[j];
-    array[j] = temp;
-  }
-}
-
-// --- Local Storage Cadangan ---
-function saveStateLocal() {
-  if (!State.examActive || !State.config) return;
-  const lsKey = `CBT_${State.user.id}_${State.config.id_ujian}`;
-  const data = {
-    answers: State.answers,
-    doubts: Array.from(State.doubts),
-    currentIndex: State.currentIndex,
-    timeRemaining: State.timeRemaining,
-    violations: State.violations,
-    lastSavedAt: new Date().getTime()
-  };
-  localStorage.setItem(lsKey, JSON.stringify(data));
-}
-
-function playSiren() {
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const oscillator = audioCtx.createOscillator();
-  const gainNode = audioCtx.createGain();
-
-  oscillator.type = 'square';
-  oscillator.connect(gainNode);
-  gainNode.connect(audioCtx.destination);
-
-  oscillator.frequency.setValueAtTime(600, audioCtx.currentTime);
-  oscillator.frequency.linearRampToValueAtTime(1000, audioCtx.currentTime + 0.3);
-  oscillator.frequency.linearRampToValueAtTime(600, audioCtx.currentTime + 0.6);
-  oscillator.frequency.linearRampToValueAtTime(1000, audioCtx.currentTime + 0.9);
-  oscillator.frequency.linearRampToValueAtTime(600, audioCtx.currentTime + 1.2);
-
-  gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime);
-  gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 1.5);
-
-  oscillator.start(audioCtx.currentTime);
-  oscillator.stop(audioCtx.currentTime + 1.5);
-}
-
-function handleCheatDetection() {
-  if (!State.examActive || !State.security.anticheat) return;
-  State.violations++;
-  saveStateLocal();
-
-  const overlay = document.getElementById('cheat-alert-overlay');
-  if (overlay) overlay.classList.add('active');
-
-  try { playSiren(); } catch (e) { }
-
-  let count = 5 * State.violations;
-  const countEl = document.getElementById('cheat-countdown');
-  if (countEl) countEl.textContent = count;
-
-  const iv = setInterval(() => {
-    count--;
-    if (countEl) countEl.textContent = count;
-    if (count <= 0) {
-      clearInterval(iv);
-      if (overlay) overlay.classList.remove('active');
-      if (State.security.fullscreen && !document.fullscreenElement) {
-        document.documentElement.requestFullscreen().catch(e => { });
-      }
-    }
-  }, 1000);
-
-  withDB(async function () {
-    await db.ref('/pelanggaran').push({
-      waktu: new Date().toLocaleString('id-ID'),
-      nama: State.user.name,
-      userId: State.user.id,
-      ujian: State.config.nama_ujian,
-      examId: State.config.id_ujian,
-      tipe: 'Keluar Layar/Ganti Tab'
-    });
-  });
-}
-
-document.addEventListener('contextmenu', e => { if (State.examActive) e.preventDefault(); });
-document.addEventListener('visibilitychange', () => {
-  if (document.hidden && State.examActive) handleCheatDetection();
-});
-
-document.addEventListener('fullscreenchange', () => {
-  if (!document.fullscreenElement && State.examActive && State.security.fullscreen) {
-    handleCheatDetection();
-  }
-});
-document.addEventListener('copy', e => e.preventDefault());
-document.addEventListener('paste', e => e.preventDefault());
-
-// --- Google Apps Script Promise Wrappers ---
-// --- Firebase SDK Dynamic Configuration ---
-const DEFAULT_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyCWy2ihzu3Gk9lgryD-T8cx2V3EYGpTWYk",
-  authDomain: "cbt-spensada-9cdc2.firebaseapp.com",
-  databaseURL: "https://cbt-spensada-9cdc2-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "cbt-spensada-9cdc2",
-  storageBucket: "cbt-spensada-9cdc2.firebasestorage.app",
-  messagingSenderId: "491339904212",
-  appId: "1:491339904212:web:bac6087e3f0059a1547741"
-};
-
-let firebaseConfig = DEFAULT_FIREBASE_CONFIG;
-const savedFbConfig = localStorage.getItem('CBT_FB_CONFIG');
-if (savedFbConfig) {
-  try {
-    firebaseConfig = JSON.parse(savedFbConfig);
-    console.log("Using custom Firebase configuration from localStorage.");
-  } catch (e) {
-    console.error("Failed to parse saved Firebase config, using default.", e);
-  }
-}
-
-if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
-const db = firebase.database();
-const auth = firebase.auth();
-
-/* ================================
-   🚀 PERFORMANCE CORE PATCH
-================================ */
-
-// Memory cache (ultra cepat)
-const memoryCache = {};
-const sleep = ms => new Promise(r => setTimeout(r, ms));
-
-async function cachedGet(path) {
-  const now = Date.now();
-  const cached = memoryCache[path];
-  if (cached && (now - cached.ts < 10 * 60 * 1000)) return cached.val;
-
-  const snap = await db.ref(path).once('value');
-  const val = snap.val();
-  memoryCache[path] = { val, ts: now };
-  return val;
-}
-
-// Database caching logic (Memory Cache)
-let searchTimeout = null;
-
-// Deklarasi di sini agar bisa dipakai oleh dbConnectFast dan dbConnect di bawah
-// tanpa ReferenceError (let tidak di-hoist seperti var).
-let activeDbRequests = 0;
-let dbDisconnectTimer = null;
-
-// --- KONEKSI CEPAT TANPA JITTER (khusus operasi interaktif) ---
-// Jitter 0-1500ms dirancang untuk bulk request serentak 1000 siswa.
-// Untuk pencarian nama yang dipicu satu user, jitter justru merusak UX.
-window.dbConnectFast = async function () {
-  activeDbRequests++;
-  if (activeDbRequests === 1) {
-    if (dbDisconnectTimer) clearTimeout(dbDisconnectTimer);
-    db.goOnline(); // Langsung online, tanpa delay
-  }
-};
-
-window.dbOffline = function () {
-  // Hanya matikan koneksi jika TIDAK sedang di Admin Dashboard
-  const isAdmin = document.getElementById('admin-dash-view') && document.getElementById('admin-dash-view').classList.contains('active');
-  if (isAdmin) return;
-
-  activeDbRequests = 0;
-  db.goOffline();
-};
-
-// --- CACHE PESERTA PERSISTENT (localStorage, 30 menit) ---
-const PESERTA_CACHE_KEY = 'CBT_CACHE_PESERTA';
-const PESERTA_CACHE_TIME_KEY = 'CBT_CACHE_PESERTA_TIME';
-const PESERTA_CACHE_TTL = 30 * 60 * 1000; // 30 menit
-
-async function loadPesertaCache() {
-  // Cek apakah cache masih valid
-  try {
-    const cachedTime = localStorage.getItem(PESERTA_CACHE_TIME_KEY);
-    if (cachedTime && (Date.now() - parseInt(cachedTime)) < PESERTA_CACHE_TTL) {
-      const cached = localStorage.getItem(PESERTA_CACHE_KEY);
-      if (cached) {
-        cachedPeserta = JSON.parse(cached);
-        SystemStatus.peserta = 'success';
-        updateInitStatusDisplay();
-        return cachedPeserta;
-      }
-    }
-  } catch (e) { /* cache rusak, lanjut fetch */ }
-
-  // Fetch dari Firebase
-  try {
-    window.dbConnectFast();
-    const snap = await db.ref('/peserta').once('value');
-    const data = snap.val() || {};
-    const results = [];
-    for (let id in data) {
-      const p = data[id];
-      results.push({
-        id,
-        name: p.nama || '',
-        kelas: p.kelas || '',
-        _search: ((p.nama || '') + ' ' + (p.kelas || '') + ' ' + id).toLowerCase()
-      });
-    }
-    // Simpan ke cache
-    cachedPeserta = results;
-    try {
-      localStorage.setItem(PESERTA_CACHE_KEY, JSON.stringify(results));
-      localStorage.setItem(PESERTA_CACHE_TIME_KEY, Date.now().toString());
-    } catch (e) { /* storage penuh, skip */ }
-    SystemStatus.peserta = 'success';
-    updateInitStatusDisplay();
-    return results;
-  } catch (e) {
-    console.error("Gagal memuat daftar peserta:", e);
-    SystemStatus.peserta = 'error';
-    updateInitStatusDisplay();
-    return [];
-  } finally {
-    window.dbDisconnect();
-  }
-}
-
-async function syncAllDataForPortal() {
-  showLoading('Singkronisasi Data Ujian...');
-  try {
-    await dbConnectFast();
-    // 1. Fetch Identity
-    const idenSnap = await db.ref('/config/identity').once('value');
-    const iden = idenSnap.val();
-    if (iden) {
-      applySchoolIdentity(iden);
-      SystemStatus.portal = 'success';
-    }
-
-    // 2. Fetch Peserta
-    await loadPesertaCache();
-
-    // 3. Fetch Jadwal (Preview)
-    const jSnap = await db.ref('/jadwal').once('value');
-    const jadwals = jSnap.val() || {};
-    localStorage.setItem('CBT_CACHE_JADWAL', JSON.stringify(jadwals));
-    localStorage.setItem('CBT_CACHE_JADWAL_TIME', Date.now().toString());
-
-    // 4. Force Offline to free up Firebase slots for students
-    dbOffline();
-    hideLoading();
-
-    const badge = document.getElementById('sync-badge');
-    if (badge) badge.style.display = 'block';
-
-    SystemStatus.portal = 'success';
-    updateInitStatusDisplay();
-  } catch (e) {
-    console.error("Armor 1000 Sync Error:", e);
-    hideLoading();
-    // Tetap lanjut, mungkin ada cache lama
-  }
-}
-
-async function searchPeserta(keyword) {
-  const key = keyword.trim().toLowerCase();
-  if (key.length < 2) return [];
-
-  // Pastikan cache terisi
-  const list = cachedPeserta || await loadPesertaCache();
-  if (!list || list.length === 0) return [];
-
-  const queryWords = key.split(/\s+/).filter(w => w.length > 0);
-  const results = [];
-  for (let i = 0; i < list.length; i++) {
-    const p = list[i];
-    const haystack = p._search || ((p.name || '') + ' ' + (p.kelas || '') + ' ' + (p.id || '')).toLowerCase();
-    if (queryWords.every(word => haystack.includes(word))) {
-      results.push(p);
-      if (results.length >= 15) break;
-    }
-  }
-  return results;
-}
-
-/* ================================
-   📦 CACHE SOAL (SUPER CEPAT)
-================================ */
-
-async function getExamDataOptimized(examId, token, forceRefresh = false, skipTokenCheck = false) {
-  // Armor 1000: Coba ambil dari cache jadwal dulu untuk menghemat koneksi
-  let sch = null;
-  try {
-    const cachedJadwal = localStorage.getItem('CBT_CACHE_JADWAL');
-    if (cachedJadwal) {
-      const jadwals = JSON.parse(cachedJadwal);
-      sch = jadwals[examId];
-    }
-  } catch (e) { }
-
-  // Jika tidak ada di cache, baru ambil dari Firebase
-  if (!sch || forceRefresh) {
-    await dbConnectFast();
-    try {
-      const jSnap = await db.ref('/jadwal/' + examId).once('value');
-      sch = jSnap.val();
-    } finally {
-      dbDisconnect();
-    }
-  }
-
-  if (!sch) throw new Error("Ujian tidak ditemukan");
-
-  // Cache Versioning (Armor 1000)
-  // Gunakan timestamp mulai sebagai versi untuk invalidasi otomatis jika jadwal diubah
-  const ver = sch.mulai || 0;
-  const CACHE_KEY = `SOAL_${examId}_v${ver}`;
-
-  if (!forceRefresh) {
-    const cached = localStorage.getItem(CACHE_KEY);
-    if (cached) {
-      try { 
-        const parsedData = JSON.parse(cached); 
-        // Validasi ekstra: pastikan object punya array questions
-        if (parsedData && parsedData.questions && parsedData.questions.length > 0) {
-          return parsedData;
-        } else {
-          throw new Error("Cache kosong atau rusak");
-        }
-      } catch (e) {
-        console.warn("Cache rusak, melakukan auto re-download...", e);
-        showLoading('Memperbaiki Data yang Rusak...');
-      }
-    }
-  }
-
-  // Token check hanya dilakukan saat mau MENGERJAKAN (skipTokenCheck = false)
-  if (!skipTokenCheck && sch.token && String(sch.token).toUpperCase() !== String(token).toUpperCase()) {
-    throw new Error("Token salah!");
-  }
-
-  await dbConnect();
-  try {
-    const sDataPromise = cachedGet('/soal/' + sch.nama_soal);
-    const kDataPromise = cachedGet('/kunci/' + sch.nama_soal);
-
-    const [sData, kData] = await Promise.all([sDataPromise, kDataPromise]);
-
-    const questions = [];
-    let idx = 0;
-
-    for (let qId in sData) {
-      let q = sData[qId];
-      q._index = idx++;
-      if (!q.opsi) q.opsi = [];
-      q.id = qId;
-      questions.push(q);
-    }
-
-    const result = {
-      success: true,
-      config: {
-        id_ujian: examId,
-        nama_ujian: sch.nama,
-        durasi: sch.durasi,
-        end_ms: sch.selesai,
-        min_selesai: sch.min_selesai || 0  // wajib ada agar batas waktu minimal mengerjakan berlaku dari cache
-      },
-      questions,
-      keys: kData || {} // Cache keys for client-side scoring
-    };
-
-    safeSetLocalStorage(CACHE_KEY, JSON.stringify(result));
-    return result;
-  } finally {
-    dbDisconnect();
-  }
-}
-
-// --- H-1 PRE-SYNC LOGIC ---
-async function syncAllQuestions() {
-  if (!State.schedules || State.schedules.length === 0) {
-    showCustomAlert('Informasi', 'Tidak ada jadwal ujian yang ditemukan untuk disinkronkan.', 'ℹ️');
-    return;
-  }
-
-  const btn = document.getElementById('btnSyncAllSoal');
-  const progressDiv = document.getElementById('sync-all-progress');
-  const bar = document.getElementById('sync-all-bar');
-  const text = document.getElementById('sync-all-text');
-
-  if (!btn || !progressDiv) return;
-
-  btn.disabled = true;
-  btn.style.opacity = '0.7';
-  btn.textContent = 'Sedang Sinkron...';
-  progressDiv.style.display = 'block';
-
-  // Adaptive Delay (Kecepatan Internet)
-  let baseDelay = 800;
-  if (navigator.connection && navigator.connection.downlink) {
-    if (navigator.connection.downlink < 1.5) baseDelay = 2000; // Sinyal lemah (3G/E)
-    else if (navigator.connection.downlink < 3) baseDelay = 1200; // Sinyal sedang
-  }
-
-  let count = 0;
-  const total = State.schedules.length;
-
-  for (let i = 0; i < total; i++) {
-    const sch = State.schedules[i];
-    count++;
-    const percent = Math.round((count / total) * 100);
-    bar.style.width = percent + '%';
-    text.textContent = `Mengunduh (${count}/${total}): ${sch.nama}...`;
-
-    try {
-      // SkipTokenCheck = true agar bisa download H-1 tanpa tahu token
-      await getExamDataOptimized(sch.id, '', true, true);
-    } catch (e) {
-      console.warn("Gagal sinkron " + sch.nama, e);
-    }
-    // Jeda adaptif agar tidak membebani Firebase Free Tier
-    await sleep(baseDelay);
-  }
-
-  // Laporkan ke Firebase bahwa siswa ini sudah sync
-  try {
-    await dbConnectFast();
-    if (State.schedules[0]) {
-       // Catat di jadwal pertama atau secara general, kita simpan di path status khusus
-       await db.ref(`/status_sync/${State.schedules[0].id}/${State.user.id}`).set({
-         nama: State.user.name,
-         kelas: State.user.kelas,
-         time: new Date().getTime()
-       });
-    }
-  } catch(e) { console.warn("Gagal lapor status sync", e); }
-  finally { dbDisconnect(); }
-
-  bar.style.width = '100%';
-  text.textContent = 'Semua Soal Berhasil Disimpan Offline!';
-  btn.textContent = '✅ Selesai Sinkron';
-  btn.style.background = '#059669';
-  showCustomAlert('Sinkronisasi Berhasil', 'Semua materi ujian telah disimpan di HP Anda. Besok Anda bisa langsung mulai ujian dengan lancar.', '✅');
-}
-
-/* ================================
-   💾 AUTO SAVE (ANTI DATA HILANG)
-================================ */
-
-// Periodic backup (every 5s)
-setInterval(() => {
-  if (State.examActive) {
-    saveStateLocal();
-  }
-}, 5000);
-
-// Debounced save for interactions (anti-lag on low-end devices)
-let saveTimeout = null;
-function debouncedSave() {
-  if (saveTimeout) clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(() => {
-    saveStateLocal();
-  }, 1000);
-}
-
-// Question rendering optimizations
-
-/* ================================
-   ⚡ PRELOAD NEXT SOAL
-================================ */
-
-function preloadNext(index) {
-  const next = State.questions[index + 1];
-  if (!next) return;
-
-  if (next.image) {
-    const img = new Image();
-    img.src = next.image;
-  }
-}
-
-/* ================================
-   🚀 SUBMIT SUPER AMAN
-================================ */
-
-// submitExamSafe integrated into submitExam below
-
-/* ================================
-   ⏱️ TIMER RINGAN
-================================ */
-
-let lastUpdate = 0;
-
-function updateTimerOptimized() {
-  const now = Date.now();
-
-  if (now - lastUpdate < 1000) return;
-  lastUpdate = now;
-
-  // update timer UI di sini
-}
-
-/* ================================
-   🚨 CHEAT LOG LOCAL ONLY
-================================ */
-
-let cheatLogs = [];
-
-function handleCheatDetectionOptimized() {
-  cheatLogs.push({
-    time: Date.now(),
-    type: 'TAB_SWITCH'
-  });
-}
-
-/* ================================
-   📡 SYSTEM INITIALIZATION TRACKER
-================================ */
-const SystemStatus = {
-  auth: 'pending',
-  peserta: 'pending',
-  portal: 'pending'
-};
-
-function updateInitStatusDisplay() {
-  const dot = document.getElementById('init-dot');
-  const text = document.getElementById('init-text');
-  if (!dot || !text) return;
-
-  const statuses = [SystemStatus.auth, SystemStatus.peserta, SystemStatus.portal];
-  dot.classList.remove('init-success', 'init-warning', 'init-error');
-
-  if (statuses.every(s => s === 'success')) {
-    dot.classList.add('init-success');
-    dot.style.animation = 'none';
-    text.textContent = 'Sistem Siap. Ujian dapat dimulai!';
-    text.style.color = '#10b981';
-  } else if (statuses.some(s => s === 'error')) {
-    dot.classList.add('init-error');
-    text.textContent = 'Gagal memuat data. Mohon muat ulang halaman.';
-    text.style.color = '#ef4444';
-  } else if (statuses.some(s => s === 'success')) {
-    dot.classList.add('init-warning');
-    text.textContent = 'Sedang menyiapkan data...';
-    text.style.color = 'var(--text-muted)';
-  } else {
-    text.textContent = 'Menyiapkan sistem...';
-    text.style.color = 'var(--text-muted)';
-  }
-}
-
-/* ================================
-   🚀 INIT
-================================ */
-// initAutocomplete removed here, using original logic
-
-
-
-
-// Initialize School Identity
-// initSchoolIdentity call removed from here, moved to initPortal for safety
-
-// --- SMART DB CONNECTION MANAGER (HIT & RUN) ---
-// Trik ini membuat Firebase berjalan secara stateless seperti REST API.
-// Sangat vital untuk mem-bypass limit 100 concurrent connection di versi gratis (Spark).
-db.goOffline(); // Matikan koneksi bawaan seketika!
-
-// activeDbRequests dan dbDisconnectTimer sudah dideklarasikan di atas (dekat dbConnectFast)
-// agar tidak ReferenceError saat loadPesertaCache() dipanggil sebelum blok ini.
-
-// sleep is already declared above in the Performance Core Patch
-
-window.dbConnect = async function () {
-  activeDbRequests++;
-  if (activeDbRequests === 1) {
-    if (dbDisconnectTimer) clearTimeout(dbDisconnectTimer);
-    // Jitter: Delay acak 0-1500ms untuk memecah gelombang trafik simultan (Skala 1000)
-    await sleep(Math.floor(Math.random() * 1500));
-    db.goOnline();
-  }
-};
-
-window.dbDisconnect = function () {
-  activeDbRequests--;
-  if (activeDbRequests <= 0) {
-    activeDbRequests = 0;
-    if (dbDisconnectTimer) clearTimeout(dbDisconnectTimer);
-    // Jeda 1.5 detik untuk mengamankan jika ada query susulan
-    dbDisconnectTimer = setTimeout(() => {
-      if (activeDbRequests === 0) {
-        db.goOffline();
-      }
-    }, 1500);
-  }
-};
-
-window.withDB = async function (promiseFunc) {
-  await dbConnect();
-  try {
-    // Timeout 15 detik untuk mencegah request menggantung selamanya (Armor 1000)
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Firebase Timeout")), 15000)
-    );
-    return await Promise.race([promiseFunc(), timeoutPromise]);
-  } catch (err) {
-    console.warn("DB Operation Error:", err.message);
-    throw err;
-  } finally {
-    dbDisconnect();
-  }
-};
-
-// --- AUTOMATIC FIREBASE PROTOTYPE PATCHING ---
-// Mengambil alih semua metode Firebase agar otomatis nyala-mati saat dipanggil
-let isAuthReady = false;
-let authPromise = null;
-
-function patchFirebase() {
-  if (typeof firebase === 'undefined' || !firebase.database) return;
-  const Ref = firebase.database.Reference.prototype;
-  const methods = ['once', 'set', 'update', 'remove'];
-  methods.forEach(m => {
-    const original = Ref[m];
-    Ref[m] = function (...args) {
-      return window.withDB(() => original.apply(this, args));
-    };
-  });
-
-  const originalPush = Ref.push;
-  Ref.push = function (...args) {
-    if (args.length > 0) return window.withDB(() => originalPush.apply(this, args));
-    return originalPush.apply(this, args);
-  };
-}
-
-function initAuth() {
-  if (typeof firebase === 'undefined' || !firebase.auth) {
-    SystemStatus.auth = 'error';
-    updateInitStatusDisplay();
-    return;
-  }
-  const auth = firebase.auth();
-  authPromise = auth.signInAnonymously()
-    .then(() => {
-      isAuthReady = true;
-      SystemStatus.auth = 'success';
-      updateInitStatusDisplay();
-    })
-    .catch(err => {
-      console.error(err);
-      SystemStatus.auth = 'error';
-      updateInitStatusDisplay();
-    });
-}
-
-async function gasRun(funcName, ...args) {
-  if (!isAuthReady && authPromise) await authPromise;
-
-  // Gunakan dbConnectFast untuk aksi interaktif (Siswa & Admin) agar tidak kena jitter 1.5 detik
-  const interactiveFuncs = [
-    'getAllPeserta', 'getSchedules', 'getPortalInfo', 'getExamData',
-    'validateAdmin', 'getAdminMonitoringData', 'getAdminJadwalFull',
-    'getAdminLaporanLengkap', 'getAdminPreviewSoal'
-  ];
-  const isFast = interactiveFuncs.includes(funcName);
-
-  if (isFast) await dbConnectFast();
-
-  try {
-    if (funcName === 'getAllPeserta') {
-      // Cek Cache Local Storage (Valid 30 Menit)
-      const CACHE_KEY = 'CBT_CACHE_PESERTA';
-      const CACHE_TIME_KEY = 'CBT_CACHE_PESERTA_TIME';
-      const cachedData = localStorage.getItem(CACHE_KEY);
-      const cachedTime = localStorage.getItem(CACHE_TIME_KEY);
-      const now = Date.now();
-
-      if (cachedData && cachedTime && (now - cachedTime < 30 * 60 * 1000)) {
-        try {
-          return JSON.parse(cachedData);
-        } catch (e) { localStorage.removeItem(CACHE_KEY); }
-      }
-
-      const snap = await db.ref('/peserta').once('value');
-      const data = snap.val() || {};
-      const results = [];
-      for (let id in data) {
-        const p = data[id];
-        results.push({ id, name: p.nama, kelas: p.kelas });
-      }
-
-      // Simpan ke Cache
-      localStorage.setItem(CACHE_KEY, JSON.stringify(results));
-      localStorage.setItem(CACHE_TIME_KEY, now.toString());
-      return results;
-    }
-
-    else if (funcName === 'getSchedules') {
-      const [userId, kelas] = args;
-      // Jalankan kedua query secara paralel (bukan serial) untuk memotong waktu tunggu ~50%
-      const [snap, hSnap] = await Promise.all([
-        db.ref('/jadwal').once('value'),
-        db.ref('/hasil').orderByChild('userId').equalTo(userId).once('value')
-      ]);
-      const data = snap.val() || {};
-      const hData = hSnap.val() || {};
-      const completedSet = new Set();
-      for (let k in hData) completedSet.add(hData[k].examId);
-
-      const schedules = [];
-      const nowMs = Date.now();
-      for (let id in data) {
-        const sch = data[id];
-        let targetKelasRaw = sch.target_kelas || '';
-        let matched = true;
-        if (targetKelasRaw && targetKelasRaw.toLowerCase() !== 'semua' && kelas) {
-          const targets = String(targetKelasRaw).split(',').map(k => k.trim().toLowerCase()).filter(k => k);
-          matched = targets.some(t => kelas.toLowerCase().includes(t) || t.includes(kelas.toLowerCase()));
-        }
-        if (!matched) continue;
-
-        let status = 'BELUM_MULAI';
-        if (completedSet.has(id)) status = 'SELESAI';
-        else if (!sch.aktif) status = 'NONAKTIF';
-        else if (nowMs < sch.mulai) status = 'BELUM_MULAI';
-        else if (nowMs > sch.selesai) status = 'TUTUP';
-        else status = 'AKTIF';
-
-        schedules.push({ id, nama: sch.nama, mulai: sch.mulai, selesai: sch.selesai, durasi: sch.durasi, status });
-      }
-      return { success: true, schedules, serverTime: nowMs };
-    }
-
-    else if (funcName === 'getPortalInfo') {
-      const snap = await db.ref('/jadwal').once('value');
-      const data = snap.val() || {};
-      const activeSchedules = [];
-      const nowMs = Date.now();
-      for (let id in data) {
-        if (data[id].aktif && nowMs >= data[id].mulai && nowMs <= data[id].selesai) {
-          activeSchedules.push({ nama: data[id].nama, durasi: data[id].durasi });
-        }
-      }
-      return { success: true, activeSchedules };
-    }
-
-    else if (funcName === 'getExamData') {
-      const [examId, token, forceRefresh] = args;
-      const jSnap = await db.ref('/jadwal/' + examId).once('value');
-      const sch = jSnap.val();
-      if (!sch) throw new Error("Ujian tidak ditemukan.");
-      if (sch.token && String(sch.token).toUpperCase() !== String(token).toUpperCase()) throw new Error("Token salah!");
-
-      const sSnap = await db.ref('/soal/' + sch.nama_soal).once('value');
-      const sData = sSnap.val() || {};
-      const questions = [];
-      let idx = 0;
-      for (let qId in sData) {
-        let q = sData[qId];
-        q._index = idx++;
-        if (!q.opsi) q.opsi = []; // ensure array
-        questions.push(q);
-      }
-      return {
-        success: true,
-        config: { id_ujian: examId, nama_ujian: sch.nama, durasi: sch.durasi, min_selesai: sch.min_selesai || 0, end_ms: sch.selesai },
-        questions
-      };
-    }
-
-    else if (funcName === 'submitExam') {
-      const [payload] = args;
-      // Gunakan path deterministik untuk mencegah duplikasi dan mempercepat proses
-      const resultPath = `/hasil/${payload.examId}_${payload.user.id}`;
-
-      // Trust client score to avoid massive DB reads (Armor 1000)
-      const finalScore = payload.score || 0;
-
-      await db.ref(resultPath).set({
-        timestamp: firebase.database.ServerValue.TIMESTAMP,
-        uid: firebase.auth().currentUser.uid, // Simpan UID untuk proteksi Firebase Rules
-        userId: payload.user.id,
-        nama: payload.user.name,
-        kelas: payload.user.kelas || '-',
-        examId: payload.examId,
-        namaUjian: payload.namaUjian || payload.examId,
-        skor: finalScore,
-        waktu: payload.usedTime || '',
-        detail: payload.detail || "{}"
-      });
-
-      if (payload.violations && payload.violations > 0) {
-        await db.ref('/pelanggaran').push({
-          timestamp: firebase.database.ServerValue.TIMESTAMP,
-          userId: payload.user.id,
-          nama: payload.user.name,
-          examId: payload.examId,
-          tipe: `Melanggar ${payload.violations} kali`
-        });
-      }
-      return { success: true, score: finalScore };
-    }
-
-    else if (funcName === 'setStudentOnline') {
-      const [examId, userId] = args;
-      await db.ref(`/online_status/${examId}/${userId}`).set({
-        last_seen: firebase.database.ServerValue.TIMESTAMP,
-        uid: firebase.auth().currentUser.uid
-      });
-      const bSnap = await db.ref(`/broadcasts/${examId}`).once('value');
-      if (bSnap.exists()) return { success: true, broadcast: bSnap.val() };
-      return { success: true };
-    }
-
-    else if (funcName === 'validateAdmin') {
-      const [pwd] = args;
-      const snap = await db.ref('/config/admin_pass').once('value');
-      return { success: true, valid: pwd === snap.val() };
-    }
-
-    else if (funcName === 'getAdminMonitoringData') {
-      const [skipPeserta] = args;
-      const nowMs = Date.now();
-
-      const jSnap = await db.ref('/jadwal').once('value');
-      const jData = jSnap.val() || {};
-      const activeExams = [];
-      const onlineQueries = [];
-
-      for (let id in jData) {
-        if (jData[id].aktif && nowMs >= jData[id].mulai && nowMs <= jData[id].selesai) {
-          activeExams.push({ id, nama: jData[id].nama, token: jData[id].token });
-          onlineQueries.push(db.ref(`/online_status/${id}`).once('value'));
-        }
-      }
-
-      const queries = [
-        db.ref('/hasil').limitToLast(500).once('value')
-      ];
-      if (!skipPeserta) queries.push(db.ref('/peserta').once('value'));
-
-      const snaps = await Promise.all([...queries, ...onlineQueries]);
-      const hSnap = snaps[0];
-      const pSnap = skipPeserta ? null : snaps[1];
-
-      const onlinesMap = {};
-      const onlineSnaps = snaps.slice(skipPeserta ? 1 : 2);
-      activeExams.forEach((ex, idx) => {
-        const raw = onlineSnaps[idx] ? onlineSnaps[idx].val() || {} : {};
-        // Normalisasi data karena sekarang berbentuk object {last_seen, uid}
-        const normalized = {};
-        for (let uid in raw) {
-          normalized[uid] = (raw[uid] && typeof raw[uid] === 'object') ? raw[uid].last_seen : raw[uid];
-        }
-        onlinesMap[ex.id] = normalized;
-      });
-
-      const pData = pSnap ? pSnap.val() || {} : null;
-      const expectedPeserta = [];
-      if (pData) {
-        for (let id in pData) expectedPeserta.push({ id, nama: pData[id].nama, kelas: pData[id].kelas });
-      }
-
-      const hData = hSnap.val() || {};
-      const completedMap = {};
-      for (let k in hData) {
-        let eid = hData[k].examId, uid = hData[k].userId;
-        if (!completedMap[eid]) completedMap[eid] = [];
-        if (!completedMap[eid].includes(uid)) completedMap[eid].push(uid);
-      }
-
-      return { success: true, activeExams, peserta: expectedPeserta, completions: completedMap, onlines: onlinesMap };
-    }
-
-    else if (funcName === 'getAdminJadwalFull') {
-      const snap = await db.ref('/jadwal').once('value'); const data = snap.val() || {};
-      const result = [];
-      for (let id in data) result.push({ id, nama: data[id].nama, aktif: data[id].aktif, token: data[id].token });
-      return { success: true, data: result };
-    }
-
-    else if (funcName === 'updateJadwalSistem') {
-      const [id, token, status] = args;
-      await db.ref(`/jadwal/${id}`).update({ token, aktif: status === 'Aktif' });
-      return { success: true };
-    }
-
-    else if (funcName === 'getAdminLaporanLengkap') {
-      const [examId] = args;
-      let hasilRef = db.ref('/hasil');
-      if (examId) hasilRef = hasilRef.orderByChild('examId').equalTo(examId).limitToLast(1000);
-      else hasilRef = hasilRef.limitToLast(1000);
-
-      const [hSnap, pSnap] = await Promise.all([
-        hasilRef.once('value'),
-        db.ref('/pelanggaran').limitToLast(200).once('value')
-      ]);
-      const hData = hSnap.val() || {}; const pData = pSnap.val() || {};
-
-      const hasilResult = Object.values(hData).sort((a, b) => b.timestamp - a.timestamp).map(h => {
-        let d = new Date(h.timestamp || Date.now());
-        return {
-          waktu: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`,
-          nama: h.nama, kelas: h.kelas, ujian: h.namaUjian, skor: h.skor
-        };
-      });
-
-      const pelResult = Object.values(pData).sort((a, b) => b.timestamp - a.timestamp).map(p => {
-        let d = new Date(p.timestamp || Date.now());
-        return {
-          waktu: `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')} ${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`,
-          nama: p.nama, ujian: p.examId, tipe: p.tipe
-        };
-      });
-      return { success: true, hasil: hasilResult, pelanggaran: pelResult };
-    }
-
-    else if (funcName === 'sendBroadcastAdmin') {
-      const [examId, pesan] = args;
-      await db.ref(`/broadcasts/${examId}`).set(pesan);
-      setTimeout(() => { db.ref(`/broadcasts/${examId}`).remove(); }, 600000);
-      return { success: true };
-    }
-
-    else if (funcName === 'getAdminPreviewSoal') {
-      const [examId] = args;
-      const jSnap = await db.ref(`/jadwal/${examId}`).once('value'); const sch = jSnap.val();
-      if (!sch) throw new Error("Jadwal tidak ditemukan");
-
-      const sSnap = await db.ref(`/soal/${sch.nama_soal}`).once('value'); const sData = sSnap.val() || {};
-      const kSnap = await db.ref(`/kunci/${sch.nama_soal}`).once('value'); const kData = kSnap.val() || {};
-
-      const questions = []; let idx = 0;
-      for (let qId in sData) {
-        let q = sData[qId];
-        q._index = idx++;
-        q.kunci = kData[qId] || '';
-        if (!q.opsi) q.opsi = []; // ensure array
-        questions.push(q);
-      }
-      return { success: true, examName: sch.nama, questions };
-    }
-
-  } catch (e) {
-    console.error("Firebase Error in", funcName, e);
-    return { success: false, message: e.toString() };
-  } finally {
-    if (isFast) dbDisconnect();
-  }
-}
-
-// searchTimeout is already declared above in the Performance Core Patch
-const userNameInput = document.getElementById('userName');
-const autoList = document.getElementById('autocomplete-list');
-let tempSelectedUser = null;
-let cachedPeserta = null;
-let fetchPesertaPromise = null;
-
-if (userNameInput) {
-  userNameInput.addEventListener('focus', () => {
-    // Scroll agar form tidak tertutup keyboard HP
-    setTimeout(() => {
-      userNameInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }, 350);
-    // Prefetch cache peserta di background saat user fokus ke input,
-    // sehingga ketika mulai mengetik, data sudah siap di memori.
-    if (!cachedPeserta) {
-      loadPesertaCache().catch(() => { });
-    }
-  });
-
-  userNameInput.addEventListener('input', async function (e) {
-    const val = e.target.value.trim().toLowerCase();
-    autoList.innerHTML = '';
-    autoList.classList.remove('show');
-
-    if (searchTimeout) clearTimeout(searchTimeout);
-    if (val.length < 2) return;
-
-    // Tunjukkan loading segera agar user tahu sistem merespons
-    autoList.innerHTML = '<div class="autocomplete-item text-muted">Mencari...</div>';
-    autoList.classList.add('show');
-
-    searchTimeout = setTimeout(async function () {
-      // searchPeserta sudah menangani cache + fallback ke Firebase secara otomatis
-      const results = await searchPeserta(val);
-
-      autoList.innerHTML = '';
-      if (results.length > 0) {
-        results.forEach(p => {
-          const div = document.createElement('div');
-          div.className = 'autocomplete-item';
-          div.textContent = (p.name || p.id) + ' - ' + (p.kelas || '');
-          const selectHandler = (evt) => {
-            evt.preventDefault();
-            tempSelectedUser = p;
-            document.getElementById('confirm-name-text').textContent = (p.name || p.id) + ' (' + (p.kelas || '') + ')';
-            showView('login-confirm-view');
-            userNameInput.value = '';
-            autoList.classList.remove('show');
-          };
-          div.addEventListener('pointerdown', selectHandler);
-          div.addEventListener('click', selectHandler);
-          autoList.appendChild(div);
-        });
-      } else {
-        autoList.innerHTML = '<div class="autocomplete-item text-muted">Nama tidak ditemukan. Coba kata lain atau hubungi pengawas.</div>';
-      }
-      autoList.classList.add('show');
-    }, 350); // Sedikit lebih lama agar prefetch sempat selesai
-  });
-}
-
-// Tutup list jika klik di luar
-document.addEventListener('click', (e) => {
-  if (userNameInput && e.target !== userNameInput) {
-    if (autoList) autoList.classList.remove('show');
-  }
-});
-
-safeAddListener('btnCancelLogin', 'click', () => {
-  tempSelectedUser = null;
-  showView('login-view');
-});
-
-safeAddListener('btnConfirmLogin', 'click', () => {
-  if (tempSelectedUser) {
-    State.user = tempSelectedUser;
-    loadSchedules();
-  }
-});
-
-let scheduleTimer = null;
-
-// Helper untuk mengecek status cache semua jadwal dan update UI
-function updatePreSyncUI(list) {
-  const preSyncContainer = document.getElementById('pre-sync-container');
-  if (preSyncContainer && list.length > 0) {
-    preSyncContainer.style.display = 'block';
-    
-    let allCached = true;
-    for (let sch of list) {
-      const ver = sch.mulai || 0;
-      const CACHE_KEY = `SOAL_${sch.id}_v${ver}`;
-      if (!localStorage.getItem(CACHE_KEY)) {
-         allCached = false;
-         break;
-      }
-    }
-    
-    const btnSync = document.getElementById('btnSyncAllSoal');
-    if (btnSync) {
-      if (allCached) {
-         btnSync.textContent = '✅ 100% Tersinkronisasi';
-         btnSync.style.background = '#059669';
-         btnSync.disabled = true;
-         btnSync.style.opacity = '1';
-         const prog = document.getElementById('sync-all-progress');
-         if(prog) prog.style.display = 'none';
-      } else {
-         btnSync.textContent = 'Sinkronkan Semua Soal Sekarang';
-         btnSync.style.background = '#4F46E5';
-         btnSync.disabled = false;
-         btnSync.style.opacity = '1';
-         // remove listener to avoid duplicates, then add
-         btnSync.removeEventListener('click', syncAllQuestions);
-         btnSync.addEventListener('click', syncAllQuestions);
-      }
-    }
-  }
-}
-
-async function loadSchedules() {
-  document.getElementById('schedule-user-name').textContent = State.user.name + ' - ' + State.user.kelas;
-  showLoading('Memeriksa Jadwal...');
-
-  // Armor 1000: Mencoba ambil dari cache lokal dulu agar responsif
-  try {
-    const cachedJadwal = localStorage.getItem('CBT_CACHE_JADWAL');
-    if (cachedJadwal) {
-      const jadwals = JSON.parse(cachedJadwal);
-      const list = [];
-      for (let id in jadwals) {
-        let s = jadwals[id];
-        s.id = id;
-        // Filter jadwal yang relevan untuk kelas siswa (atau ALL)
-        if (!s.kelas || s.kelas === 'ALL' || s.kelas === State.user.kelas) {
-          list.push(s);
-        }
-      }
-      State.schedules = list;
-      State.schedules.forEach(s => s._lastRenderedStatus = s.status);
-      renderSchedules();
-      updatePreSyncUI(list);
-      
-      showView('schedule-view');
-      hideLoading(); // Sembunyikan loading jika data cache sudah tampil
-    }
-  } catch (e) { }
-
-  try {
-    // Tetap fetch dari server untuk status terbaru (misal: apakah sudah SELESAI di server)
-    const res = await gasRun('getSchedules', State.user.id, State.user.kelas);
-    if (res.success) {
-      State.serverTimeOffset = (res.serverTime || Date.now()) - Date.now();
-      State.schedules = res.schedules;
-      State.schedules.forEach(s => s._lastRenderedStatus = s.status);
-      renderSchedules();
-      updatePreSyncUI(State.schedules);
-      showView('schedule-view');
-
-      if (scheduleTimer) clearInterval(scheduleTimer);
-      scheduleTimer = setInterval(() => {
-        if (document.getElementById('schedule-view').classList.contains('active')) {
-          updateSchedulesStatus();
-        } else {
-          clearInterval(scheduleTimer);
-        }
-      }, 1000);
-
-    } else {
-      // Jika gagal fetch tapi sudah ada data dari cache, tidak perlu mental ke login
-      if (!State.schedules || State.schedules.length === 0) {
-        showCustomAlert('Gagal Memuat Jadwal', 'Gagal memuat jadwal: ' + res.message, '❌');
-        showView('login-view');
-      }
-    }
-  } catch (err) {
-    if (!State.schedules || State.schedules.length === 0) {
-      showCustomAlert('Kesalahan Jaringan', 'Terjadi kesalahan sinkronisasi jaringan.', '🌐');
-      showView('login-view');
-    }
-  } finally {
-    hideLoading();
-  }
-}
-
-function updateSchedulesStatus() {
-  if (!State.schedules) return;
-  let changed = false;
-  const nowMs = Date.now() + (State.serverTimeOffset || 0);
-
-  State.schedules.forEach(sch => {
-    let dynStatus = sch.status;
-    if (sch.status === 'BELUM_MULAI' || sch.status === 'AKTIF') {
-      if (nowMs < sch.mulai) dynStatus = 'BELUM_MULAI';
-      else if (nowMs >= sch.mulai && nowMs <= sch.selesai) dynStatus = 'AKTIF';
-      else if (nowMs > sch.selesai) dynStatus = 'TUTUP';
-    }
-
-    if (sch._lastRenderedStatus !== dynStatus) {
-      sch._lastRenderedStatus = dynStatus;
-      changed = true;
-    }
-  });
-
-  if (changed) renderSchedules();
-}
-
-function renderSchedules() {
-  const schedules = State.schedules || [];
-  const container = document.getElementById('schedule-list');
-  container.innerHTML = '';
-
-  if (schedules.length === 0) {
-    container.innerHTML = '<div class="alert alert-info">Belum ada ujian yang dijadwalkan untuk saat ini.</div>';
-    return;
-  }
-
-  schedules.forEach(sch => {
-    let badge = `<span class="badge badge-wait">Belum Mulai</span>`;
-    let btnDisabled = `disabled`;
-    let btnText = `Belum Waktunya`;
-    let curStatus = sch._lastRenderedStatus || sch.status;
-
-    if (curStatus === 'SELESAI') {
-      badge = `<span class="badge badge-done">Selesai</span>`;
-      btnText = `Sudah Dikerjakan`;
-    } else if (curStatus === 'TUTUP') {
-      badge = `<span class="badge badge-closed">Ditutup</span>`;
-      btnText = `Waktu Ujian Habis`;
-    } else if (curStatus === 'AKTIF') {
-      badge = `<span class="badge badge-active">Sedang Aktif</span>`;
-      btnDisabled = ``;
-      btnText = `Mulai Ujian`;
-    } else if (curStatus === 'NONAKTIF') {
-      badge = `<span class="badge badge-closed">Non-Aktif</span>`;
-      btnText = `Belum Dibuka`;
-    }
-
-    const startObj = new Date(sch.mulai);
-    const endObj = new Date(sch.selesai);
-    const pad = (n) => n.toString().padStart(2, '0');
-    const timeStr = `${pad(startObj.getHours())}:${pad(startObj.getMinutes())} - ${pad(endObj.getHours())}:${pad(endObj.getMinutes())}`;
-
-    // Format Tanggal (untuk ujian 6 hari)
-    const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-    const dateStr = `${days[startObj.getDay()]}, ${startObj.getDate()} ${months[startObj.getMonth()]}`;
-
-    const card = document.createElement('div');
-    card.className = 'card';
-    card.style.padding = '16px';
-    card.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
-        <h3 style="font-size: 1.1rem; margin:0; line-height: 1.3;">${sch.nama}</h3>
-        <div>${badge}</div>
-      </div>
-      <div style="font-size: 0.85rem; font-weight: 600; color: var(--primary); margin-bottom: 8px;">📅 ${dateStr}</div>
-      <p class="text-muted" style="font-size: 0.9rem; margin-bottom: 16px;">⏰ ${timeStr} | ⏳ ${sch.durasi} Menit</p>
-      <button class="btn btn-primary" style="width: 100%;" ${btnDisabled}>${btnText}</button>
-    `;
-
-    const btn = card.querySelector('button');
-    if (!btnDisabled) {
-      btn.onclick = () => {
-        // Show Token Modal
-        document.getElementById('token-overlay').classList.add('active');
-        const modal = document.getElementById('token-modal');
-        modal.style.display = 'flex';
-        // trigger reflow for transition
-        void modal.offsetWidth;
-        modal.style.opacity = '1';
-        modal.style.transform = 'translate(-50%, -50%) scale(1)';
-        document.getElementById('examTokenInput').value = '';
-        document.getElementById('examTokenInput').focus();
-
-        // Setup temp handlers
-        document.getElementById('btnCancelToken').onclick = closeTokenModal;
-        document.getElementById('btnSubmitToken').onclick = () => {
-          const tk = document.getElementById('examTokenInput').value.trim();
-          if (!tk) { showCustomAlert('Token Diperlukan', 'Harap masukkan token ujian dari pengawas.', '🔑'); return; }
-          closeTokenModal();
-          loadDashboard(sch.id, tk);
-        };
-      };
-    }
-    container.appendChild(card);
-  });
-}
-
-// Token Modal helper
-function closeTokenModal() {
-  const modal = document.getElementById('token-modal');
-  modal.style.opacity = '0';
-  modal.style.transform = 'translate(-50%, -50%) scale(0.95)';
-  setTimeout(() => {
-    modal.style.display = 'none';
-    document.getElementById('token-overlay').classList.remove('active');
-  }, 300);
-}
-
-safeAddListener('btnScheduleLogout', 'click', () => {
-  State.user = null;
-  document.getElementById('userName').value = '';
-  document.getElementById('autocomplete-list').innerHTML = '';
-  if (scheduleTimer) clearInterval(scheduleTimer);
-  tempSelectedUser = null;
-  showView('login-view');
-});
-
-async function loadDashboard(examId, token) {
-  State.examToken = token;
-  showLoading('Verifikasi Token...');
-  try {
-    const res = await getExamDataOptimized(examId, token);
-    if (res.success) {
-      State.config = res.config;
-
-      // SHUFFLE ALGORITHM (Seeded per User + Exam)
-      const seedStr = State.user.id + "_" + State.config.id_ujian;
-      const randFn = getSeededRandom(seedStr);
-      let rQc = res.questions;
-      shuffleArray(rQc, randFn);
-      rQc.forEach(q => {
-        if ((q.tipe === 'PG' || q.tipe === 'KOMPLEKS') && q.opsi.length > 0) {
-          shuffleArray(q.opsi, randFn);
-        }
-      });
-      State.questions = rQc;
-
-      // Progressive Preloading: Gambar tidak lagi dipaksakan termuat di awal secara massal 
-      // demi mencegah crash jaringan saat loading bersamaan 1000 siswa.
-
-      document.getElementById('dash-name').textContent = State.user.name;
-      document.getElementById('dash-kelas').textContent = State.user.kelas;
-      document.getElementById('dash-exam').textContent = State.config.nama_ujian;
-      document.getElementById('dash-time').textContent = State.config.durasi + ' Menit';
-      document.getElementById('dash-count').textContent = State.questions.length + ' Soal';
-      // Restore LocalStorage if any
-      const lsKey = `CBT_${State.user.id}_${State.config.id_ujian}`;
-      const savedData = localStorage.getItem(lsKey);
-      if (savedData) {
-        try {
-          const parsed = JSON.parse(savedData);
-          State.answers = parsed.answers || {};
-          State.doubts = new Set(parsed.doubts || []);
-          State.currentIndex = parsed.currentIndex || 0;
-          State.violations = parsed.violations || 0;
-          let tr = parsed.timeRemaining || (State.config.durasi * 60);
-          if (parsed.lastSavedAt) {
-            const diffSec = Math.floor((new Date().getTime() - parsed.lastSavedAt) / 1000);
-            if (diffSec > 0) tr -= diffSec;
-          }
-          State.timeRemaining = tr;
-        } catch (e) { }
-      } else {
-        State.answers = {};
-        State.doubts = new Set();
-        State.currentIndex = 0;
-        State.violations = 0;
-        State.timeRemaining = State.config.durasi * 60;
-      }
-
-      if (scheduleTimer) clearInterval(scheduleTimer);
-      showView('dashboard-view');
-    } else {
-      showCustomAlert('Gagal Mengambil Data', 'Error: ' + res.message, '❌');
-      showView('schedule-view');
-    }
-  } catch (err) {
-    showCustomAlert('Kesalahan Sinkronisasi', 'Terjadi kesalahan sinkronisasi. Coba muat ulang.', '🔄');
-    showView('schedule-view');
-  }
-}
-
-// --- Exam Flow ---
-safeAddListener('btnStartExam', 'click', () => {
-  State.examActive = true;
-  State.pingOffset = Math.floor(Math.random() * 600); // Random offset for pings (0-10 min)
-  document.getElementById('exam-title').textContent = State.config.nama_ujian;
-  document.getElementById('exam-user-info').textContent = State.user.name + " (" + State.user.kelas + ")";
-
-  // Request Fullscreen
-  const root = document.documentElement;
-  if (root.requestFullscreen) root.requestFullscreen().catch(() => { });
-  else if (root.webkitRequestFullscreen) root.webkitRequestFullscreen().catch(() => { });
-
-  // Awal Mulai, kirim log ke server Cache bahwa siswa Online
-  gasRun('setStudentOnline', State.config.id_ujian, State.user.id).catch(() => { });
-
-  startTimer();
-  initGrid();
-  renderQuestion(State.currentIndex);
-  showView('exam-view');
-
-  saveStateLocal(); // trigger initial save
-});
-
-function startTimer() {
-  State.timerInterval = setInterval(() => {
-    State.timeRemaining--;
-
-    // Cek jika sudah melampaui batas waktu tutup mutlak
-    const nowMs = new Date().getTime();
-    if (State.config && State.config.end_ms && nowMs >= State.config.end_ms) {
-      State.timeRemaining = 0;
-    }
-
-    updateTimerDisplay();
-
-    // Auto save periodic backup every 5 seconds
-    if (State.timeRemaining % 5 === 0) saveStateLocal();
-
-    // Ping online status every 3 minutes (180s) to keep proctor dashboard updated.
-    // Randomized offset ensures 1000 students don't hit the server at once.
-    if (State.timeRemaining > 0 && (State.timeRemaining + State.pingOffset) % 180 === 0) {
-      gasRun('setStudentOnline', State.config.id_ujian, State.user.id).then(res => {
-        if (res && res.success && res.broadcast) {
-          showBroadcastMessage(res.broadcast);
-        }
-      }).catch(() => { });
-    }
-
-    if (State.timeRemaining <= 0) {
-      clearInterval(State.timerInterval);
-      showCustomAlert('Waktu Habis', 'Waktu ujian telah habis! Jawaban Anda otomatis dikirim.', '⏰');
-      submitExam(true);
-    }
-  }, 1000);
-}
-
-function updateTimerDisplay() {
-  const t = Math.max(0, State.timeRemaining);
-  const h = Math.floor(t / 3600).toString().padStart(2, '0');
-  const m = Math.floor((t % 3600) / 60).toString().padStart(2, '0');
-  const s = (t % 60).toString().padStart(2, '0');
-  document.getElementById('exam-timer').textContent = `${h}:${m}:${s}`;
-}
-
-// --- Render Logic ---
-let lastForceRefresh = 0;
-const REFRESH_COOLDOWN_MS = 15 * 60 * 1000; // 15 menit
-
-safeAddListener('btnRefreshExam', 'click', async function () {
-  if (!State.examActive) return;
-  const now = Date.now();
-
-  if (now - lastForceRefresh < REFRESH_COOLDOWN_MS) {
-    const sisa = Math.ceil((REFRESH_COOLDOWN_MS - (now - lastForceRefresh)) / 60000);
-    showCustomAlert('Cooldown Refresh', `Harap tunggu ${sisa} menit lagi sebelum refresh ulang.`, '⏳');
-    return;
-  }
-
-  if (confirm("Gunakan fitur ini JIKA ADA soal atau gambar yang tidak termuat secara sempurna. Koneksi internet wajib stabil!\n\nJangan khawatir, Murni-jawaban Anda akan tetap tersimpan.\n\nYakin ingin merefresh data soal?")) {
-    lastForceRefresh = now;
-    showLoading('Menyegarkan Soal...');
-    try {
-      const res = await gasRun('getExamData', State.config.id_ujian, State.examToken, true);
-      if (res.success) {
-        // Re-shuffle as per user+exam seed to match the exact same question order
-        const seedStr = State.user.id + "_" + State.config.id_ujian;
-        const randFn = getSeededRandom(seedStr);
-        let rQc = res.questions;
-        shuffleArray(rQc, randFn);
-        rQc.forEach(q => {
-          if ((q.tipe === 'PG' || q.tipe === 'KOMPLEKS') && q.opsi.length > 0) {
-            shuffleArray(q.opsi, randFn);
-          }
-        });
-        State.questions = rQc;
-
-        renderQuestion(State.currentIndex);
-        initGrid();
-        updateGridUI();
-
-        showView('exam-view');
-        showCustomAlert('Berhasil', 'Penyegaran data soal berhasil! Silakan lanjutkan ujian.', '✅');
-      } else {
-        showCustomAlert('Gagal Refresh', 'Gagal menyegarkan soal: ' + res.message, '❌');
-        showView('exam-view');
-      }
-    } catch (err) {
-      showCustomAlert('Kesalahan Jaringan', 'Terjadi kesalahan jaringan. Periksa koneksi.', '🌐');
-      showView('exam-view');
-    }
-  }
-});
-
-function renderQuestion(index) {
-  if (index < 0 || index >= State.questions.length) return;
-  State.currentIndex = index;
-  const q = State.questions[index];
-
-  // Progressive Preload
-  for (let i = 1; i <= 2; i++) {
-    const nextQ = State.questions[index + i];
-    if (nextQ && nextQ.gambar && nextQ.gambar.trim() !== '') {
-      const img = new Image();
-      img.src = nextQ.gambar;
-    }
-  }
-
-  // Modern Progress Area
-  const total = State.questions.length;
-  const percent = Math.round(((index + 1) / total) * 100);
-  safeSetText('q-progress-text', `SOAL ${index + 1} / ${total} (${q.tipe})`);
-  safeSetText('q-percentage', `${percent}%`);
-  const pb = document.getElementById('q-progress-bar');
-  if (pb) pb.style.width = `${percent}%`;
-
-  // Type Badge & Instruction
-  const badge = document.getElementById('q-type-badge');
-  const instruction = document.getElementById('q-instruction');
-
-  let typeLabel = 'SOAL PILIHAN GANDA';
-  let instrText = 'Pilih salah satu jawaban yang menurut Anda paling benar.';
-  let typeIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>';
-
-  if (q.tipe === 'ISIAN') {
-    typeLabel = 'SOAL ISIAN';
-    instrText = 'Ketik jawaban berupa angka tanpa spasi atau tanda baca.';
-    typeIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 113 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
-  } else if (q.tipe === 'KOMPLEKS') {
-    typeLabel = 'PILIHAN GANDA KOMPLEKS';
-    instrText = 'Pilih satu atau lebih jawaban yang menurut Anda benar.';
-    typeIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 002-2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/></svg>';
-  } else if (q.tipe === 'BS') {
-    typeLabel = 'BENAR / SALAH';
-    instrText = 'Tentukan apakah pernyataan berikut Benar atau Salah.';
-  } else if (q.tipe === 'JODOH') {
-    typeLabel = 'MENJODOHKAN';
-    instrText = 'Pasangkan item di sebelah kiri dengan pilihan yang sesuai di sebelah kanan.';
-  }
-
-  if (badge) badge.innerHTML = `${typeIcon}<span>${typeLabel}</span>`;
-  if (instruction) {
-    instruction.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg><p>${instrText}</p>`;
-  }
-
-  // Question Text
-  safeSetText('q-text', q.pertanyaan);
-
-  // Render Image
-  const imgContainer = document.getElementById('q-image-container');
-  if (q.gambar && q.gambar.trim() !== '') {
-    imgContainer.innerHTML = `<img src="${q.gambar.trim()}" class="q-image" loading="lazy" onclick="openZoomModal('${q.gambar.trim()}')" alt="Gambar Soal" />`;
-    imgContainer.style.display = 'block';
-  } else {
-    imgContainer.style.display = 'none';
-    imgContainer.innerHTML = '';
-  }
-
-  renderOptions(q);
-  updateNavButtons();
-  updateGridUI();
-
-  // Update Doubt Button State
-  const btnDoubt = document.getElementById('btnDoubt');
-  if (btnDoubt) {
-    if (State.doubts.has(q.id)) {
-      btnDoubt.classList.add('active');
-    } else {
-      btnDoubt.classList.remove('active');
-    }
-  }
-}
-
-function renderOptions(q) {
-  const container = document.getElementById('q-options');
-  container.innerHTML = '';
-
-  const currentAnswer = State.answers[q.id];
-
-  if (q.tipe === 'PG' || q.tipe === 'BS') {
-    const labels = ['A', 'B', 'C', 'D', 'E'];
-    q.opsi.forEach((opt, idx) => {
-      const isSelected = currentAnswer === opt.id || currentAnswer === opt.text;
-      const displayLabel = labels[idx] || (idx + 1);
-
-      const div = document.createElement('div');
-      div.className = `modern-option ${isSelected ? 'selected' : ''}`;
-
-      let imgHTML = '';
-      if (opt.gambar) {
-        imgHTML = `<img src="${opt.gambar}" class="q-image" loading="lazy" style="max-height:140px; margin-top:8px; display:block;" onclick="openZoomModal('${opt.gambar}'); event.stopPropagation();" />`;
-      }
-
-      div.innerHTML = `
-        <div class="option-circle"></div>
-        <div class="option-label">${displayLabel}.</div>
-        <div class="option-text-container" style="flex:1;">
-           <div class="option-text">${opt.text}</div>
-           ${imgHTML}
-        </div>
-      `;
-      div.onclick = () => {
-        State.answers[q.id] = opt.id;
-        // Optimization: Update classes instead of rebuilding DOM for snappy performance
-        container.querySelectorAll('.modern-option').forEach(el => el.classList.remove('selected'));
-        div.classList.add('selected');
-        debouncedSave();
-      };
-      container.appendChild(div);
-    });
-  }
-  else if (q.tipe === 'KOMPLEKS') {
-    const selectedArr = currentAnswer || [];
-    const labels = ['A', 'B', 'C', 'D', 'E'];
-    q.opsi.forEach((opt, idx) => {
-      const isSelected = selectedArr.includes(opt.id) || selectedArr.includes(opt.text);
-      const displayLabel = labels[idx] || (idx + 1);
-      const div = document.createElement('div');
-      div.className = `modern-option ${isSelected ? 'selected' : ''}`;
-
-      let imgHTML = '';
-      if (opt.gambar) {
-        imgHTML = `<img src="${opt.gambar}" class="q-image" loading="lazy" style="max-height:140px; margin-top:8px; display:block;" onclick="openZoomModal('${opt.gambar}'); event.stopPropagation();" />`;
-      }
-
-      div.innerHTML = `
-        <div class="option-circle" style="border-radius: 4px;"></div>
-        <div class="option-label">${displayLabel}.</div>
-        <div class="option-text-container" style="flex:1;">
-           <div class="option-text">${opt.text}</div>
-           ${imgHTML}
-        </div>
-      `;
-      div.onclick = (e) => {
-        e.preventDefault();
-        let arr = State.answers[q.id] || [];
-        if (arr.includes(opt.id) || arr.includes(opt.text)) {
-          arr = arr.filter(x => x !== opt.id && x !== opt.text);
-          div.classList.remove('selected');
-        } else {
-          arr.push(opt.id);
-          div.classList.add('selected');
-        }
-        if (arr.length === 0) delete State.answers[q.id];
-        else State.answers[q.id] = arr;
-        debouncedSave();
-      };
-      container.appendChild(div);
-    });
-  }
-  else if (q.tipe === 'ISIAN') {
-    const div = document.createElement('div');
-    div.innerHTML = `
-      <textarea class="essay-textarea" placeholder="Ketik jawaban Anda...">${currentAnswer || ''}</textarea>
-    `;
-    const textarea = div.querySelector('textarea');
-    textarea.oninput = (e) => {
-      const val = e.target.value.trim();
-      if (val) State.answers[q.id] = val;
-      else delete State.answers[q.id];
-      debouncedSave();
-    };
-    container.appendChild(div);
-  }
-  else if (q.tipe === 'JODOH') {
-    const selectedObj = currentAnswer || {}; // { "leftItem": "rightItem" }
-
-    q.kiri.forEach(leftText => {
-      const row = document.createElement('div');
-      row.className = 'matching-row';
-
-      const lbl = document.createElement('div');
-      lbl.className = 'matching-left';
-      lbl.textContent = leftText;
-
-      const sel = document.createElement('select');
-      sel.className = 'matching-right';
-      sel.innerHTML = `<option value="">-- Pilih --</option>`;
-      q.kanan.forEach(rightText => {
-        sel.innerHTML += `<option value="${rightText}" ${selectedObj[leftText] === rightText ? 'selected' : ''}>${rightText}</option>`;
-      });
-
-      sel.onchange = (e) => {
-        if (!State.answers[q.id]) State.answers[q.id] = {};
-        const val = e.target.value;
-        if (val) {
-          State.answers[q.id][leftText] = val;
-        } else {
-          delete State.answers[q.id][leftText];
-        }
-        // cleanup empty objects to trigger answered state correctly
-        if (Object.keys(State.answers[q.id]).length === 0) delete State.answers[q.id];
-        debouncedSave(); // Auto-save
-      };
-
-      row.appendChild(lbl);
-      row.appendChild(sel);
-      container.appendChild(row);
-    });
-  }
-}
-
-// --- Navigation ---
-safeAddListener('btnNext', 'click', () => {
-  if (State.currentIndex < State.questions.length - 1) {
-    if (isAnswered(State.currentIndex)) removeFromDoubt(State.currentIndex);
-    renderQuestion(State.currentIndex + 1);
-  }
-});
-
-safeAddListener('btnPrev', 'click', () => {
-  if (State.currentIndex > 0) {
-    renderQuestion(State.currentIndex - 1);
-  }
-});
-
-safeAddListener('btnDoubt', 'click', () => {
-  const qId = State.questions[State.currentIndex].id;
-  const btnDoubt = document.getElementById('btnDoubt');
-  if (State.doubts.has(qId)) {
-    State.doubts.delete(qId);
-    if (btnDoubt) btnDoubt.classList.remove('active');
-  } else {
-    State.doubts.add(qId);
-    if (btnDoubt) btnDoubt.classList.add('active');
-  }
-  updateGridUI(); // Hanya update grid, jangan render ulang soal
-  debouncedSave(); // Auto-save
-});
-
-function isAnswered(index) {
-  const qId = State.questions[index].id;
-  return State.answers[qId] !== undefined;
-}
-
-function removeFromDoubt(index) {
-  const qId = State.questions[index].id;
-  State.doubts.delete(qId);
-}
-
-function updateNavButtons() {
-  document.getElementById('btnPrev').disabled = State.currentIndex === 0;
-
-  const isLast = State.currentIndex === State.questions.length - 1;
-  const btnNext = document.getElementById('btnNext');
-  const btnSubmit = document.getElementById('btnSubmit');
-
-  if (isLast || State.submissionFailed) {
-    btnNext.style.display = 'none';
-    btnSubmit.style.display = 'flex'; // Uses flex to match bottom-actions layout
-    if (State.submissionFailed) {
-      btnSubmit.classList.add('btn-pulse'); // Tambahkan efek visual jika gagal
-      btnSubmit.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg> Kirim Ulang';
-    }
-  } else {
-    btnNext.style.display = 'flex';
-    btnSubmit.style.display = 'none';
-  }
-}
-
-function closeGrid() {
-  const overlay = document.getElementById('overlay');
-  const qGridContainer = document.getElementById('qGridContainer');
-  if (overlay) overlay.classList.remove('active');
-  if (qGridContainer) qGridContainer.classList.remove('open');
-}
-
-// --- Grid UI ---
-function initGrid() {
-  const grid = document.getElementById('qGrid');
-  if (!grid) return;
-  grid.innerHTML = '';
-  State.questions.forEach((q, idx) => {
-    const b = document.createElement('div');
-    b.className = 'q-bubble';
-    b.textContent = idx + 1;
-    b.id = `bubble-${idx}`;
-    b.onclick = () => {
-      renderQuestion(idx);
-      closeGrid();
-    };
-    grid.appendChild(b);
-  });
-}
-
-const bubbleCache = {};
-
-function updateGridUI() {
-  State.questions.forEach((q, idx) => {
-    let b = bubbleCache[idx];
-    if (!b) {
-      b = document.getElementById(`bubble-${idx}`);
-      if (b) bubbleCache[idx] = b;
-    }
-    if (!b) return;
-
-    b.className = 'q-bubble'; // reset
-    if (State.currentIndex === idx) b.classList.add('active');
-
-    if (State.doubts.has(q.id)) {
-      b.classList.add('doubt');
-    } else if (State.answers[q.id] !== undefined) {
-      b.classList.add('answered');
-    }
-  });
-}
-
-const overlay = document.getElementById('overlay');
-const qGridContainer = document.getElementById('qGridContainer');
-
-safeAddListener('btnGrid', 'click', () => {
-  const container = document.getElementById('qGridContainer');
-  const ovl = document.getElementById('overlay');
-  if (container && container.classList.contains('open')) {
-    closeGrid();
-  } else {
-    updateGridUI();
-    if (ovl) ovl.classList.add('active');
-    if (container) container.classList.add('open');
-  }
-});
-
-safeAddListener('btnCloseGrid', 'click', closeGrid);
-if (overlay) overlay.addEventListener('click', closeGrid);
-
-// --- Submit ---
-safeAddListener('btnSubmit', 'click', () => {
-  // Aturan Waktu Minimal Mengerjakan (Dinamis dari Sheet Jadwal)
-  const elapsedSeconds = (State.config.durasi * 60) - State.timeRemaining;
-  const minLockMinutes = (State.security && State.security.minTime) ? State.security.minTime : (State.config.min_selesai || 0);
-
-  if (minLockMinutes > 0) {
-    const MINIMUM_TIME_SECONDS = minLockMinutes * 60;
-    if (elapsedSeconds < MINIMUM_TIME_SECONDS) {
-      const sisaTunggu = MINIMUM_TIME_SECONDS - elapsedSeconds;
-      const m = Math.floor(sisaTunggu / 60);
-      const s = sisaTunggu % 60;
-      showCustomAlert('Tombol Selesai Terkunci', `Anda baru bisa mengakhiri ujian setelah minimal ${minLockMinutes} menit mengerjakan. Mohon tunggu ${m} menit ${s} detik lagi.`, '🔒');
-      return;
-    }
-  }
-
-  const unanswered = State.questions.length - Object.keys(State.answers).length;
-  let msg = "Anda yakin ingin mengakhiri ujian dan mengirimkan jawaban?";
-  if (unanswered > 0) {
-    msg = `Terdapat ${unanswered} soal yang belum dijawab!\n\n${msg}`;
-  }
-  if (State.doubts.size > 0) {
-    msg = `Terdapat ${State.doubts.size} soal yang ragu-ragu!\n\n${msg}`;
-  }
-
-  if (confirm(msg)) {
-    submitExam(false);
-  }
-});
-
-// ══════════════════════════════════════════════════════
-// SUBMIT ENGINE v2 — Jitter + Auto-Retry
-// Dirancang untuk menangani 1.000 auto-submit serentak
-// tanpa membuat server Google crash.
-// ══════════════════════════════════════════════════════
-
-/**
- * Fungsi pembantu: menunggu N milidetik secara async (non-blocking)
- */
-// sleep function is defined above near dbConnect
-
-/**
- * Fungsi pembantu: Wrapper gasRun dengan logika Auto-Retry senyap.
- * Jika server sedang overload (error jaringan), fungsi ini akan
- * menunggu beberapa saat dan mencoba lagi tanpa menampilkan alert.
- * @param {number} maxRetries - Jumlah percobaan ulang maksimal (default: 10)
- * @param {number} retryDelayMs - Jeda dasar antar percobaan (default: 5 detik)
- */
-async function gasRunWithRetry(funcName, args, maxRetries = 10, retryDelayMs = 5000) {
-  const argsArray = Array.isArray(args) ? args : [args];
-  let lastError = null;
-  for (let attempt = 1; attempt <= maxRetries; attempt++) {
-    try {
-      const res = await gasRun(funcName, ...argsArray);
-      return res;
-    } catch (err) {
-      lastError = err;
-      if (attempt < maxRetries) {
-        const waitTime = Math.ceil((retryDelayMs * attempt) / 1000);
-        showLoading(`Antrean Penuh. Mengantri di server... (Mencoba lagi dalam ${waitTime} detik)`);
-        await sleep(retryDelayMs * attempt);
-      }
-    }
-  }
-  throw lastError;
-}
-
-async function submitExam(isAutoSubmit) {
-  State.examActive = false;
-  clearInterval(State.timerInterval);
-
-  // ─── FASE 1: JITTER (Pengacak Antrean) ───────────────────────────
-  // Hanya aktif jika waktu habis secara otomatis (bukan klik manual).
-  // Setiap HP akan mengacak jeda uniknya sendiri antara 0-55 detik.
-  // Ini memecah "Tsunami 1000 Submit" menjadi gelombang ~18 /detik.
-  if (isAutoSubmit) {
-    const jitterMs = Math.floor(Math.random() * 60000); // 0 - 60.000 ms: cukup untuk 1000 siswa (~17/detik), tidak membuat siswa panik
-    const jitterSec = Math.ceil(jitterMs / 1000);
-    showLoading(`Waktu habis. Jawaban dikirim dalam ${jitterSec} detik...`);
-    await sleep(jitterMs);
-  } else {
-    // Manual jitter (0-2s) to prevent exact simultaneous clicks
-    await sleep(Math.floor(Math.random() * 2000));
-  }
-
-  saveStateLocal(); // Pastikan jawaban terbaru tersimpan di LocalStorage sebelum kirim
-  showLoading('Menyimpan jawaban ke server...');
-
-  // ─── FASE 2: FULL CLIENT-SIDE GRADING ───────────────────────────
-  const keys = State.config.keys || {};
-  let totalPoints = 0;
-  let maxPoints = 0;
-  let detailEvals = {};
-
-  State.questions.forEach(q => {
-    const bobot = parseFloat(q.bobot) || 1;
-    const correctAns = keys[q.id] || '';
-    const userAns = State.answers[q.id];
-    let isCorrect = false;
-    maxPoints += bobot;
-
-    if (userAns !== undefined) {
-      if (q.tipe === 'PG' || q.tipe === 'BS') {
-        isCorrect = String(userAns).trim().toUpperCase() === String(correctAns).trim().toUpperCase();
-      } else if (q.tipe === 'KOMPLEKS') {
-        if (Array.isArray(userAns)) {
-          let cArr = String(correctAns).split(',').map(s => s.trim().toUpperCase()).sort();
-          let uArr = userAns.map(s => String(s).trim().toUpperCase()).sort();
-          isCorrect = JSON.stringify(cArr) === JSON.stringify(uArr);
-        }
-      } else if (q.tipe === 'ISIAN') {
-        isCorrect = String(userAns).trim().toLowerCase() === String(correctAns).trim().toLowerCase();
-      } else if (q.tipe === 'JODOH') {
-        let cPairs = {};
-        String(correctAns).split(';').forEach(p => {
-          let pt = p.split('=');
-          if (pt.length == 2) cPairs[pt[0].trim()] = pt[1].trim();
-        });
-        if (typeof userAns === 'object' && !Array.isArray(userAns)) {
-          let allMatch = true;
-          let kList = Object.keys(cPairs);
-          if (kList.length === 0) allMatch = false;
-          for (let k of kList) { if (userAns[k] !== cPairs[k]) { allMatch = false; break; } }
-          isCorrect = allMatch;
-        }
-      }
-    }
-
-    if (isCorrect) totalPoints += bobot;
-    detailEvals[q.id] = { answer: userAns || '-', correct: isCorrect };
-  });
-
-  const score = maxPoints > 0 ? Math.round((totalPoints / maxPoints) * 100) : 0;
-
-  const payload = {
-    examId: State.config.id_ujian,
-    namaUjian: State.config.nama_ujian,
-    user: {
-      id: State.user.id,
-      name: State.user.name,
-      kelas: State.user.kelas
-    },
-    usedTime: getUsedTimeStr(),
-    violations: State.violations,
-    score: score
-  };
-
-  // ─── FASE 3: SUBMIT DENGAN AUTO-RETRY ────────────────────────────
-  try {
-    const res = await gasRunWithRetry('submitExam', payload, 5, 3000);
-    if (res.success) {
-      // Bersihkan localStorage setelah berhasil
-      const lsKey = `CBT_${State.user.id}_${State.config.id_ujian}`;
-      localStorage.removeItem(lsKey);
-      safeSetText('result-score', res.score);
-      showView('result-view');
-    } else {
-      // Gagal logis dari server (misal: sudah pernah submit)
-      const errMsg = res.message || 'Terjadi kesalahan pada server.';
-      showView('result-view');
-      // Jika sudah submit sebelumnya, tetap tampilkan halaman hasil
-      if (errMsg.includes('sudah')) {
-        safeSetText('result-score', '✓');
-      } else {
-        showCustomAlert('Gagal Mengirim', 'Gagal mengirim jawaban: ' + errMsg, '❌');
-        showView('exam-view');
-      }
-    }
-  } catch (err) {
-    // Gagal total setelah 3x retry — beri tahu siswa
-    showCustomAlert('Koneksi Terputus', 'Jawaban Anda AMAN di perangkat. Tekan tombol Kirim Ulang.', '📡');
-    State.examActive = true;
-    State.submissionFailed = true;
-    updateNavButtons();
-    hideLoading();
-    showView('exam-view');
-  }
-}
-
-function getUsedTimeStr() {
-  const totalSecs = (State.config.durasi * 60) - Math.max(0, State.timeRemaining);
-  const minutes = Math.floor(totalSecs / 60);
-  const seconds = totalSecs % 60;
-  return `${minutes} Menit ${seconds} Detik`;
-}
-
-// --- Image Zoom Handlers ---
-window.openZoomModal = function (src) {
-  const overlay = document.getElementById('zoom-overlay');
-  const img = document.getElementById('zoom-image'); // Fix ID mismatch from HTML
-  if (overlay && img) {
-    img.src = src;
-    overlay.classList.add('active');
-  }
-};
-
-window.closeZoomModal = function () {
-  const overlay = document.getElementById('zoom-overlay');
-  if (overlay) {
-    overlay.classList.remove('active');
-    const img = document.getElementById('zoom-image');
-    if (img) img.src = '';
-  }
-};
-
-safeAddListener('btnLogout', 'click', () => {
-  // Refresh SPA without GAS reload
-  State.user = null;
-  State.answers = {};
-  State.doubts = new Set();
-  State.currentIndex = 0;
-  State.timeRemaining = 0;
-  State.examActive = false;
-  State.violations = 0;
-  tempSelectedUser = null;
-  if (scheduleTimer) clearInterval(scheduleTimer);
-
-  // Clear UI
-  const userInp = document.getElementById('userName');
-  if (userInp) userInp.value = '';
-  const autoList = document.getElementById('autocomplete-list');
-  if (autoList) autoList.innerHTML = '';
-  safeSetText('confirm-name-text', '-');
-
-  // Switch to Login View
-  showView('login-view');
-  initPortal(); // Re-init portal whenever logout
-});
-
-// --- Portal Init ---
-let portalClockInterval = null;
-
-function initPortal() {
-  patchFirebase();
-  initAuth();
-  updateClock();
-  if (!portalClockInterval) {
-    portalClockInterval = setInterval(updateClock, 1000);
-  }
-  fetchPortalExams();
-
-  // Prefetch daftar peserta di background
-  authPromise.then(() => {
-    if (!cachedPeserta) {
-      loadPesertaCache().catch(() => { });
-    } else {
-      SystemStatus.peserta = 'success';
-      updateInitStatusDisplay();
-    }
-  });
-
-  // ─── ARMOR 1000: Initial Sync & Offline First ───────────────────
-  authPromise.then(async () => {
-    await syncAllDataForPortal();
-
-    // Load Security Settings
-    try {
-      const snap = await db.ref('/config/security').once('value');
-      State.security = snap.val() || {};
-
-      // PWA Enforcer Check
-      if (State.security.pwa) {
-        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
-        const isStandalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
-        const hasBypass = sessionStorage.getItem('pwa_bypass_granted') === '1';
-        if (isMobile && !isStandalone && !hasBypass && !window.location.hostname.includes('localhost') && !window.location.hostname.includes('127.0.0.1')) {
-          const pwaOverlay = document.getElementById('pwa-blocker-overlay');
-          if (pwaOverlay) pwaOverlay.classList.add('active');
-        }
-      }
-    } catch (e) { console.error("Armor 1000: Security Load Error", e); }
-  });
-
-  // Touchscreen Hotkey: 5x taps on the portal logo
-  const logo = document.querySelector('.centric-logo');
-  if (logo && !logo._tapBound) {
-    logo._tapBound = true;
-    logo.addEventListener('click', () => {
-      adminTapCount++;
-      if (adminTapTimer) clearTimeout(adminTapTimer);
-      adminTapTimer = setTimeout(() => { adminTapCount = 0; }, 1000);
-      if (adminTapCount >= 5) {
-        adminTapCount = 0;
-        showAdminAuthModal();
-      }
-    });
-  }
-}
-
-function updateClock() {
-  const clockEl = document.getElementById('portal-clock');
-  if (!clockEl) return;
-  const now = new Date();
-
-  // Custom manual formatting to ensure compatibility in old android webviews
-  const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-  const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
-  const d = days[now.getDay()];
-  const date = String(now.getDate()).padStart(2, '0');
-  const m = months[now.getMonth()];
-  const y = now.getFullYear();
-  const hr = String(now.getHours()).padStart(2, '0');
-  const mn = String(now.getMinutes()).padStart(2, '0');
-  const sc = String(now.getSeconds()).padStart(2, '0');
-
-  clockEl.textContent = `${d}, ${date} ${m} ${y} - ${hr}:${mn}:${sc}`;
-}
-
-async function fetchPortalExams() {
-  const container = document.getElementById('portal-active-exams');
-  if (!container) return;
-
-  try {
-    const res = await gasRun('getPortalInfo');
-    if (res.success) {
-      if (res.activeSchedules && res.activeSchedules.length > 0) {
-        container.innerHTML = res.activeSchedules.map(ex => `
-          <div class="portal-exam-item">
-            <div class="exam-name">📘 ${ex.nama}</div>
-            <div class="exam-meta">⏱️ Durasi: ${ex.durasi} Menit</div>
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>CBT Online – SMP Negeri 1 Dander</title>
+
+  <!-- Preconnect: sambungkan ke CDN lebih awal agar download lebih cepat -->
+  <link rel="preconnect" href="https://www.gstatic.com">
+  <link rel="preconnect" href="https://cdnjs.cloudflare.com">
+  <link rel="dns-prefetch" href="https://firebasestorage.googleapis.com">
+
+  <!-- CSS: load pertama (non-blocking) -->
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Dynamic PWA Manifest -->
+  <link id="pwa-manifest" rel="manifest" href="">
+
+  <!-- Firebase SDK: defer = download paralel, eksekusi SETELAH HTML selesai di-parse -->
+  <script defer src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.8.1/firebase-database-compat.js"></script>
+  <script defer src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
+
+  <!-- JSZip: defer, hanya dipakai saat import Excel -->
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+
+  <!-- XLSX: defer (tidak pakai async lagi agar urutan eksekusi terjaga) -->
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+
+<body>
+
+  <div class="app-container">
+
+    <div id="login-view" class="view active portal-layout">
+      <!-- Wavy Header Background -->
+      <div class="wave-bg-container">
+        <div class="wave-content">
+          <div class="centric-header stagger-1">
+            <div class="centric-logo" id="school-logo-container" style="position: relative;">
+              <img id="school-logo-img" src=""
+                style="display:none; max-width:100%; max-height:100%; object-fit:contain;">
+              <svg id="default-logo-svg" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M12 2L2 7L12 12L22 7L12 2Z" />
+                <path d="M2 9V14C2 14 7.5 17.5 12 19.5C16.5 17.5 22 14 22 14V9L12 14L2 9Z" />
+              </svg>
+              <!-- Armor 1000 Sync Badge -->
+              <div id="sync-badge"
+                style="position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); background: #10B981; color: white; font-size: 9px; padding: 3px 8px; border-radius: 12px; font-weight: 800; box-shadow: 0 4px 12px rgba(16,185,129,0.4); display: none; white-space: nowrap; border: 2px solid white; z-index: 10;">
+                UJIAN READY
+              </div>
+            </div>
+            <div class="centric-identity">
+              <h1 id="portal-school-sub">SMP Negeri 7</h1>
+              <p>Computer Based Test Portal</p>
+            </div>
           </div>
-        `).join('');
-      } else {
-        container.innerHTML = '<div class="portal-exam-empty">Tidak ada jadwal ujian yang aktif saat ini.</div>';
-      }
-    } else {
-      container.innerHTML = '<p class="text-muted" style="color:var(--danger);">Gagal memuat jadwal.</p>';
-    }
-  } catch (e) {
-    container.innerHTML = '<p class="text-muted" style="color:var(--danger);">Koneksi terputus.</p>';
-  }
-}
-
-// Initial Call
-initPortal();
-
-// --- ADMIN STEALTH MODE ---
-let adminTapCount = 0;
-let adminTapTimer = null;
-
-// Hotkey: Ctrl + Shift + A
-document.addEventListener('keydown', (e) => {
-  if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'a') {
-    e.preventDefault();
-    showAdminAuthModal();
-  }
-});
-
-// Logo tap handler is now registered inside initPortal() to ensure DOM is ready.
-
-function showAdminAuthModal() {
-  const overlay = document.getElementById('admin-overlay');
-  if (overlay) overlay.classList.add('active');
-  const modal = document.getElementById('admin-login-modal');
-  if (modal) {
-    modal.style.display = 'flex';
-    void modal.offsetWidth;
-    modal.style.opacity = '1';
-    modal.style.transform = 'translate(-50%, -50%) scale(1)';
-  }
-  document.getElementById('adminTokenInput').value = '';
-  document.getElementById('adminTokenInput').focus();
-}
-
-function hideAdminAuthModal() {
-  const modal = document.getElementById('admin-login-modal');
-  modal.style.opacity = '0';
-  modal.style.transform = 'translate(-50%, -50%) scale(0.95)';
-  setTimeout(() => {
-    modal.style.display = 'none';
-    const overlay = document.getElementById('admin-overlay');
-    if (overlay) overlay.classList.remove('active');
-  }, 300);
-}
-
-safeAddListener('btnCancelAdmin', 'click', hideAdminAuthModal);
-
-safeAddListener('btnSubmitAdmin', 'click', async function () {
-  const pwd = document.getElementById('adminTokenInput').value.trim();
-  if (!pwd) return;
-  const btn = document.getElementById('btnSubmitAdmin');
-  if (btn) btn.textContent = '...';
-  try {
-    const res = await gasRun('validateAdmin', pwd);
-    if (res.success && res.valid) {
-      hideAdminAuthModal();
-      loadAdminDashboard();
-    } else if (res.success && !res.valid) {
-      showCustomAlert('Akses Ditolak', 'Sandi Proktor tidak valid. Coba lagi.', '🔒');
-    } else {
-      showCustomAlert('Gagal', 'Gagal: ' + (res.message || 'Unknown error'), '❌');
-    }
-  } catch (e) {
-    console.error("Admin Auth Error:", e);
-    showCustomAlert('Network Error', 'Network Error: ' + e.message, '🌐');
-  }
-  if (btn) btn.textContent = 'Verifikasi';
-});
-
-safeAddListener('btnAdminLogout', 'click', () => {
-  showView('login-view');
-  initPortal();
-});
-
-async function loadAdminDashboard() {
-  showLoading('Memuat Intelijen Proktor...');
-  try {
-    // Only fetch peserta once and cache it to save bandwidth (Armor 1000)
-    const skipPeserta = !!(window.adminState && window.adminState.peserta && window.adminState.peserta.length > 0);
-    const res = await gasRun('getAdminMonitoringData', skipPeserta);
-
-    if (!skipPeserta) window.adminState.peserta = res.peserta || [];
-    else res.peserta = window.adminState.peserta;
-    if (res.success) {
-      showView('admin-dash-view');
-      renderAdminDashboard(res);
-      loadAdminSyncStatus(); // Armor 1000: Muat status sinkronisasi H-1
-    } else {
-      console.error("Monitoring Fetch Failed:", res.message);
-      showCustomAlert('Gagal Memuat', 'Gagal memuat monitoring: ' + res.message, '❌');
-      showView('login-view');
-    }
-  } catch (e) {
-    console.error("Admin Dashboard Crash:", e);
-    showCustomAlert('Koneksi Gagal', 'Koneksi ke server gagal. Periksa internet.', '🌐');
-    showView('login-view');
-  }
-}
-
-window.loadAdminSyncStatus = async function() {
-  const countEl = document.getElementById('admin-sync-count');
-  if (!countEl) return;
-  
-  try {
-    countEl.textContent = 'Memuat data...';
-    await dbConnectFast();
-    const snap = await db.ref('/status_sync').once('value');
-    const data = snap.val() || {};
-    
-    // Hitung total unik peserta dari semua jadwal
-    const uniqueStudents = new Set();
-    for (let examId in data) {
-       for (let studentId in data[examId]) {
-          uniqueStudents.add(studentId);
-       }
-    }
-    
-    const syncCount = uniqueStudents.size;
-    const totalSiswa = (window.adminState && window.adminState.peserta) ? window.adminState.peserta.length : 0;
-    
-    if (totalSiswa > 0) {
-      const pct = Math.min(100, Math.round((syncCount / totalSiswa) * 100));
-      countEl.textContent = `${syncCount} / ${totalSiswa} Siswa Siap (${pct}%)`;
-    } else {
-      countEl.textContent = `${syncCount} Siswa Siap`;
-    }
-    
-  } catch(e) {
-    console.warn("Gagal muat status sync", e);
-    countEl.textContent = 'Gagal memuat';
-  } finally {
-    dbDisconnect();
-  }
-};
-
-window.adminState = { hasil: [], radar: [], monitor: null, monitorPage: {}, peserta: [] };
-
-function renderPaginationControls(containerId, total, perPage, current, callbackName, idParam) {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-  const totalPages = Math.ceil(total / perPage);
-  if (totalPages <= 1) { container.innerHTML = ''; return; }
-
-  let html = `<button class="page-btn" onclick="${callbackName}(${current - 1}${idParam ? ',\'' + idParam + '\'' : ''})" ${current === 1 ? 'disabled' : ''}>&laquo;</button>`;
-  let start = Math.max(1, current - 2);
-  let end = Math.min(totalPages, current + 2);
-
-  if (start > 1) html += `<button class="page-btn" onclick="${callbackName}(1${idParam ? ',\'' + idParam + '\'' : ''})">1</button>${start > 2 ? '<span style="color:var(--text-muted)">...</span>' : ''}`;
-  for (let i = start; i <= end; i++) {
-    html += `<button class="page-btn ${i === current ? 'active' : ''}" onclick="${callbackName}(${i}${idParam ? ',\'' + idParam + '\'' : ''})">${i}</button>`;
-  }
-  if (end < totalPages) html += `${end < totalPages - 1 ? '<span style="color:var(--text-muted)">...</span>' : ''}<button class="page-btn" onclick="${callbackName}(${totalPages}${idParam ? ',\'' + idParam + '\'' : ''})">${totalPages}</button>`;
-  html += `<button class="page-btn" onclick="${callbackName}(${current + 1}${idParam ? ',\'' + idParam + '\'' : ''})" ${current === totalPages ? 'disabled' : ''}>&raquo;</button>`;
-
-  container.innerHTML = html;
-}
-
-function renderAdminDashboard(data = window.adminState.monitor) {
-  window.adminState.monitor = data;
-  if (!data) return;
-
-  // 1. Render Tokens
-  const tl = document.getElementById('admin-token-list');
-  if (data.activeExams.length > 0) {
-    tl.innerHTML = data.activeExams.map(x => `
-       <div style="border-bottom:1px solid var(--border); padding-bottom:8px;">
-         <div style="font-weight:600;">${x.nama}</div>
-         <div style="color:var(--danger); font-family:var(--mono); font-size:1.2rem; font-weight:700; letter-spacing:2px;">${x.token}</div>
-       </div>
-     `).join('');
-  } else { tl.innerHTML = '<p class="text-muted">Tidak ada ujian aktif.</p>'; }
-
-  // 2. Render Monitoring
-  const ml = document.getElementById('admin-monitoring-list');
-  if (data.activeExams.length === 0) {
-    ml.innerHTML = '<p class="text-muted">Tidak ada evaluasi kepesertaan. Jadwal ujian sedang kosong.</p>';
-    return;
-  }
-
-  ml.innerHTML = data.activeExams.map(ex => {
-    let selesai = 0, mengerjakan = 0, blmSelesai = 0;
-    const completedSet = new Set(data.completions[ex.id] || []);
-
-    const rRaw = data.peserta.map(p => {
-      let d = 'BELUM';
-      let badgeClass = 'status-belum';
-      const isOnline = (data.onlines && data.onlines[ex.id] && (p.id in data.onlines[ex.id]));
-      if (completedSet.has(p.id)) { d = 'SELESAI'; badgeClass = 'status-selesai'; selesai++; }
-      else if (isOnline) { d = 'MENGERJAKAN'; badgeClass = 'status-online'; mengerjakan++; }
-      else { blmSelesai++; }
-      return { html: `<tr><td>${p.nama}</td><td>${p.kelas}</td><td><span class="status-badge ${badgeClass}">${d}</span></td></tr>`, stat: d };
-    });
-
-    const absenMode = document.getElementById('chkAbsenMode') ? document.getElementById('chkAbsenMode').checked : false;
-    const filterRows = rRaw.filter(x => !absenMode || x.stat === 'BELUM');
-
-    const page = window.adminState.monitorPage[ex.id] || 1;
-    const perPage = 20;
-    const slicedRows = filterRows.slice((page - 1) * perPage, page * perPage).map(x => x.html).join('');
-
-    return `
-       <div class="admin-exam-card">
-         <h4 style="align-items:center;">
-           <span>${ex.nama}</span>
-           <button class="btn btn-outline" style="border-color:#38BDF8; color:#0284C7; padding:4px 10px; font-size:0.75rem;" onclick="promptBroadcast('${ex.id}')">📢 Kirim Pesan</button>
-         </h4>
-         <div class="admin-table-wrap">
-           <table class="admin-table">
-             <thead><tr><th>Nama</th><th>Kelas</th><th>Status</th></tr></thead>
-             <tbody>${slicedRows || '<tr><td colspan="3" class="text-muted text-center" style="padding:16px;">(Semua siswa sudah masuk)</td></tr>'}</tbody>
-           </table>
-         </div>
-         <div id="admin-monitor-pg-${ex.id}" class="pagination-controls"></div>
-         <div class="admin-stats" style="margin-top:12px;">
-           <span>Total: <b>${data.peserta.length}</b></span>
-           <span class="stat-done">Selesai: <b>${selesai}</b></span>
-           <span style="color:var(--primary);">Aktif: <b>${mengerjakan}</b></span>
-           <span class="stat-pending">Kosong: <b>${blmSelesai}</b></span>
-         </div>
-       </div>
-     `;
-  }).join('');
-
-  // Render Pagination Pijakan untuk Monitor
-  data.activeExams.forEach(ex => {
-    const absenMode = document.getElementById('chkAbsenMode') ? document.getElementById('chkAbsenMode').checked : false;
-    const total = absenMode ? ex.blmSelesai : data.peserta.length;
-    // Re-hitung total untuk filter 
-    const completedSet = new Set(data.completions[ex.id] || []);
-    let rawTotal = 0;
-    data.peserta.forEach(p => {
-      const hasSelesai = completedSet.has(p.id);
-      const hasMengerjakan = (data.onlines && data.onlines[ex.id] && (p.id in data.onlines[ex.id]));
-      const stat = hasSelesai ? 'SELESAI' : (hasMengerjakan ? 'MENGERJAKAN' : 'BELUM');
-      if (!absenMode || stat === 'BELUM') rawTotal++;
-    });
-    renderPaginationControls(`admin-monitor-pg-${ex.id}`, rawTotal, 20, window.adminState.monitorPage[ex.id] || 1, 'changeMonitorPage', ex.id);
-  });
-}
-
-function changeMonitorPage(page, examId) {
-  window.adminState.monitorPage[examId] = page;
-  renderAdminDashboard(window.adminState.monitor);
-}
-
-// --- Admin Super Dashboard Logic ---
-document.querySelectorAll('.admin-sidebar-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    if (!btn.dataset.tab) return;
-    document.querySelectorAll('.admin-sidebar-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.admin-tab-content').forEach(c => c.style.display = 'none');
-    btn.classList.add('active');
-    document.getElementById(btn.dataset.tab).style.display = 'flex';
-
-    const title = document.getElementById('admin-page-title');
-    if (title) title.innerText = btn.innerText;
-
-    if (btn.dataset.tab === 'tab-jadwal') loadAdminJadwal();
-    else if (btn.dataset.tab === 'tab-siswa') loadAdminSiswa();
-    else if (btn.dataset.tab === 'tab-soal') loadAdminSoal();
-  });
-});
-
-async function loadAdminSiswa() {
-  const tbody = document.getElementById('admin-siswa-tbody');
-  tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Memuat data dari Firebase...</td></tr>';
-  const snap = await db.ref('/peserta').once('value');
-  const data = snap.val() || {};
-  const keys = Object.keys(data);
-  if (keys.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Tidak ada data siswa.</td></tr>';
-    return;
-  }
-  let html = '';
-  for (let id in data) {
-    html += `<tr>
-           <td><strong>${id}</strong></td>
-           <td>${data[id].nama}</td>
-           <td>${data[id].kelas}</td>
-           <td>
-              <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem;" onclick="editSiswa('${id}')">✏️</button>
-              <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem; color:#EF4444; border-color:#EF4444;" onclick="deleteSiswa('${id}')">🗑️</button>
-           </td>
-       </tr>`;
-  }
-  tbody.innerHTML = html;
-}
-
-async function loadAdminSoal() {
-  const tbody = document.getElementById('admin-soal-tbody');
-  tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Memuat data dari Firebase...</td></tr>';
-  const snap = await db.ref('/soal').once('value');
-  const data = snap.val() || {};
-  const keys = Object.keys(data);
-  if (keys.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Belum ada bank soal.</td></tr>';
-    return;
-  }
-  let html = '';
-  for (let bankId in data) {
-    html += `<tr>
-           <td><strong>${bankId}</strong> <br><small class="text-muted">${Object.keys(data[bankId]).length} soal</small></td>
-           <td>
-              <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem;" onclick="previewSoal('${bankId}')">👀 Preview</button>
-              <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem; color:#EF4444; border-color:#EF4444;" onclick="deleteBankSoal('${bankId}')">🗑️</button>
-           </td>
-       </tr>`;
-  }
-  tbody.innerHTML = html;
-}
-
-let currentEditSiswaId = null;
-
-window.openSiswaModal = function () {
-  currentEditSiswaId = null;
-  document.getElementById('siswa-modal-title').innerText = 'Tambah Siswa Baru';
-  document.getElementById('siswaIdInput').value = '';
-  document.getElementById('siswaIdInput').disabled = false;
-  document.getElementById('siswaNamaInput').value = '';
-  document.getElementById('siswaKelasInput').value = '';
-
-  document.getElementById('siswa-overlay').classList.add('active');
-  document.getElementById('siswa-modal').style.display = 'flex';
-  setTimeout(() => {
-    document.getElementById('siswa-modal').style.opacity = '1';
-    document.getElementById('siswa-modal').style.transform = 'translate(-50%, -50%) scale(1)';
-  }, 10);
-}
-
-window.closeSiswaModal = function () {
-  document.getElementById('siswa-overlay').classList.remove('active');
-  document.getElementById('siswa-modal').style.opacity = '0';
-  document.getElementById('siswa-modal').style.transform = 'translate(-50%, -50%) scale(0.95)';
-  setTimeout(() => {
-    document.getElementById('siswa-modal').style.display = 'none';
-  }, 300);
-}
-
-window.editSiswa = async function (id) {
-  showLoading('Menarik data siswa...');
-  try {
-    const snap = await db.ref('/peserta/' + id).once('value');
-    const data = snap.val();
-    hideLoading();
-    if (data) {
-      currentEditSiswaId = id;
-      document.getElementById('siswa-modal-title').innerText = 'Edit Siswa';
-      document.getElementById('siswaIdInput').value = id;
-      document.getElementById('siswaIdInput').disabled = true; // prevent changing ID on edit
-      document.getElementById('siswaNamaInput').value = data.nama || '';
-      document.getElementById('siswaKelasInput').value = data.kelas || '';
-
-      document.getElementById('siswa-overlay').classList.add('active');
-      document.getElementById('siswa-modal').style.display = 'flex';
-      setTimeout(() => {
-        document.getElementById('siswa-modal').style.opacity = '1';
-        document.getElementById('siswa-modal').style.transform = 'translate(-50%, -50%) scale(1)';
-      }, 10);
-    } else {
-      showCustomAlert('Tidak Ditemukan', 'Data siswa tidak ditemukan.', '🔍');
-    }
-  } catch (e) {
-    hideLoading();
-    showCustomAlert('Gagal', 'Gagal mengambil data dari server.', '❌');
-  }
-}
-
-window.saveSiswa = async function () {
-  const id = document.getElementById('siswaIdInput').value.trim();
-  const nama = document.getElementById('siswaNamaInput').value.trim();
-  const kelas = document.getElementById('siswaKelasInput').value.trim();
-
-  if (!id || !nama || !kelas) return showCustomAlert('Data Tidak Lengkap', 'Semua kolom wajib diisi.', '📝');
-
-  showLoading('Menyimpan data...');
-  try {
-    await db.ref('/peserta/' + id).update({
-      nama,
-      nama_lower: nama.toLowerCase(),
-      kelas
-    });
-    hideLoading();
-    closeSiswaModal();
-    loadAdminSiswa();
-  } catch (e) {
-    hideLoading();
-    showCustomAlert('Gagal Menyimpan', 'Gagal menyimpan data siswa.', '❌');
-  }
-}
-
-window.fixPesertaIndex = async function () {
-  if (!confirm('Sistem akan memindai seluruh data siswa dan memperbaiki indeks pencarian (nama_lower). Proses ini mungkin memakan waktu beberapa detik tergantung jumlah siswa.\n\nLanjutkan?')) return;
-
-  showLoading('Memperbaiki Indeks...');
-  try {
-    const snap = await db.ref('/peserta').once('value');
-    const data = snap.val() || {};
-    const updates = {};
-    let count = 0;
-
-    for (let id in data) {
-      const nama = String(data[id].nama || '').trim();
-      const currentNamaLower = data[id].nama_lower || '';
-      const targetNamaLower = nama.toLowerCase();
-
-      if (currentNamaLower !== targetNamaLower) {
-        updates[`${id}/nama_lower`] = targetNamaLower;
-        updates[`${id}/nama`] = nama; // Also clean up whitespace in original name
-        count++;
-      }
-    }
-
-    if (count > 0) {
-      await db.ref('/peserta').update(updates);
-      hideLoading();
-      showCustomAlert('Pemeliharaan Selesai', `Berhasil memperbaiki ${count} data siswa.`, '✅');
-    } else {
-      hideLoading();
-      showCustomAlert('Data Sudah Benar', 'Seluruh data sudah benar. Tidak ada yang perlu diperbaiki.', '✅');
-    }
-  } catch (e) {
-    console.error(e);
-    hideLoading();
-    showCustomAlert('Gagal', 'Gagal melakukan pemeliharaan database.', '❌');
-  }
-}
-
-function openBankSoalModal() { showCustomAlert('Segera Hadir', 'Fitur Bank Soal Builder segera hadir. Gunakan Import CSV.', 'ℹ️'); }
-
-window.deleteSiswa = async function (id) {
-  if (confirm('Hapus siswa ' + id + '?')) {
-    showLoading('Menghapus Siswa...');
-    try {
-      await db.ref('/peserta/' + id).remove();
-      loadAdminSiswa();
-    } catch (e) {
-      showCustomAlert('Gagal Menghapus', 'Gagal menghapus: ' + e.message, '❌');
-    } finally {
-      hideLoading();
-    }
-  }
-}
-window.deleteBankSoal = async function (id) {
-  if (confirm('Hapus bank soal ' + id + '? Ini juga akan menghapus kunci jawaban.')) {
-    showLoading('Menghapus Bank Soal...');
-    try {
-      await db.ref('/soal/' + id).remove();
-      await db.ref('/kunci/' + id).remove();
-      loadAdminSoal();
-    } catch (e) {
-      showCustomAlert('Gagal Menghapus', 'Gagal menghapus: ' + e.message, '❌');
-    } finally {
-      hideLoading();
-    }
-  }
-}
-window.previewSoal = async function (bankId) {
-  showLoading('Menarik Bank Soal...');
-  try {
-    const sSnap = await db.ref(`/soal/${bankId}`).once('value');
-    const kSnap = await db.ref(`/kunci/${bankId}`).once('value');
-    const sData = sSnap.val() || {};
-    const kData = kSnap.val() || {};
-    hideLoading();
-
-    const questions = [];
-    let idx = 0;
-    for (let qId in sData) {
-      let q = sData[qId];
-      q._index = idx++;
-      q.kunci = kData[qId] || '';
-      if (!q.opsi) q.opsi = [];
-      questions.push(q);
-    }
-
-    document.getElementById('preview-title').textContent = 'Bank Soal: ' + bankId;
-    const content = document.getElementById('preview-content-area');
-
-    PreviewState.questions = questions;
-    PreviewState.currentIndex = 0;
-    PreviewState.examId = bankId;
-
-    if (questions.length === 0) {
-      document.getElementById('prev-q-number').innerHTML = 'SOAL Kosong';
-      document.getElementById('prev-q-text').innerHTML = '<p class="text-muted text-center" style="margin-top:40px;">Soal belum diunggah.</p>';
-      document.getElementById('prev-q-options').innerHTML = '';
-      document.getElementById('prev-q-image-container').style.display = 'none';
-      document.getElementById('btnPrevPreview').parentElement.style.display = 'none';
-    } else {
-      document.getElementById('btnPrevPreview').parentElement.style.display = 'flex';
-      renderPreviewQuestion(0);
-    }
-
-    const overlay = document.getElementById('preview-overlay');
-    const modal = document.getElementById('admin-preview-modal');
-    if (overlay) overlay.classList.add('active');
-    if (modal) {
-      modal.style.display = 'flex';
-      setTimeout(() => {
-        modal.style.opacity = '1';
-        modal.style.transform = 'translate(-50%, -50%) scale(1)';
-      }, 10);
-    }
-  } catch (e) {
-    hideLoading();
-    showCustomAlert('Gagal', 'Gagal mengambil data Bank Soal.', '❌');
-    console.error(e);
-  }
-}
-
-async function loadAdminJadwal() {
-  const container = document.getElementById('admin-jadwal-list');
-  const tbody = document.getElementById('admin-jadwal-tbody');
-
-  if (container) container.innerHTML = '<p class="text-muted" style="text-align:center; padding: 20px;">Mengunduh jadwal dari server...</p>';
-  if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Memuat data dari Firebase...</td></tr>';
-
-  try {
-    const res = await gasRun('getAdminJadwalFull');
-    if (res.success) {
-      if (res.data.length === 0) {
-        if (container) container.innerHTML = '<p class="text-muted">Jadwal masih kosong.</p>';
-        if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Belum ada jadwal.</td></tr>';
-      } else {
-        // Render List (Live Control)
-        if (container) {
-          container.innerHTML = res.data.map(j => `
-                 <div class="admin-exam-card" style="margin-bottom:12px;">
-                     <h4 style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-                        <span>${j.id} - ${j.nama}</span>
-                        <div>
-                            <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem; margin-right:4px;" onclick="openPrintModal('${j.id}', '${j.nama}')">🖨️ Cetak Presensi</button>
-                            <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem;" onclick="showAdminPreview('${j.id}')">🔍 Pratinjau</button>
-                        </div>
-                     </h4>
-                     <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-top:14px;">
-                        <div style="flex:1; min-width:90px;">
-                          <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:4px;">Token</label>
-                          <input type="text" id="j-token-${j.id}" class="form-control" value="${j.token}" style="padding:6px 12px; font-size:0.9rem;" />
-                        </div>
-                        <div style="flex:1; min-width:110px;">
-                          <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:4px;">Status Aktif</label>
-                          <select id="j-status-${j.id}" class="form-control" style="padding:6px 12px; font-size:0.9rem;">
-                             <option value="Aktif" ${j.aktif ? 'selected' : ''}>Aktif</option>
-                             <option value="Tidak" ${!j.aktif ? 'selected' : ''}>Tidak Aktif</option>
-                          </select>
-                        </div>
-                        <div style="flex-shrink:0;">
-                          <button class="btn btn-warning" style="padding:6px 16px; font-size:0.85rem;" onclick="saveAdminJadwal('${j.id}')">Simpan</button>
-                        </div>
-                     </div>
-                 </div>
-               `).join('');
-        }
-
-        // Render Table
-        if (tbody) {
-          tbody.innerHTML = res.data.map(j => `
-                 <tr>
-                    <td><strong>${j.id}</strong></td>
-                    <td>${j.nama}</td>
-                    <td>${j.nama_soal || '-'}</td>
-                    <td>
-                       <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem; color:#EF4444; border-color:#EF4444;" onclick="deleteJadwal('${j.id}')">🗑️ Hapus</button>
-                    </td>
-                 </tr>
-               `).join('');
-        }
-      }
-    } else {
-      if (container) container.innerHTML = '<p class="text-muted text-danger">Gagal memuat jadwal.</p>';
-      if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Gagal memuat.</td></tr>';
-    }
-  } catch (e) {
-    if (container) container.innerHTML = '<p class="text-muted text-danger">Koneksi terputus.</p>';
-    if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Koneksi terputus.</td></tr>';
-  }
-}
-
-window.deleteJadwal = async function (id) {
-  if (confirm('Hapus jadwal ujian ' + id + '?')) {
-    showLoading('Menghapus Jadwal...');
-    try {
-      await db.ref('/jadwal/' + id).remove();
-      loadAdminJadwal();
-    } catch (e) {
-      showCustomAlert('Gagal Menghapus', 'Gagal menghapus: ' + e.message, '❌');
-    } finally {
-      hideLoading();
-    }
-  }
-}
-
-async function saveAdminJadwal(id) {
-  const token = document.getElementById(`j-token-${id}`).value;
-  const status = document.getElementById(`j-status-${id}`).value;
-  showLoading('Menyimpan ke server...');
-  try {
-    const res = await gasRun('updateJadwalSistem', id, token, status);
-    if (res.success) {
-      showCustomAlert('Berhasil', 'Pembaruan jadwal berhasil disimpan!', '✅');
-    } else {
-      showCustomAlert('Gagal Menyimpan', 'Gagal menyimpan: ' + res.message, '❌');
-    }
-  } catch (e) { showCustomAlert('Kesalahan Jaringan', 'Terjadi kesalahan jaringan. Periksa koneksi.', '🌐'); }
-  showView('admin-dash-view');
-}
-
-async function loadAdminHasil(resetPage = false) {
-  const tbHasil = document.getElementById('admin-hasil-tbody');
-  const tbRadar = document.getElementById('admin-radar-tbody');
-
-  if (resetPage) {
-    tbHasil.innerHTML = '<tr><td colspan="4" class="text-muted" style="text-align:center; padding:20px;">Menarik rekap laporan terbaru...</td></tr>';
-    tbRadar.innerHTML = '<tr><td colspan="4" class="text-muted" style="text-align:center; padding:20px;">Menganalisa log kecurangan...</td></tr>';
-    try {
-      const res = await gasRun('getAdminLaporanLengkap');
-      if (res.success) {
-        window.adminState.hasil = res.hasil;
-        window.adminState.radar = res.pelanggaran;
-      } else {
-        tbHasil.innerHTML = '<tr><td colspan="4" class="text-danger" style="text-align:center; padding:20px;">Gagal menarik data Server.</td></tr>';
-        tbRadar.innerHTML = '<tr><td colspan="4" class="text-danger" style="text-align:center; padding:20px;">Gagal memuat log The Radar.</td></tr>';
-        return;
-      }
-    } catch (e) {
-      tbHasil.innerHTML = '<tr><td colspan="4" class="text-danger" style="text-align:center; padding:20px;">Koneksi terputus.</td></tr>';
-      return;
-    }
-  }
-
-  renderAdminHasilPage(1);
-  renderAdminRadarPage(1);
-}
-
-function renderAdminHasilPage(page) {
-  const perPage = 20;
-  const tbHasil = document.getElementById('admin-hasil-tbody');
-  const data = window.adminState.hasil || [];
-  if (data.length === 0) {
-    tbHasil.innerHTML = '<tr><td colspan="4" class="text-muted text-center" style="padding:20px;">Belum ada jawaban masuk.</td></tr>';
-    document.getElementById('admin-hasil-pagination').innerHTML = ''; return;
-  }
-
-  const sliced = data.slice((page - 1) * perPage, page * perPage);
-  tbHasil.innerHTML = sliced.map(h => `
-     <tr>
-       <td style="white-space:nowrap; font-size:0.8rem; color:var(--text-muted);">${h.waktu}</td>
-       <td style="font-weight:600;">${h.nama} <span style="font-size:0.75rem; color:var(--text-muted); display:block;">${h.kelas}</span></td>
-       <td>${h.ujian}</td>
-       <td style="font-weight:700; color:#059669; font-size:1.1rem;">${h.skor}</td>
-     </tr>
-   `).join('');
-  renderPaginationControls('admin-hasil-pagination', data.length, perPage, page, 'renderAdminHasilPage');
-}
-
-function renderAdminRadarPage(page) {
-  const perPage = 20;
-  const tbRadar = document.getElementById('admin-radar-tbody');
-  const data = window.adminState.radar || [];
-  if (data.length === 0) {
-    tbRadar.innerHTML = '<tr><td colspan="4" class="text-muted text-center" style="padding:20px;">Sistem bersih & aman (Tidak ada log).</td></tr>';
-    document.getElementById('admin-radar-pagination').innerHTML = ''; return;
-  }
-
-  const sliced = data.slice((page - 1) * perPage, page * perPage);
-  tbRadar.innerHTML = sliced.map(r => `
-     <tr>
-       <td style="white-space:nowrap; font-size:0.8rem; color:var(--text-muted);">${r.waktu}</td>
-       <td style="font-weight:600; color:var(--text-main);">${r.nama}</td>
-       <td>${r.ujian}</td>
-       <td style="color:#DC2626; font-size:0.85rem; font-weight:500;">${r.tipe}</td>
-     </tr>
-   `).join('');
-  renderPaginationControls('admin-radar-pagination', data.length, perPage, page, 'renderAdminRadarPage');
-}
-
-// --- PENGATURAN KEAMANAN ADMIN ---
-window.loadAdminSettings = async function () {
-  showLoading('Memuat Pengaturan...');
-  try {
-    await withDB(async function () {
-      const snap = await db.ref('/config/security').once('value');
-      const sec = snap.val() || {};
-      safeSetChecked('cfgPWA', sec.pwa);
-      safeSetChecked('cfgFullscreen', sec.fullscreen);
-      safeSetChecked('cfgAntiCheat', sec.anticheat);
-      safeSetValue('cfgMinTime', sec.minTime || 0);
-      safeSetValue('cfgBypassCode', sec.bypassCode || '');
-
-      const idenSnap = await db.ref('/config/identity').once('value');
-      const iden = idenSnap.val() || {};
-      if (iden.name) safeSetValue('cfgSchoolName', iden.name);
-      if (iden.sub) safeSetValue('cfgSchoolSub', iden.sub);
-
-      // Logo Preview
-      const preview = document.getElementById('cfgLogoPreview');
-      if (preview) {
-        preview.innerHTML = iden.logo ? `<img src="${iden.logo}">` : '<span class="text-muted" style="font-size:0.8rem;">No Logo</span>';
-        State.tempLogoBase64 = iden.logo || null;
-      }
-
-      // Load Firebase Config from UI local state
-      safeSetValue('fbApiKey', firebaseConfig.apiKey || '');
-      safeSetValue('fbAuthDomain', firebaseConfig.authDomain || '');
-      safeSetValue('fbDbUrl', firebaseConfig.databaseURL || '');
-      safeSetValue('fbProjectId', firebaseConfig.projectId || '');
-      safeSetValue('fbStorageBucket', firebaseConfig.storageBucket || '');
-      safeSetValue('fbMessagingId', firebaseConfig.messagingSenderId || '');
-      safeSetValue('fbAppId', firebaseConfig.appId || '');
-    });
-  } catch (e) {
-    console.error(e);
-  }
-  hideLoading();
-};
-
-// Handle Logo Input Change
-safeAddListener('cfgLogoInput', 'change', (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-
-  if (file.size > 1024 * 1024) { // 1MB Limit
-    showCustomAlert('File Terlalu Besar', 'Ukuran file melebihi 1MB. Kompres lalu coba lagi.', '📁');
-    e.target.value = '';
-    return;
-  }
-
-  const reader = new FileReader();
-  reader.onload = (event) => {
-    const base64 = event.target.result;
-    State.tempLogoBase64 = base64;
-    const preview = document.getElementById('cfgLogoPreview');
-    if (preview) {
-      preview.innerHTML = `<img src="${base64}">`;
-    }
-  };
-  reader.readAsDataURL(file);
-});
-
-window.saveAdminSettings = async function () {
-  showLoading('Menyimpan...');
-  try {
-    await withDB(async function () {
-      const sec = {
-        pwa: document.getElementById('cfgPWA') ? document.getElementById('cfgPWA').checked : false,
-        fullscreen: document.getElementById('cfgFullscreen') ? document.getElementById('cfgFullscreen').checked : false,
-        anticheat: document.getElementById('cfgAntiCheat') ? document.getElementById('cfgAntiCheat').checked : false,
-        minTime: parseInt(safeGetValue('cfgMinTime')) || 0,
-        bypassCode: safeGetValue('cfgBypassCode').trim().toUpperCase() || null
-      };
-      await db.ref('/config/security').set(sec);
-
-      const iden = {
-        name: safeGetValue('cfgSchoolName').trim(),
-        sub: safeGetValue('cfgSchoolSub').trim(),
-        logo: State.tempLogoBase64
-      };
-      await db.ref('/config/identity').set(iden);
-
-      // Save Firebase Config to LocalStorage (Browser specific)
-      const newFbConfig = {
-        apiKey: safeGetValue('fbApiKey').trim(),
-        authDomain: safeGetValue('fbAuthDomain').trim(),
-        databaseURL: safeGetValue('fbDbUrl').trim(),
-        projectId: safeGetValue('fbProjectId').trim(),
-        storageBucket: safeGetValue('fbStorageBucket').trim(),
-        messagingSenderId: safeGetValue('fbMessagingId').trim(),
-        appId: safeGetValue('fbAppId').trim()
-      };
-
-      // Only save if apiKey is present as a basic validation
-      if (newFbConfig.apiKey && newFbConfig.apiKey !== firebaseConfig.apiKey) {
-        if (confirm("Anda mengubah konfigurasi Firebase. Aplikasi akan dimuat ulang untuk menerapkan perubahan database. Lanjutkan?")) {
-          localStorage.setItem('CBT_FB_CONFIG', JSON.stringify(newFbConfig));
-          window.location.reload();
-          return;
-        }
-      } else if (newFbConfig.apiKey) {
-        localStorage.setItem('CBT_FB_CONFIG', JSON.stringify(newFbConfig));
-      }
-    });
-
-    hideLoading();
-    showCustomAlert('Berhasil Disimpan', 'Pengaturan berhasil disimpan! Silakan muat ulang halaman agar perubahan identitas terlihat.', '✅');
-  } catch (e) {
-    console.error(e);
-    hideLoading();
-    showCustomAlert('Gagal Menyimpan', 'Gagal menyimpan pengaturan: ' + (e.message || 'Periksa koneksi internet.'), '❌');
-  }
-};
-
-window.resetFirebaseConfig = function () {
-  if (confirm("Reset konfigurasi Firebase ke bawaan sistem? Aplikasi akan dimuat ulang.")) {
-    localStorage.removeItem('CBT_FB_CONFIG');
-    window.location.reload();
-  }
-};
-
-// Fitur Eksklusif UI Proktor Baru
-
-function toggleAbsenMode() {
-  // Hanya panggil ulang render UI untuk melompati reload dari server
-  const prevData = document.getElementById('admin-monitoring-list').dataset.lastRender;
-  // Kita bisa mengakalinya dengan load dashboard ulang tanpa loading spinner jika memori mahal,
-  // Tapi untuk cara tercepat, cukup trigger loadAdminDashboard lagi. Cache memori aman.
-  loadAdminDashboard();
-}
-
-async function promptBroadcast(examId) {
-  const msg = prompt("Sistem Broadcast Massal\n\nTulis pesan peringatan singkat (misal: Waktu sebentar lagi habis!). Pesan ini akan otomatis memancar di layar HP siswa maksimal 3 menit dari sekarang.\n\nPesan Anda:");
-  if (msg && msg.trim() !== '') {
-    showLoading('Menyiarkan Pesan...');
-    try {
-      const res = await gasRun('sendBroadcastAdmin', examId, msg.trim());
-      if (res.success) showCustomAlert('Berhasil', 'Pesan berhasil diteruskan ke semua peserta!', '📢');
-      else showCustomAlert('Gagal', 'Gagal menyiarkan pesan. Coba lagi.', '❌');
-    } catch (ex) { showCustomAlert('Gagal', 'Terjadi kegagalan jaringan.', '🌐'); }
-    hideLoading();
-  }
-}
-
-function showBroadcastMessage(msg) {
-  const el = document.createElement('div');
-  el.innerHTML = `
-     <div style="position:fixed; top:20px; left:50%; transform:translateX(-50%); z-index:9999; background:linear-gradient(135deg, #F59E0B, #D97706); color:white; padding:14px 24px; border-radius:12px; box-shadow:0 10px 25px rgba(217,119,6,0.4); font-weight:700; display:flex; align-items:center; gap:12px; min-width:300px; animation:slideDownDrop 0.5s cubic-bezier(0.34,1.56,0.64,1) forwards;">
-       <span style="font-size:1.5rem;">📢</span>
-       <span style="flex:1;">${msg}</span>
-       <button onclick="this.parentElement.remove()" style="background:rgba(0,0,0,0.2); border:none; color:white; padding:6px 10px; border-radius:6px; cursor:pointer;">Tutup</button>
-     </div>
-     <style>@keyframes slideDownDrop { 0%{top:-50px; opacity:0;} 100%{top:20px; opacity:1;} }</style>
-   `;
-  document.body.appendChild(el);
-}
-
-// Zero-Bandwidth File Generator
-function exportTableToCSV(tableId, filename) {
-  const table = document.getElementById(tableId);
-  let csv = [];
-  const rows = table.querySelectorAll('tr');
-
-  for (let i = 0; i < rows.length; i++) {
-    let row = [], cols = rows[i].querySelectorAll('td, th');
-    for (let j = 0; j < cols.length; j++) {
-      let data = cols[j].innerText.replace(/(\r\n|\n|\r)/gm, " ").replace(/"/g, '""');
-      row.push('"' + data + '"');
-    }
-    csv.push(row.join(','));
-  }
-
-  const csvData = new Blob([csv.join('\n')], { type: 'text/csv;charset=utf-8;' });
-  const url = window.URL.createObjectURL(csvData);
-  const a = document.createElement('a');
-  a.style.display = 'none';
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  window.URL.revokeObjectURL(url);
-}
-
-// Fitur Admin Bank Soal Preview
-function hideAdminPreview() {
-  const modal = document.getElementById('admin-preview-modal');
-  modal.style.opacity = '0';
-  modal.style.transform = 'translate(-50%, -50%) scale(0.95)';
-  setTimeout(() => {
-    modal.style.display = 'none';
-    const overlay = document.getElementById('preview-overlay');
-    if (overlay) overlay.classList.remove('active');
-  }, 300);
-}
-
-let PreviewState = {
-  questions: [],
-  currentIndex: 0,
-  examId: ''
-};
-
-window.navigatePreview = function (dir) {
-  const newIdx = PreviewState.currentIndex + dir;
-  if (newIdx >= 0 && newIdx < PreviewState.questions.length) {
-    PreviewState.currentIndex = newIdx;
-    renderPreviewQuestion(PreviewState.currentIndex);
-  }
-};
-
-function renderPreviewQuestion(index) {
-  const q = PreviewState.questions[index];
-  if (!q) return;
-
-  document.getElementById('prev-q-indicator').textContent = `${index + 1} / ${PreviewState.questions.length}`;
-
-  // Edit button attached to number
-  document.getElementById('prev-q-number').innerHTML = `SOAL ${index + 1} <span style="font-size:0.75rem; font-weight:normal; margin-left:6px; color:var(--text-muted);">(Tipe: ${q.tipe})</span> <button class="btn btn-outline" style="padding:2px 8px; font-size:0.75rem; margin-left:10px;" onclick="openSoalEditModal('${PreviewState.examId}', '${q.id}')">✏️ Edit</button>`;
-
-  document.getElementById('prev-q-text').textContent = q.pertanyaan;
-
-  const imgContainer = document.getElementById('prev-q-image-container');
-  if (q.gambar && q.gambar.trim() !== '') {
-    imgContainer.innerHTML = `<img src="${q.gambar.trim()}" class="q-image" loading="lazy" onclick="openZoomModal('${q.gambar.trim()}')" alt="Gambar Soal" />`;
-    imgContainer.style.display = 'block';
-  } else {
-    imgContainer.style.display = 'none';
-    imgContainer.innerHTML = '';
-  }
-
-  renderPreviewOptions(q);
-
-  document.getElementById('btnPrevPreview').disabled = (index === 0);
-  document.getElementById('btnNextPreview').disabled = (index === PreviewState.questions.length - 1);
-}
-
-function renderPreviewOptions(q) {
-  const container = document.getElementById('prev-q-options');
-  container.innerHTML = '';
-
-  if (q.tipe === 'PG' || q.tipe === 'BS') {
-    const labels = ['A', 'B', 'C', 'D', 'E'];
-    q.opsi.forEach((opt, idx) => {
-      const isCorrect = q.kunci && (String(opt.id).trim().toUpperCase() === String(q.kunci).trim().toUpperCase() || (opt.text && String(opt.text).trim().toUpperCase() === String(q.kunci).trim().toUpperCase()));
-      const displayLabel = labels[idx] || (idx + 1);
-
-      const div = document.createElement('div');
-      div.className = `option-item ${isCorrect ? 'answer-correct' : ''}`;
-
-      let imgHTML = '';
-      if (opt.gambar) {
-        imgHTML = `<img src="${opt.gambar}" class="q-image" loading="lazy" style="max-height:140px; margin-top:8px; display:block;" onclick="openZoomModal('${opt.gambar}'); event.stopPropagation();" />`;
-      }
-
-      div.innerHTML = `
-               <div style="display:flex; align-items:flex-start; width:100%;">
-                   <input type="radio" ${isCorrect ? 'checked' : ''} disabled style="margin-top:4px;">
-                   <div style="margin-left:10px; width:100%;">
-                       <div class="option-text" style="font-weight:600; display:inline-block; margin-right:6px; color:${isCorrect ? '#065F46' : 'inherit'}">${displayLabel}.</div>
-                       <div class="option-text" style="display:inline-block; color:${isCorrect ? '#065F46' : 'inherit'}">${opt.text}</div>
-                       ${imgHTML}
-                   </div>
-                   ${isCorrect ? '<span style="margin-left:auto;">✅</span>' : ''}
-               </div>
-           `;
-      container.appendChild(div);
-    });
-  } else if (q.tipe === 'KOMPLEKS') {
-    const keysArr = q.kunci ? String(q.kunci).toUpperCase().split(',').map(s => s.trim()) : [];
-    const labels = ['A', 'B', 'C', 'D', 'E'];
-    q.opsi.forEach((opt, idx) => {
-      const isCorrect = keysArr.includes(String(opt.id).toUpperCase()) || (opt.text && keysArr.includes(String(opt.text).toUpperCase()));
-      const displayLabel = labels[idx] || (idx + 1);
-
-      const div = document.createElement('div');
-      div.className = `option-item ${isCorrect ? 'answer-correct' : ''}`;
-
-      let imgHTML = '';
-      imgHTML = `<img src="${opt.gambar}" class="q-image" loading="lazy" style="max-height:140px; margin-top:8px; display:block;" onclick="openZoomModal('${opt.gambar}'); event.stopPropagation();" />`;
-
-      div.innerHTML = `
-               <div style="display:flex; align-items:flex-start; width:100%;">
-                   <input type="checkbox" ${isCorrect ? 'checked' : ''} disabled style="margin-top:4px;">
-                   <div style="margin-left:10px; width:100%;">
-                       <div class="option-text" style="font-weight:600; display:inline-block; margin-right:6px; color:${isCorrect ? '#065F46' : 'inherit'}">${displayLabel}.</div>
-                       <div class="option-text" style="display:inline-block; color:${isCorrect ? '#065F46' : 'inherit'}">${opt.text}</div>
-                       ${imgHTML}
-                   </div>
-                   ${isCorrect ? '<span style="margin-left:auto;">✅</span>' : ''}
-               </div>
-           `;
-      container.appendChild(div);
-    });
-  } else {
-    const div = document.createElement('div');
-    div.innerHTML = `
-           <div style="padding:15px; border-radius:8px; background:#D1FAE5; border:1px solid #10B981; color:#065F46; font-weight:600; text-align:center;">
-               🔑 KUNCI JAWABAN:<br>
-               <span style="font-size:1.1rem; display:block; margin-top:8px;">${q.kunci || '<i>Belum diatur</i>'}</span>
-           </div>
-       `;
-    container.appendChild(div);
-  }
-}
-
-async function showAdminPreview(examId) {
-  showLoading('Menarik Bank Soal...');
-  try {
-    const res = await gasRun('getAdminPreviewSoal', examId);
-    hideLoading();
-
-    if (res.success) {
-      document.getElementById('preview-title').textContent = res.examName || examId;
-
-      PreviewState.questions = res.questions;
-      PreviewState.currentIndex = 0;
-      PreviewState.examId = examId;
-
-      if (res.questions.length === 0) {
-        document.getElementById('prev-q-number').innerHTML = 'SOAL Kosong';
-        document.getElementById('prev-q-text').innerHTML = '<p class="text-muted text-center" style="margin-top:40px;">Soal belum diunggah.</p>';
-        document.getElementById('prev-q-options').innerHTML = '';
-        document.getElementById('prev-q-image-container').style.display = 'none';
-        document.getElementById('btnPrevPreview').parentElement.style.display = 'none';
-      } else {
-        document.getElementById('btnPrevPreview').parentElement.style.display = 'flex';
-        renderPreviewQuestion(0);
-      }
-
-      const overlay = document.getElementById('preview-overlay');
-      const modal = document.getElementById('admin-preview-modal');
-      if (overlay) overlay.classList.add('active');
-      if (modal) {
-        modal.style.display = 'flex';
-        // trigger flow
-        setTimeout(() => {
-          modal.style.opacity = '1';
-          modal.style.transform = 'translate(-50%, -50%) scale(1)';
-        }, 10);
-      }
-    } else {
-      showCustomAlert('Gagal Membaca Soal', 'Gagal membaca lembar soal: ' + res.message, '❌');
-    }
-  } catch (e) {
-    hideLoading();
-    showCustomAlert('Koneksi Bermasalah', 'Koneksi ke server bermasalah. Coba lagi.', '🌐');
-  }
-}
-
-// --- Soal Edit Logic ---
-window.openSoalEditModal = async function (bankId, soalId) {
-  showLoading('Memuat data soal...');
-  try {
-    const snapSoal = await db.ref('/soal/' + bankId + '/' + soalId).once('value');
-    const snapKunci = await db.ref('/kunci/' + bankId + '/' + soalId).once('value');
-    const q = snapSoal.val();
-    const k = snapKunci.val();
-    hideLoading();
-
-    if (q && (q.tipe === 'PG' || q.tipe === 'KOMPLEKS' || q.tipe === 'BS')) {
-      document.getElementById('soalEditBankId').value = bankId;
-      document.getElementById('soalEditId').value = soalId;
-      document.getElementById('soalEditPertanyaan').value = q.pertanyaan || '';
-      document.getElementById('soalEditGambar').value = q.gambar || '';
-
-      const opsiContainer = document.getElementById('soalEditOpsiContainer');
-      opsiContainer.innerHTML = '';
-
-      q.opsi.forEach(opt => {
-        opsiContainer.innerHTML += `
-                    <div style="display:flex; gap:8px; align-items:center;">
-                        <span style="font-weight:700; width:20px;">${opt.id}</span>
-                        <input type="text" id="soalEditOpsiText_${opt.id}" class="form-control" placeholder="Teks opsi" value="${opt.text || ''}" style="flex:1;">
-                        <input type="text" id="soalEditOpsiGambar_${opt.id}" class="form-control" placeholder="Tautan gbr" value="${opt.gambar || ''}" style="flex:1;">
-                    </div>
-                `;
-      });
-
-      // Set Kunci
-      const kVal = String(k || '').trim().toUpperCase();
-      const selectKunci = document.getElementById('soalEditKunci');
-      selectKunci.value = kVal;
-
-      document.getElementById('soal-edit-overlay').classList.add('active');
-      document.getElementById('soal-edit-modal').style.display = 'flex';
-      setTimeout(() => {
-        document.getElementById('soal-edit-modal').style.opacity = '1';
-        document.getElementById('soal-edit-modal').style.transform = 'translate(-50%, -50%) scale(1)';
-      }, 10);
-    } else {
-      showCustomAlert('Tipe Tidak Didukung', 'Edit cepat hanya mendukung tipe PG, Benar-Salah, dan PG Kompleks.', 'ℹ️');
-    }
-  } catch (e) {
-    hideLoading();
-    showCustomAlert('Gagal', 'Gagal mengambil data soal dari server.', '❌');
-  }
-}
-
-window.closeSoalEditModal = function () {
-  document.getElementById('soal-edit-overlay').classList.remove('active');
-  document.getElementById('soal-edit-modal').style.opacity = '0';
-  document.getElementById('soal-edit-modal').style.transform = 'translate(-50%, -50%) scale(0.95)';
-  setTimeout(() => {
-    document.getElementById('soal-edit-modal').style.display = 'none';
-  }, 300);
-}
-
-window.saveSoalEdit = async function () {
-  const bankId = document.getElementById('soalEditBankId').value;
-  const soalId = document.getElementById('soalEditId').value;
-  const pertanyaan = document.getElementById('soalEditPertanyaan').value.trim();
-  const gambar = document.getElementById('soalEditGambar').value.trim();
-  const rawKunci = document.getElementById('soalEditKunci').value;
-
-  if (!pertanyaan) return showCustomAlert('Data Tidak Lengkap', 'Teks soal tidak boleh kosong.', '📝');
-  if (!rawKunci) return showCustomAlert('Data Tidak Lengkap', 'Kunci jawaban tidak boleh kosong.', '📝');
-
-  // Format the key to uppercase and remove spaces
-  const kunci = String(rawKunci).toUpperCase().replace(/\s+/g, '');
-
-  const letters = ['A', 'B', 'C', 'D'];
-  let newOpsi = [];
-  letters.forEach(letter => {
-    const textEl = document.getElementById('soalEditOpsiText_' + letter);
-    const imgEl = document.getElementById('soalEditOpsiGambar_' + letter);
-    if (textEl) {
-      const t = textEl.value.trim();
-      const g = imgEl.value.trim();
-      if (t || g) newOpsi.push({ id: letter, text: t, gambar: g });
-    }
-  });
-
-  showLoading('Menyimpan perubahan...');
-  try {
-    await db.ref('/soal/' + bankId + '/' + soalId).update({ pertanyaan, gambar, opsi: newOpsi });
-    await db.ref('/kunci/' + bankId + '/' + soalId).set(kunci);
-    hideLoading();
-    closeSoalEditModal();
-    showCustomAlert('Berhasil', 'Perubahan berhasil disimpan!', '✅');
-
-    // Refresh the preview
-    previewSoal(bankId);
-  } catch (e) {
-    hideLoading();
-    showCustomAlert('Gagal Menyimpan', 'Gagal menyimpan perubahan. Coba lagi.', '❌');
-  }
-}
-
-// --- Import Logic ---
-let currentImportType = '';
-
-window.downloadTemplateExcel = function () {
-  if (typeof XLSX === 'undefined') return showCustomAlert('Library Belum Siap', 'Library Excel belum dimuat. Pastikan koneksi stabil.', '⚠️');
-  let data = [];
-  if (currentImportType === 'siswa') {
-    data = [
-      ["ID_SISWA", "NAMA_LENGKAP", "KELAS"],
-      ["12345", "Budi Santoso", "IX A"],
-      ["67890", "Siti Aminah", "IX B"]
-    ];
-    const ws = XLSX.utils.aoa_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Siswa");
-    XLSX.writeFile(wb, "Template_Siswa.xlsx");
-  } else {
-    data = [
-      ["Jenis (PG/BS/KOMPLEKS/ISIAN/JODOH)", "Teks Pertanyaan", "Tautan Gambar Soal", "Tautan Audio/Video", "Opsi A", "Gambar A", "Opsi B", "Gambar B", "Opsi C", "Gambar C", "Opsi D", "Gambar D", "Kunci Jawaban (1=A,2=B.. atau Teks)"],
-      ["PG", "Apa ibukota Indonesia?", "", "", "Bandung", "", "Surabaya", "", "Jakarta", "", "Semarang", "", "3"],
-      ["PG", "Perhatikan gambar berikut. Bangun apakah ini?", "https://link-gambar.com/kubus.jpg", "", "Kubus", "", "Balok", "", "Bola", "", "Tabung", "", "1"],
-      ["KOMPLEKS", "Pilih kota yang ada di Jawa Tengah", "", "", "Semarang", "", "Solo", "", "Bandung", "", "Surabaya", "", "1, 2"],
-      ["BS", "Matahari terbenam di timur", "", "", "Benar", "", "Salah", "", "", "", "", "", "2"],
-      ["JODOH", "Pasangkan negara dengan benuanya", "", "", "Indonesia=Asia", "", "Mesir=Afrika", "", "Jerman=Eropa", "", "", "", "(Otomatis)"],
-      ["ISIAN", "15 + 25 = ?", "", "", "", "", "", "", "", "", "", "", "40"]
-    ];
-    const ws = XLSX.utils.aoa_to_sheet(data);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Soal");
-    XLSX.writeFile(wb, "Template_Soal.xlsx");
-  }
-}
-
-window.openImportModal = function (type) {
-  currentImportType = type;
-  document.getElementById('import-overlay').classList.add('active');
-  document.getElementById('import-modal').style.display = 'flex';
-  document.getElementById('importFileInput').value = '';
-
-  setTimeout(() => {
-    document.getElementById('import-modal').style.opacity = '1';
-    document.getElementById('import-modal').style.transform = 'translate(-50%, -50%) scale(1)';
-  }, 10);
-
-  if (type === 'siswa') {
-    document.getElementById('import-title').innerText = 'Import Data Siswa';
-    document.getElementById('import-desc').innerText = 'Format Excel (.xlsx): Kolom A(ID), B(Nama), C(Kelas)';
-    document.getElementById('import-extra-inputs').style.display = 'none';
-  } else if (type === 'soal') {
-    document.getElementById('import-title').innerText = 'Import Bank Soal';
-    document.getElementById('import-desc').innerText = 'Gunakan Template Excel (.xlsx) Standar.';
-    document.getElementById('import-extra-inputs').style.display = 'flex';
-    document.getElementById('importBankId').value = '';
-  }
-}
-
-window.closeImportModal = function () {
-  document.getElementById('import-overlay').classList.remove('active');
-  document.getElementById('import-modal').style.opacity = '0';
-  document.getElementById('import-modal').style.transform = 'translate(-50%, -50%) scale(0.95)';
-  setTimeout(() => {
-    document.getElementById('import-modal').style.display = 'none';
-  }, 300);
-}
-
-// --- XLSX Import Logic ---
-async function importSoalExcel(jsonData, bankId) {
-  let soalUpdates = {};
-  let kunciUpdates = {};
-  let count = 0;
-  let warnings = [];
-  const letters = ['A', 'B', 'C', 'D', 'E'];
-
-  let headerRow = jsonData[0] || [];
-  let kunciIdx = -1;
-  let opsiIndices = [];
-
-  for (let c = 0; c < headerRow.length; c++) {
-    const head = String(headerRow[c]).toLowerCase();
-    if (head.includes('kunci')) kunciIdx = c;
-    else if (head.startsWith('opsi ') || (head.includes('pilihan') && !head.includes('kompleks'))) {
-      const label = head.replace(/opsi|pilihan|\s/g, '').toUpperCase();
-      if (label.length === 1 && label >= 'A' && label <= 'E') {
-        let imgIdx = -1;
-        if (c + 1 < headerRow.length && String(headerRow[c + 1]).toLowerCase().includes('gambar')) imgIdx = c + 1;
-        opsiIndices.push({ label, textIdx: c, imgIdx });
-      }
-    }
-  }
-
-  if (opsiIndices.length === 0) {
-    for (let j = 0; j < 5; j++) {
-      let tIdx = 4 + (j * 2);
-      let iIdx = 5 + (j * 2);
-      if (tIdx < (kunciIdx > 0 ? kunciIdx : headerRow.length)) opsiIndices.push({ label: letters[j], textIdx: tIdx, imgIdx: iIdx });
-    }
-  }
-  if (kunciIdx === -1) kunciIdx = 12;
-
-  for (let i = 1; i < jsonData.length; i++) {
-    let row = jsonData[i];
-    if (!row || row.length === 0 || !row[1]) continue;
-
-    let id = 'S-' + (count + 1);
-    let rawJenis = String(row[0]).trim().toUpperCase();
-    let tipe = 'PG';
-    if (rawJenis.includes('KOMPLEKS')) tipe = 'KOMPLEKS';
-    else if (rawJenis.includes('BS') || rawJenis.includes('BENAR')) tipe = 'BS';
-    else if (rawJenis.includes('JODOH')) tipe = 'JODOH';
-    else if (rawJenis.includes('ISIAN')) tipe = 'ISIAN';
-
-    let pertanyaan = String(row[1]).trim();
-    let gambarSoal = String(row[2] || '').trim();
-    if (gambarSoal.startsWith('data:image')) {
-      gambarSoal = ""; // Block base64 in question image
-      warnings.push(`Baris ke-${i + 1}: Gambar Base64 diblokir. Gunakan link external.`);
-    }
-
-    let opsi = [];
-    opsiIndices.forEach(idxMap => {
-      let teks = row[idxMap.textIdx] !== undefined ? String(row[idxMap.textIdx]).trim() : '';
-      let gmb = '';
-      if (idxMap.imgIdx !== -1) {
-        gmb = row[idxMap.imgIdx] !== undefined ? String(row[idxMap.imgIdx]).trim() : '';
-        if (gmb.startsWith('data:image')) gmb = ""; // Block base64 in options
-      }
-      if (teks || gmb) opsi.push({ id: idxMap.label, text: teks, gambar: gmb });
-    });
-
-    let rawKunci = String(row[kunciIdx] || '').trim();
-    let kunci = rawKunci;
-    if (tipe === 'PG' || tipe === 'BS') {
-      if (rawKunci === '1') kunci = 'A';
-      else if (rawKunci === '2') kunci = 'B';
-      else if (rawKunci === '3') kunci = 'C';
-      else if (rawKunci === '4') kunci = 'D';
-      else if (rawKunci === '5') kunci = 'E';
-      else kunci = rawKunci.toUpperCase();
-    } else if (tipe === 'KOMPLEKS') {
-      kunci = String(rawKunci).split(',').map(s => {
-        s = s.trim().toUpperCase();
-        if (s === '1') return 'A'; if (s === '2') return 'B'; if (s === '3') return 'C'; if (s === '4') return 'D'; if (s === '5') return 'E';
-        return s;
-      }).filter(s => s).join(',');
-    }
-
-    let updateData = { id, tipe, pertanyaan, opsi, bobot: 1, gambar: gambarSoal };
-    if (tipe === 'JODOH') {
-      let kiri = []; let kanan = []; let autoKunci = [];
-      opsi.forEach(o => {
-        if (o.text.includes('=')) {
-          let parts = o.text.split('=');
-          let k = parts[0].trim(); let v = parts[1].trim();
-          if (k && v) { kiri.push(k); kanan.push(v); autoKunci.push(`${k}=${v}`); }
-        }
-      });
-      updateData.kiri = kiri; updateData.kanan = [...kanan].sort();
-      kunci = autoKunci.join(';');
-    }
-
-    soalUpdates[id] = updateData;
-    kunciUpdates[id] = kunci;
-    count++;
-  }
-
-  if (count > 0) {
-    const cleanSoal = JSON.parse(JSON.stringify(soalUpdates, (k, v) => v === undefined ? "" : v));
-    const cleanKunci = JSON.parse(JSON.stringify(kunciUpdates, (k, v) => v === undefined ? "" : v));
-    await db.ref('/soal/' + bankId).set(cleanSoal);
-    await db.ref('/kunci/' + bankId).set(cleanKunci);
-
-    let imgTotal = 0;
-    Object.values(soalUpdates).forEach(s => {
-      if (s.gambar && String(s.gambar).startsWith('data:image')) imgTotal++;
-      if (s.opsi) s.opsi.forEach(o => { if (o.gambar && String(o.gambar).startsWith('data:image')) imgTotal++; });
-    });
-
-    let msg = `Berhasil import ${count} soal ke bank ${bankId}.`;
-    if (imgTotal > 0) msg = `Berhasil import ${count} soal (${imgTotal} gambar terdeteksi) ke bank ${bankId}.`;
-    showCustomAlert('Import Berhasil', msg, '✅');
-    closeImportModal();
-    loadAdminSoal();
-  } else showCustomAlert('Import Gagal', 'Tidak ada soal valid ditemukan. Periksa format file.', '❌');
-}
-
-window.processImport = async function () {
-  const fileInput = document.getElementById('importFileInput');
-  if (fileInput.files.length === 0) return showCustomAlert('File Diperlukan', 'Pilih file terlebih dahulu.', '📂');
-
-  const file = fileInput.files[0];
-  const reader = new FileReader();
-  const isCSV = file.name.toLowerCase().endsWith('.csv');
-
-  if (isCSV) {
-    reader.onload = async function (e) {
-      const text = e.target.result;
-      showLoading('Mengimpor Data...');
-      try {
-        if (currentImportType === 'siswa') await importSiswaCSV(text);
-        else if (currentImportType === 'soal') {
-          const bankId = document.getElementById('importBankId').value.trim();
-          if (!bankId) return showCustomAlert('Kode Wajib Diisi', 'Kode Bank Soal wajib diisi.', '📝');
-          await importSoalCSV(text, bankId);
-        }
-      } finally {
-        hideLoading();
-      }
-    };
-    reader.readAsText(file);
-  } else {
-    reader.onload = async function (e) {
-      showLoading('Memproses File Excel...');
-      try {
-        if (typeof XLSX === 'undefined') return showCustomAlert('Library Belum Siap', 'Library Excel belum termuat. Periksa koneksi internet.', '⚠️');
-        const data = new Uint8Array(e.target.result);
-
-        const workbook = XLSX.read(data, { type: 'array' });
-        const firstSheet = workbook.SheetNames[0];
-        const worksheet = workbook.Sheets[firstSheet];
-        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: "" });
-
-        if (currentImportType === 'siswa') {
-          await importSiswaExcel(jsonData);
-        } else if (currentImportType === 'soal') {
-          const bankId = document.getElementById('importBankId').value.trim();
-          if (!bankId) return showCustomAlert('Kode Wajib Diisi', 'Kode Bank Soal wajib diisi.', '📝');
-          await importSoalExcel(jsonData, bankId);
-        }
-      } catch (err) {
-        showCustomAlert('Gagal Membaca File', 'Gagal membaca file Excel. Pastikan file tidak rusak.', '❌');
-        console.error(err);
-      } finally {
-        hideLoading();
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  }
-}
-
-async function importSiswaExcel(jsonData) {
-  let count = 0;
-  let updates = {};
-  let warnings = [];
-  for (let i = 1; i < jsonData.length; i++) { // skip header
-    let row = jsonData[i];
-    if (!row || row.length === 0) continue;
-    if (!row[0]) {
-      warnings.push(`Baris ke-${i + 1} dilewati: ID kosong.`);
-      continue;
-    }
-    let id = String(row[0]).trim();
-    updates[id] = {
-      nama: String(row[1] || '').trim(),
-      nama_lower: String(row[1] || '').trim().toLowerCase(),
-      kelas: String(row[2] || '').trim()
-    };
-    count++;
-  }
-  if (count > 0) {
-    await db.ref('/peserta').update(updates);
-    let msg = 'Berhasil import ' + count + ' siswa.';
-    if (warnings.length > 0) {
-      msg += '\n\nPeringatan:\n- ' + warnings.slice(0, 5).join('\n- ');
-      if (warnings.length > 5) msg += `\n...dan ${warnings.length - 5} peringatan lainnya.`;
-    }
-    showCustomAlert('Import Berhasil', msg, '✅');
-    closeImportModal();
-    loadAdminSiswa();
-  } else {
-    showCustomAlert('Import Gagal', 'Tidak ada data valid di Excel. Pastikan ID ada di kolom A.', '❌');
-  }
-}
-
-// (Duplicate importSoalExcel removed)
-
-async function importSiswaCSV(csvText) {
-  const lines = csvText.split('\n');
-  let count = 0;
-  let updates = {};
-  for (let i = 1; i < lines.length; i++) { // skip header
-    if (!lines[i].trim()) continue;
-    const cols = lines[i].split(',').map(c => c.trim().replace(/^"|"$/g, ''));
-    if (cols.length >= 3) {
-      let id = cols[0];
-      updates[id] = {
-        nama: cols[1],
-        nama_lower: cols[1].toLowerCase(),
-        kelas: cols[2]
-      };
-      count++;
-    }
-  }
-  if (count > 0) {
-    await db.ref('/peserta').update(updates);
-    showCustomAlert('Import Berhasil', 'Berhasil mengimpor ' + count + ' siswa.', '✅');
-    closeImportModal();
-    loadAdminSiswa();
-  } else {
-    showCustomAlert('Import Gagal', 'Tidak ada data valid di CSV. Pastikan ada header di baris 1.', '❌');
-  }
-}
-
-async function importSoalCSV(csvText, bankId) {
-  const lines = csvText.split('\n');
-  let soalUpdates = {};
-  let kunciUpdates = {};
-  let count = 0;
-
-  for (let i = 1; i < lines.length; i++) {
-    if (!lines[i].trim()) continue;
-    const cols = lines[i].split(';').map(c => c.trim());
-
-    if (cols.length >= 8) {
-      let id = cols[0] || ('S-' + (count + 1));
-      let tipe = cols[1] || 'PG';
-      let pertanyaan = cols[2];
-      let opsi = [
-        { id: 'A', text: cols[3] },
-        { id: 'B', text: cols[4] },
-        { id: 'C', text: cols[5] },
-        { id: 'D', text: cols[6] }
-      ].filter(o => o.text);
-
-      let kunci = cols[7];
-      let bobot = parseFloat(cols[8] || '1');
-
-      soalUpdates[id] = { id, tipe, pertanyaan, opsi, bobot, gambar: "" };
-      kunciUpdates[id] = kunci;
-      count++;
-    }
-  }
-  if (count > 0) {
-    await db.ref('/soal/' + bankId).set(soalUpdates);
-    await db.ref('/kunci/' + bankId).set(kunciUpdates);
-    showCustomAlert('Import Berhasil', 'Berhasil mengimpor ' + count + ' soal ke bank ' + bankId + '.', '✅');
-    closeImportModal();
-    loadAdminSoal();
-  } else {
-    showCustomAlert('Format Salah', 'Data kosong/salah format. Gunakan titik koma (;) sebagai pemisah.', '⚠️');
-  }
-}
-// --- Jadwal Builder Logic ---
-window.openJadwalModal = async function () {
-  document.getElementById('jadwal-overlay').classList.add('active');
-  document.getElementById('jadwal-modal').style.display = 'flex';
-
-  setTimeout(() => {
-    document.getElementById('jadwal-overlay').style.opacity = '1';
-    document.getElementById('jadwal-modal').style.opacity = '1';
-    document.getElementById('jadwal-modal').style.transform = 'translate(-50%, -50%) scale(1)';
-  }, 10);
-
-  // Load Bank Soal into select
-  const select = document.getElementById('jSoal');
-  select.innerHTML = '<option value="">Memuat...</option>';
-  const snap = await db.ref('/soal').once('value');
-  const data = snap.val() || {};
-  let options = '<option value="">-- Pilih Bank Soal --</option>';
-  for (let id in data) {
-    options += '<option value="' + id + '">' + id + ' (' + Object.keys(data[id]).length + ' soal)<\/option>';
-  }
-  select.innerHTML = options;
-
-  // Clear inputs
-  document.getElementById('jId').value = '';
-  document.getElementById('jNama').value = '';
-  document.getElementById('jDurasi').value = '60';
-  document.getElementById('jKelas').value = '';
-  document.getElementById('jMulai').value = '';
-  document.getElementById('jSelesai').value = '';
-}
-
-window.closeJadwalModal = function () {
-  document.getElementById('jadwal-overlay').style.opacity = '0';
-  document.getElementById('jadwal-modal').style.opacity = '0';
-  document.getElementById('jadwal-modal').style.transform = 'translate(-50%, -50%) scale(0.95)';
-  setTimeout(() => {
-    document.getElementById('jadwal-overlay').style.display = 'none';
-    document.getElementById('jadwal-modal').style.display = 'none';
-  }, 300);
-}
-
-window.saveJadwal = async function () {
-  const id = document.getElementById('jId').value.trim();
-  const nama = document.getElementById('jNama').value.trim();
-  const soal = document.getElementById('jSoal').value;
-  const durasi = parseInt(document.getElementById('jDurasi').value);
-  const kelas = document.getElementById('jKelas').value.trim();
-  const mulaiStr = document.getElementById('jMulai').value;
-  const selesaiStr = document.getElementById('jSelesai').value;
-
-  if (!id || !nama || !soal || !mulaiStr || !selesaiStr) {
-    return showCustomAlert('Data Tidak Lengkap', 'Harap isi semua field yang wajib.', '📝');
-  }
-
-  const mulaiMs = new Date(mulaiStr).getTime();
-  const selesaiMs = new Date(selesaiStr).getTime();
-
-  if (mulaiMs >= selesaiMs) {
-    return showCustomAlert('Waktu Tidak Valid', 'Waktu selesai harus lebih besar dari waktu mulai.', '⏰');
-  }
-
-  const token = Math.random().toString(36).substring(2, 8).toUpperCase();
-
-  const payload = {
-    nama: nama,
-    nama_soal: soal,
-    durasi: durasi,
-    target_kelas: kelas,
-    mulai: mulaiMs,
-    selesai: selesaiMs,
-    aktif: true,
-    token: token,
-    min_selesai: parseInt(document.getElementById('jMinSelesai').value) || 0
-  };
-  showLoading('Menyimpan Jadwal...');
-  try {
-    await db.ref('/jadwal/' + id).set(payload);
-    showCustomAlert('Berhasil', 'Jadwal berhasil disimpan!', '✅');
-    closeJadwalModal();
-    loadAdminJadwal();
-  } catch (e) {
-    showCustomAlert('Gagal Menyimpan', 'Gagal menyimpan jadwal: ' + e.message, '❌');
-  } finally {
-    hideLoading();
-  }
-}
-
-// --- FITUR CETAK BERITA ACARA & PRESENSI ---
-window.openPrintModal = async function (examId, examName) {
-  document.getElementById('printExamId').value = examId;
-  document.getElementById('printExamName').value = examName || examId;
-
-  // Reset inputs
-  document.getElementById('printTanggal').value = '';
-  document.getElementById('printRuang').value = '';
-  document.getElementById('printPengawas').value = '';
-  document.getElementById('printProktor').value = '';
-
-  const selKelas = document.getElementById('printKelas');
-  selKelas.innerHTML = '<option value="">-- Memuat Kelas... --</option>';
-
-  const overlay = document.getElementById('print-overlay');
-  const modal = document.getElementById('print-config-modal');
-  if (overlay) overlay.classList.add('active');
-  if (modal) {
-    modal.style.display = 'flex';
-    setTimeout(() => {
-      modal.style.opacity = '1';
-      modal.style.transform = 'translate(-50%, -50%) scale(1)';
-    }, 10);
-  }
-
-  // Fetch distinct classes
-  try {
-    const data = await gasRun('getAllPeserta');
-    const kelasSet = new Set();
-    data.forEach(p => {
-      if (p.kelas) kelasSet.add(p.kelas);
-    });
-
-    let html = '<option value="ALL">-- Cetak Semua Kelas --</option>';
-    Array.from(kelasSet).sort().forEach(k => {
-      html += `<option value="${k}">${k}</option>`;
-    });
-    selKelas.innerHTML = html;
-  } catch (e) {
-    selKelas.innerHTML = '<option value="ALL">-- Cetak Semua Kelas --</option>';
-  }
-}
-
-window.closePrintModal = function () {
-  const overlay = document.getElementById('print-overlay');
-  const modal = document.getElementById('print-config-modal');
-  if (overlay) overlay.classList.remove('active');
-  if (modal) {
-    modal.style.opacity = '0';
-    modal.style.transform = 'translate(-50%, -50%) scale(0.95)';
-    setTimeout(() => {
-      modal.style.display = 'none';
-    }, 300);
-  }
-}
-
-window.executePrint = async function () {
-  const examId = document.getElementById('printExamId').value;
-  const examName = document.getElementById('printExamName').value;
-  const selectedKelas = document.getElementById('printKelas').value;
-  let rawTanggal = document.getElementById('printTanggal').value;
-  let tanggal = '-';
-  if (rawTanggal) {
-    const d = new Date(rawTanggal);
-    const months = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
-    tanggal = `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
-  }
-
-  const ruang = document.getElementById('printRuang').value || '-';
-  const pengawas = document.getElementById('printPengawas').value || '-';
-  const proktor = document.getElementById('printProktor').value || '-';
-
-  showLoading('Menyiapkan dokumen...');
-  try {
-    // Fetch students
-    const snap = await db.ref('/peserta').once('value');
-    const data = snap.val() || {};
-
-    let targetStudents = [];
-    for (let key in data) {
-      let s = data[key];
-      if (selectedKelas === 'ALL' || s.kelas === selectedKelas) {
-        targetStudents.push({ id: key, nama: s.nama, kelas: s.kelas });
-      }
-    }
-
-    // Sort alphabetically
-    targetStudents.sort((a, b) => a.nama.localeCompare(b.nama));
-
-    // Fill Berita Acara
-    const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
-    const today = new Date();
-    safeSetText('pb-hari', days[today.getDay()]);
-    safeSetText('pb-tanggal', tanggal);
-    safeSetText('pb-mapel', examName);
-    safeSetText('pb-kelas', selectedKelas === 'ALL' ? 'Semua Kelas' : selectedKelas);
-    safeSetText('pb-ruang', ruang);
-
-    safeSetText('pb-jml-total', targetStudents.length);
-    safeSetText('pb-jml-hadir', '...');
-    safeSetText('pb-jml-absen', '...');
-
-    safeSetText('pb-ttd-proktor', proktor);
-    safeSetText('pb-ttd-pengawas', pengawas);
-
-    // Fill Daftar Hadir
-    safeSetText('pd-mapel', examName);
-    safeSetText('pd-tanggal', tanggal);
-    safeSetText('pd-kelas', selectedKelas === 'ALL' ? 'Semua Kelas' : selectedKelas);
-    safeSetText('pd-ruang', ruang);
-
-    safeSetText('pd-ttd-proktor', proktor);
-    safeSetText('pd-ttd-pengawas', pengawas);
-
-    let tbodyHTML = '';
-    if (targetStudents.length === 0) {
-      tbodyHTML = '<tr><td colspan="5" style="text-align:center;">Data siswa tidak ditemukan untuk kelas ini.</td></tr>';
-    } else {
-      targetStudents.forEach((s, i) => {
-        let ttd1 = (i % 2 === 0) ? `${i + 1}. ` : '';
-        let ttd2 = (i % 2 !== 0) ? `${i + 1}. ` : '';
-        tbodyHTML += `
+
+          <div class="centric-clock-wrapper stagger-2">
+            <div class="portal-clock-container">
+              <svg class="clock-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+              </svg>
+              <div id="portal-clock" class="portal-clock-centric">Memuat waktu...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- SVG Wave -->
+        <svg class="wave-svg" viewBox="0 0 1440 320" preserveAspectRatio="none">
+          <path fill="#ffffff" fill-opacity="1"
+            d="M0,256L48,245.3C96,235,192,213,288,213.3C384,213,480,235,576,234.7C672,235,768,213,864,186.7C960,160,1056,128,1152,122.7C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z">
+          </path>
+        </svg>
+      </div>
+
+      <!-- Panel Kanan: Form -->
+      <div class="saas-login-container stagger-2">
+        <div class="login-header">
+          <h2>Selamat Datang</h2>
+          <p>Temukan nama lengkap Anda untuk masuk</p>
+          <div id="login-alert" class="alert alert-danger" style="margin-top:12px; display:none;"></div>
+          <div class="alert alert-info"
+            style="margin-top:12px; font-size:0.85rem; border-color:rgba(14,165,233,0.2); background:rgba(14,165,233,0.05); color:#0369A1; text-align:left; line-height:1.4;">
+            <strong>💡 Tips:</strong> Harap buka halaman ini 5-10 menit sebelum ujian dimulai agar inisialisasi data
+            selesai lebih awal dan akses soal menjadi lebih cepat saat token dibagikan.
+          </div>
+        </div>
+
+        <div class="form-group search-group">
+          <svg class="search-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+          </svg>
+          <input type="text" id="userName" class="input-ultra" placeholder="Ketik nama Anda di sini..."
+            autocomplete="off">
+          <div id="autocomplete-list" class="autocomplete-items"></div>
+        </div>
+
+        <!-- hidden portal-active-exams (masih diperlukan oleh script.js) -->
+        <div id="portal-active-exams" style="display:none;"></div>
+
+        <!-- Panduan Ringkas (Modal Trigger) -->
+        <button class="btn btn-warning btn-block"
+          style="margin-top: 16px; border:none; box-shadow:none; padding:16px; border-radius:12px; font-size:1rem;"
+          onclick="openGuideModal()">
+          <svg class="icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253">
+            </path>
+          </svg>
+          Lihat Panduan Ujian
+        </button>
+
+        <!-- System Status Indicator -->
+        <div id="init-status-container"
+          style="display:flex; align-items:center; justify-content:center; gap:8px; margin-top:24px; margin-bottom:8px; font-size:0.75rem; color:var(--text-muted); opacity:0.8;">
+          <span id="init-dot" class="status-dot-pulse"
+            style="width:8px; height:8px; border-radius:50%; background:#94a3b8; display:inline-block;"></span>
+          <span id="init-text">Menyiapkan sistem...</span>
+        </div>
+
+        <!-- Copyright -->
+        <div class="login-footer">
+          <svg class="shield-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z">
+            </path>
+          </svg>
+          <p>© 2026 <span id="ph-sekolah-2">SMP Negeri 7</span>. Hak cipta dilindungi.</p>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════
+       1b. LOGIN CONFIRM VIEW
+  ══════════════════════════════════════ -->
+    <div id="login-confirm-view" class="view login-layout">
+      <div class="confirm-card">
+        <!-- Avatar area -->
+        <div class="confirm-avatar-wrap">
+          <div class="confirm-avatar">
+            <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+            </svg>
+          </div>
+          <div class="confirm-avatar-badge">
+            <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+            </svg>
+          </div>
+        </div>
+        <!-- Text -->
+        <div class="confirm-heading">
+          <h2>Apakah ini Anda?</h2>
+          <p>Pastikan nama berikut sesuai dengan data Anda.</p>
+        </div>
+        <!-- Name box -->
+        <div id="confirm-name-text">-</div>
+        <!-- Actions -->
+        <div class="confirm-actions">
+          <button id="btnCancelLogin" class="btn btn-outline" title="Bukan, Kembali">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M19 12H5M5 12l7-7M5 12l7 7" />
+            </svg>
+            Bukan Saya
+          </button>
+          <button id="btnConfirmLogin" class="btn btn-primary" title="Ya, Lanjutkan">
+            <svg class="icon" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M5 12h14M12 5l7 7-7 7" stroke="currentColor" fill="none" stroke-width="2" />
+            </svg>
+            Ya, Lanjutkan
+          </button>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════
+       1c. SCHEDULE VIEW
+  ══════════════════════════════════════ -->
+    <div id="schedule-view" class="view">
+      <div class="schedule-header">
+        <div class="schedule-header-left">
+          <div class="schedule-header-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+          </div>
+          <div>
+            <h2 class="schedule-header-title">Daftar Ujian</h2>
+            <div class="schedule-header-sub" id="schedule-user-name">-</div>
+          </div>
+        </div>
+        <button id="btnScheduleLogout" class="btn btn-outline schedule-logout-btn" title="Keluar">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
+          </svg>
+          Keluar
+        </button>
+      </div>
+      <!-- Armor 1000: Pre-sync H-1 Section -->
+      <div id="pre-sync-container" class="card"
+        style="background: #EEF2FF; border: 1px dashed #6366F1; margin: 0 20px 20px 20px; padding: 16px; border-radius: 16px;">
+        <h4 style="margin:0 0 8px 0; color: #4338CA; display: flex; align-items: center; gap: 8px; font-size: 1rem;">
+          <span>📥</span> Persiapan Offline (H-1)
+        </h4>
+        <p style="font-size: 0.8rem; color: #4B5563; margin-bottom: 12px; line-height: 1.4;">
+          Download semua soal sekarang agar besok saat ujian tidak perlu antri server dan lebih lancar.
+        </p>
+        <button id="btnSyncAllSoal" class="btn btn-primary"
+          style="width: 100%; background: #4F46E5; border: none; font-size: 0.85rem; padding: 10px;">
+          Sinkronkan Semua Soal Sekarang
+        </button>
+        <div id="sync-all-progress" style="display:none; margin-top:12px;">
+          <div style="height: 6px; background: #E0E7FF; border-radius: 10px; overflow: hidden; margin-bottom: 8px;">
+            <div id="sync-all-bar" style="width: 0%; height: 100%; background: #4F46E5; transition: width 0.3s;"></div>
+          </div>
+          <div id="sync-all-text" style="font-size: 0.7rem; color: #6366F1; font-weight: 600; text-align: center;">
+            Menyiapkan...</div>
+        </div>
+      </div>
+
+      <div id="schedule-list" style="padding:0 20px 20px 20px;display:flex;flex-direction:column;gap:14px;"></div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════
+       3. DASHBOARD VIEW
+  ══════════════════════════════════════ -->
+    <div id="dashboard-view" class="view">
+      <div class="dash-wrap">
+        <!-- Page Header -->
+        <div class="dash-page-header">
+          <div class="dash-page-icon">
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </div>
+          <div>
+            <h2 class="dash-page-title">Informasi Ujian</h2>
+            <p class="dash-page-sub">Periksa detail sebelum memulai</p>
+          </div>
+        </div>
+        <!-- Info Card -->
+        <div class="dash-info-card">
+          <div class="info-row">
+            <span class="info-label">Nama Peserta</span>
+            <span class="info-value" id="dash-name">-</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Kelas</span>
+            <span class="info-value" id="dash-kelas">-</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Mata Pelajaran</span>
+            <span class="info-value" id="dash-exam">-</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Durasi</span>
+            <span class="info-value" id="dash-time">-</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">Jumlah Soal</span>
+            <span class="info-value" id="dash-count">-</span>
+          </div>
+        </div>
+        <!-- Start Button -->
+        <button id="btnStartExam" class="btn btn-primary btn-block dash-start-btn" title="Mulai Ujian">
+          <svg class="icon" viewBox="0 0 24 24" fill="currentColor">
+            <polygon points="5 3 19 12 5 21 5 3" />
+          </svg>
+          Mulai Ujian Sekarang
+        </button>
+      </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════
+       4. EXAM VIEW
+  ══════════════════════════════════════ -->
+    <div id="exam-view" class="view" style="padding:0; background: #FFFFFF;">
+      <!-- Modern Header -->
+      <div class="modern-exam-header">
+        <div class="header-left">
+          <button id="btnOpenMenu" class="header-menu-btn">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
+          </button>
+          <div class="header-info">
+            <div id="exam-title" class="exam-main-title">SIMULASI 1</div>
+            <div id="exam-user-info" class="exam-status-sub">Memuat Data...</div>
+          </div>
+        </div>
+        <div class="header-right">
+          <div id="exam-timer" class="modern-timer">00:57:59</div>
+        </div>
+      </div>
+
+      <!-- Progress Area -->
+      <div class="exam-progress-area">
+        <div class="progress-labels">
+          <span id="q-progress-text">SOAL 9 / 40 (ISIAN)</span>
+          <span id="q-percentage">22%</span>
+        </div>
+        <div class="modern-progress-bg">
+          <div id="q-progress-bar" class="modern-progress-fill" style="width: 22%;"></div>
+        </div>
+      </div>
+
+      <!-- Content Area -->
+      <div class="exam-content-scrollable">
+        <div class="question-wrapper">
+          <!-- Question Type Badge -->
+          <div id="q-type-badge" class="q-type-badge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path
+                d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7M18.5 2.5a2.121 2.121 0 113 3L12 15l-4 1 1-4 9.5-9.5z" />
+            </svg>
+            <span>SOAL ISIAN</span>
+          </div>
+
+          <!-- Question Text -->
+          <div id="q-text" class="modern-question-text">Memuat soal...</div>
+
+          <div id="q-image-container" style="display:none; text-align:center; margin: 16px 0;"></div>
+
+          <!-- Answer Input Area -->
+          <div id="q-options" class="modern-answer-area">
+            <!-- Will be filled by JS: can be options or textarea -->
+          </div>
+
+          <!-- Instruction Alert -->
+          <div id="q-instruction" class="modern-info-box">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M12 16v-4M12 8h.01" />
+            </svg>
+            <p>Ketik jawaban berupa angka tanpa spasi atau tanda baca.</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modern Bottom Navigation -->
+      <div class="modern-footer">
+        <div class="footer-actions">
+          <button id="btnPrev" class="btn-footer btn-footer-outline">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="15 18 9 12 15 6" />
+            </svg>
+          </button>
+
+          <button id="btnGrid" class="btn-footer btn-footer-soft">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <rect x="3" y="3" width="7" height="7" />
+              <rect x="14" y="3" width="7" height="7" />
+              <rect x="14" y="14" width="7" height="7" />
+              <rect x="3" y="14" width="7" height="7" />
+            </svg>
+          </button>
+
+          <button id="btnDoubt" class="btn-footer btn-footer-warning">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" />
+              <line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+          </button>
+
+          <button id="btnNext" class="btn-footer btn-footer-primary">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <polyline points="9 18 15 12 9 6" />
+            </svg>
+          </button>
+
+
+
+          <button id="btnSubmit" class="btn-footer btn-footer-success" style="display:none;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M20 6L9 17l-5-5" />
+            </svg>
+          </button>
+        </div>
+        <!-- iOS Style Indicator -->
+        <div class="home-indicator"></div>
+      </div>
+    </div> <!-- End exam-view -->
+
+
+    <!-- ══════════════════════════════════════
+       5. RESULT VIEW
+  ══════════════════════════════════════ -->
+    <div id="result-view" class="view">
+      <div class="result-card">
+        <!-- Confetti dots -->
+        <div class="result-dots"></div>
+        <!-- Trophy icon -->
+        <div class="result-trophy">
+          <svg fill="currentColor" viewBox="0 0 24 24">
+            <path
+              d="M5 3h14v3c0 3.87-2.69 7.1-6.3 7.83L12 14v3h2a1 1 0 010 2H10a1 1 0 010-2h2v-3l-.7-.17C7.69 13.1 5 9.87 5 6V3zM3 3H5v3c0 1.1.35 2.12.94 2.94A8.03 8.03 0 013 6V3zm18 0v3c0 1.1-.35 2.12-.94 2.94A8.03 8.03 0 0021 6V3h-2V3h2z" />
+          </svg>
+        </div>
+        <h2>Ujian Selesai!</h2>
+        <p class="result-sub">Jawaban Anda telah berhasil dikumpulkan.</p>
+        <div class="result-score-wrap">
+          <div id="result-score">100</div>
+          <span class="result-score-label">Nilai Akhir</span>
+        </div>
+        <button id="btnLogout" class="btn btn-primary btn-block result-home-btn" title="Kembali ke Awal">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z" />
+            <polyline points="9 22 9 12 15 12 15 22" />
+          </svg>
+          Kembali ke Beranda
+        </button>
+      </div>
+    </div>
+
+
+    <!-- ══════════════════════════════════════
+       6. ADMIN DASHBOARD VIEW
+  ══════════════════════════════════════ -->
+    <div id="admin-dash-view" class="view admin-layout">
+      <!-- SIDEBAR -->
+      <div class="admin-sidebar">
+        <div class="admin-sidebar-header">
+          <div class="admin-brand">
+            <div class="admin-brand-icon">
+              <svg fill="currentColor" viewBox="0 0 24 24">
+                <path
+                  d="M12 15.5A3.5 3.5 0 0 1 8.5 12A3.5 3.5 0 0 1 12 8.5a3.5 3.5 0 0 1 3.5 3.5a3.5 3.5 0 0 1-3.5 3.5m7.43-2.53c.04-.32.07-.64.07-.97c0-.33-.03-.66-.07-1l2.11-1.63c.19-.15.24-.42.12-.64l-2-3.46c-.12-.22-.39-.31-.61-.22l-2.49 1c-.52-.39-1.06-.73-1.69-.98l-.37-2.65A.506.506 0 0 0 14 2h-4c-.25 0-.46.18-.5.42l-.37 2.65c-.63.25-1.17.59-1.69.98l-2.49-1c-.22-.09-.49 0-.61.22l-2 3.46c-.13.22-.07.49.12.64L4.57 11.5c-.04.34-.07.67-.07 1c0 .33.03.65.07.97l-2.11 1.66c-.19.15-.25.42-.12.64l2 3.46c.12.22.39.3.61.22l2.49-1.01c.52.4 1.06.74 1.69.99l.37 2.65c.04.24.25.42.5.42h4c.25 0 .46-.18.5-.42l.37-2.65c.63-.26 1.17-.59 1.69-.99l2.49 1.01c.22.08.49-.01.61-.22l2-3.46c.12-.22.07-.49-.12-.64l-2.11-1.66Z" />
+              </svg>
+            </div>
+            <div>
+              <h2>Admin Panel</h2>
+              <p>CBT Online Manajemen</p>
+            </div>
+          </div>
+        </div>
+        <div class="admin-sidebar-nav">
+          <button class="admin-sidebar-btn active" data-tab="tab-monitor"
+            onclick="document.getElementById('admin-page-title').innerText='Monitor Ujian'; document.getElementById('admin-page-subtitle').innerText='Pantau status ujian secara real-time';">
+            <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z">
+              </path>
+            </svg>
+            Monitor Ujian
+          </button>
+          <button class="admin-sidebar-btn" data-tab="tab-siswa"
+            onclick="document.getElementById('admin-page-title').innerText='Data Siswa'; document.getElementById('admin-page-subtitle').innerText='Kelola data peserta ujian';">
+            <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z">
+              </path>
+            </svg>
+            Data Siswa
+          </button>
+          <button class="admin-sidebar-btn" data-tab="tab-soal"
+            onclick="document.getElementById('admin-page-title').innerText='Bank Soal'; document.getElementById('admin-page-subtitle').innerText='Manajemen daftar soal dan jawaban';">
+            <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z">
+              </path>
+            </svg>
+            Bank Soal
+          </button>
+          <button class="admin-sidebar-btn" data-tab="tab-jadwal"
+            onclick="document.getElementById('admin-page-title').innerText='Jadwal Ujian'; document.getElementById('admin-page-subtitle').innerText='Atur waktu dan sesi pelaksanaan ujian';">
+            <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+            </svg>
+            Jadwal Ujian
+          </button>
+          <button class="admin-sidebar-btn" data-tab="tab-hasil"
+            onclick="loadAdminHasil(1); document.getElementById('admin-page-title').innerText='Hasil & Radar'; document.getElementById('admin-page-subtitle').innerText='Lihat skor dan log pelanggaran peserta';">
+            <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+            </svg>
+            Hasil & Radar
+          </button>
+          <button class="admin-sidebar-btn" data-tab="tab-settings"
+            onclick="loadAdminSettings(); document.getElementById('admin-page-title').innerText='Pengaturan'; document.getElementById('admin-page-subtitle').innerText='Konfigurasi keamanan dan identitas server';">
+            <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z">
+              </path>
+              <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+            </svg>
+            Pengaturan
+          </button>
+          <div style="flex:1;"></div>
+          <button id="btnAdminLogout" class="admin-sidebar-btn btn-logout" style="color:#EF4444;">
+            <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+            </svg>
+            Keluar
+          </button>
+        </div>
+      </div>
+
+      <!-- MAIN CONTENT -->
+      <div class="admin-main">
+        <div class="admin-main-header">
+          <div class="admin-header-title">
+            <h2 id="admin-page-title">Monitor Ujian</h2>
+            <p id="admin-page-subtitle">Pantau status ujian secara real-time</p>
+          </div>
+          <div class="admin-profile">
+            <div class="admin-avatar">
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+              </svg>
+            </div>
+            <div class="admin-profile-text">
+              <strong>Admin</strong>
+              <span>Super Admin</span>
+            </div>
+            <svg class="chevron-down" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path>
+            </svg>
+          </div>
+        </div>
+
+        <div class="admin-main-content">
+          <!-- TAB 1: MONITORING -->
+          <div id="tab-monitor" class="admin-tab-content" style="display:flex;flex-direction:column;gap:24px;">
+
+            <!-- Card Token -->
+            <div class="admin-hero-card card-yellow">
+              <div class="hero-card-bg">
+                <svg class="bg-shape shape-1" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                  <path fill="#FEF08A"
+                    d="M45.7,-76.4C58.9,-69.1,69.1,-55.4,77.7,-41C86.3,-26.6,93.3,-11.3,91.8,3.2C90.3,17.7,80.3,31.4,70.5,44.1C60.7,56.8,51.1,68.5,38.8,75.1C26.5,81.7,11.5,83.2,-2.7,87.6C-16.9,92,-30.3,99.3,-41.8,94.9C-53.3,90.5,-62.9,74.4,-70.6,60.2C-78.3,46,-84.1,33.7,-88.1,20.5C-92.1,7.3,-94.3,-6.8,-90.4,-19.1C-86.5,-31.4,-76.5,-41.9,-65.4,-50.2C-54.3,-58.5,-42.1,-64.6,-30.2,-72.4C-18.3,-80.2,-6.7,-89.7,4.8,-92.5C16.3,-95.3,32.5,-83.7,45.7,-76.4Z"
+                    transform="translate(100 100) scale(1.1)" />
+                </svg>
+                <svg class="bg-shape shape-2" fill="none" stroke="#EAB308" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M11 5.882V19.24a1.76 1.76 0 01-3.417.592l-2.147-6.15M18 13a3 3 0 100-6M5.436 13.683A4.001 4.001 0 017 6h1.832c4.1 0 7.625-1.234 9.168-3v14c-1.543-1.766-5.067-3-9.168-3H7a3.988 3.988 0 01-1.564-.317z">
+                  </path>
+                </svg>
+              </div>
+              <div class="hero-card-content">
+                <div class="hero-icon-wrap text-warning bg-warning-soft">
+                  <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M15 7a2 2 0 012 2m4 0a6 6 0 01-7.743 5.743L11 17H9v2H7v2H4a1 1 0 01-1-1v-2.586a1 1 0 01.293-.707l5.964-5.964A6 6 0 1121 9z">
+                    </path>
+                  </svg>
+                </div>
+                <div class="hero-text-wrap">
+                  <span class="badge badge-wait"
+                    style="margin-bottom:8px; display:inline-block; border:none; padding:6px 12px; font-size:0.75rem;">TOKEN</span>
+                  <h3>Token Aktif Dan Pengumuman</h3>
+                  <div id="admin-token-list" style="display:flex;flex-direction:column;gap:8px;">
+                    <p class="text-muted" style="font-size:0.9rem;">Memuat token...</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card Sync Progress (Armor 1000) -->
+            <div class="admin-hero-card" style="background:#F5F3FF; border: 1px dashed #C4B5FD;">
+              <div class="hero-card-content">
+                <div class="hero-icon-wrap" style="color: #7C3AED; background: #EDE9FE;">
+                  <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                  </svg>
+                </div>
+                <div class="hero-text-wrap" style="flex:1;">
+                  <span class="badge" style="background: #8B5CF6; color: white; border:none; padding:6px 12px; font-size:0.75rem; margin-bottom:8px; display:inline-block;">OFFLINE READY</span>
+                  <h3>Status Sinkronisasi H-1</h3>
+                  <div style="display:flex; justify-content:space-between; margin-bottom: 4px; font-size: 0.85rem; font-weight: 600; color: #4C1D95;">
+                    <span id="admin-sync-count">Memuat data...</span>
+                  </div>
+                  <p class="text-muted" style="font-size: 0.8rem; margin-top: 4px;">Siswa yang telah men-download soal. <button class="btn btn-outline" style="padding: 4px 8px; font-size: 0.7rem; margin-left: 8px;" onclick="loadAdminSyncStatus()">Refresh Data</button></p>
+                </div>
+              </div>
+            </div>
+
+            <!-- Card Status -->
+            <div class="admin-hero-card card-blue">
+              <div class="hero-card-bg">
+                <svg class="bg-shape shape-1" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+                  <path fill="#DBEAFE"
+                    d="M42.7,-73.4C55.9,-66.1,66.1,-52.4,74.7,-38C83.3,-23.6,90.3,-8.3,88.8,6.2C87.3,20.7,77.3,34.4,67.5,47.1C57.7,59.8,48.1,71.5,35.8,78.1C23.5,84.7,8.5,86.2,-5.7,90.6C-19.9,95,-33.3,102.3,-44.8,97.9C-56.3,93.5,-65.9,77.4,-73.6,63.2C-81.3,49,-87.1,36.7,-91.1,23.5C-95.1,10.3,-97.3,-3.8,-93.4,-16.1C-89.5,-28.4,-79.5,-38.9,-68.4,-47.2C-57.3,-55.5,-45.1,-61.6,-33.2,-69.4C-21.3,-77.2,-9.7,-86.7,1.8,-89.5C13.3,-92.3,29.5,-80.7,42.7,-73.4Z"
+                    transform="translate(100 100) scale(1.1)" />
+                </svg>
+                <svg class="bg-shape shape-2" fill="none" stroke="#3B82F6" stroke-width="2" viewBox="0 0 24 24">
+                  <path stroke-linecap="round" stroke-linejoin="round"
+                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4">
+                  </path>
+                </svg>
+              </div>
+              <div class="hero-card-content">
+                <div class="hero-icon-wrap text-primary bg-primary-soft">
+                  <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z">
+                    </path>
+                  </svg>
+                </div>
+                <div class="hero-text-wrap" style="flex:1;">
+                  <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px;">
+                    <span class="badge badge-done"
+                      style="border:none; padding:6px 12px; font-size:0.75rem;">STATUS</span>
+                    <label
+                      style="font-size:0.8rem; color:var(--text-main); display:flex; align-items:center; gap:8px; font-weight:600; background:var(--surface-0); padding:8px 14px; border-radius:8px; border:1px solid #E5E7EB; cursor:pointer; box-shadow:0 2px 4px rgba(0,0,0,0.02); z-index:10;">
+                      <input type="checkbox" id="chkAbsenMode" onchange="toggleAbsenMode()"
+                        style="width:16px; height:16px; accent-color:var(--primary);"> Hanya Bolos/Kosong
+                    </label>
+                  </div>
+                  <h3>Kepesertaan Ujian</h3>
+                  <div id="admin-monitoring-list" style="display:flex;flex-direction:column;gap:10px;">
+                    <p class="text-muted" style="font-size:0.9rem;">Sinkronisasi data server...</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 2: SISWA -->
+          <div id="tab-siswa" class="admin-tab-content" style="display:none;flex-direction:column;gap:18px;">
+            <div
+              style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+              <h3 style="font-size:1.1rem;margin:0;">Manajemen Data Siswa</h3>
+              <div style="display:flex; gap:8px;">
+                <button class="btn btn-outline" onclick="openImportModal('siswa')"
+                  style="padding:8px 12px; font-size:0.8rem;">📥 Import CSV</button>
+                <button class="btn btn-primary" onclick="openSiswaModal()" style="padding:8px 12px; font-size:0.8rem;">➕
+                  Tambah</button>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="admin-siswa-table">
+                <thead>
+                  <tr>
+                    <th>ID/NIS</th>
+                    <th>Nama Siswa</th>
+                    <th>Kelas</th>
+                    <th>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-siswa-tbody">
+                  <tr>
+                    <td colspan="4" class="text-center text-muted">Memuat data...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- TAB 3: SOAL -->
+          <div id="tab-soal" class="admin-tab-content" style="display:none;flex-direction:column;gap:18px;">
+            <div
+              style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+              <h3 style="font-size:1.1rem;margin:0;">Bank Soal</h3>
+              <div style="display:flex; gap:8px;">
+                <button class="btn btn-outline" onclick="openImportModal('soal')"
+                  style="padding:8px 12px; font-size:0.8rem;">📥 Import CSV</button>
+                <button class="btn btn-primary" onclick="openBankSoalModal()"
+                  style="padding:8px 12px; font-size:0.8rem;">➕ Bank Soal</button>
+              </div>
+            </div>
+            <div class="table-responsive">
+              <table class="data-table" id="admin-soal-table">
+                <thead>
+                  <tr>
+                    <th>Kode Bank Soal</th>
+                    <th>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-soal-tbody">
+                  <tr>
+                    <td colspan="2" class="text-center text-muted">Memuat data...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- TAB 4: JADWAL -->
+          <div id="tab-jadwal" class="admin-tab-content" style="display:none;flex-direction:column;gap:18px;">
+            <div
+              style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
+              <h3 style="font-size:1.1rem;margin:0;">Jadwal Ujian</h3>
+              <button class="btn btn-primary" onclick="openJadwalModal()" style="padding:8px 12px; font-size:0.8rem;">➕
+                Jadwal Baru</button>
+            </div>
+            <div>
+              <h3 style="font-size:0.9rem;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
+                <span class="badge badge-wait">📅 Live</span>
+                Kontrol Cepat Ujian
+              </h3>
+              <div id="admin-jadwal-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;">
+                <p class="text-muted" style="font-size:0.875rem;">Memuat konfigurasi jadwal...</p>
+              </div>
+            </div>
+
+            <div class="table-responsive">
+              <table class="data-table" id="admin-jadwal-table">
+                <thead>
+                  <tr>
+                    <th>Kode Ujian</th>
+                    <th>Nama Ujian</th>
+                    <th>Bank Soal</th>
+                    <th>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-jadwal-tbody">
+                  <tr>
+                    <td colspan="4" class="text-center text-muted">Memuat data...</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- TAB 5: HASIL & RADAR -->
+          <div id="tab-hasil" class="admin-tab-content" style="display:none;flex-direction:column;gap:24px;">
+
+            <!-- Hasil -->
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h3 style="font-size:0.9rem;margin:0;display:flex;align-items:center;gap:8px;">
+                  <span class="badge badge-done">🏆 Nilai</span> 150 Record Terbaru
+                </h3>
+                <div style="display:flex; gap:6px;">
+                  <button class="btn btn-outline" style="padding:4px 10px;font-size:0.75rem;"
+                    onclick="loadAdminHasil()">↻ Refresh</button>
+                  <button class="btn btn-outline"
+                    style="padding:4px 10px;font-size:0.75rem; color:#059669; border-color:#10B981;"
+                    onclick="exportTableToCSV('admin-hasil-table', 'Rekap_Nilai.csv')">↓ CSV</button>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table" id="admin-hasil-table">
+                  <thead>
                     <tr>
-                       <td style="text-align:center;">${i + 1}</td>
-                       <td>${s.id}</td>
-                       <td>${s.nama}</td>
-                       <td style="width:17.5%; height:35px; vertical-align:top;">${ttd1}</td>
-                       <td style="width:17.5%; height:35px; vertical-align:top;">${ttd2}</td>
+                      <th>Waktu</th>
+                      <th>Nama Peserta</th>
+                      <th>Ujian</th>
+                      <th>Skor</th>
                     </tr>
-                `;
-      });
-    }
-    document.getElementById('print-siswa-tbody').innerHTML = tbodyHTML;
+                  </thead>
+                  <tbody id="admin-hasil-tbody">
+                    <tr>
+                      <td colspan="4" class="text-muted" style="text-align:center;">Data nilai...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div id="admin-hasil-pagination" class="pagination-controls"></div>
+            </div>
 
-    hideLoading();
-    closePrintModal();
+            <!-- Radar -->
+            <div>
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                <h3 style="font-size:0.9rem;margin:0;display:flex;align-items:center;gap:8px;">
+                  <span class="badge" style="background:#EF4444;color:#FFF;">🚨 Radar</span> 100 Log Pelanggaran
+                </h3>
+                <button class="btn btn-outline"
+                  style="padding:4px 10px;font-size:0.75rem; color:#059669; border-color:#10B981;"
+                  onclick="exportTableToCSV('admin-radar-table', 'Log_Pelanggaran.csv')">↓ CSV</button>
+              </div>
+              <div class="table-responsive">
+                <table class="data-table" id="admin-radar-table">
+                  <thead>
+                    <tr>
+                      <th>Waktu</th>
+                      <th>Peserta</th>
+                      <th>Ujian</th>
+                      <th>Tipe Pelanggaran</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-radar-tbody">
+                    <tr>
+                      <td colspan="4" class="text-muted" style="text-align:center;">Data radar...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div id="admin-radar-pagination" class="pagination-controls"></div>
+            </div>
 
-    // Trigger browser print
-    setTimeout(() => {
-      window.print();
-    }, 500);
+          </div>
 
-  } catch (e) {
-    hideLoading();
-    showCustomAlert('Gagal', 'Gagal menyiapkan dokumen cetak. Coba lagi.', '❌');
-    console.error(e);
-  }
-}
+          <!-- TAB 6: PENGATURAN -->
+          <div id="tab-settings" class="admin-tab-content" style="display:none;flex-direction:column;gap:18px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+              <h3 style="font-size:1.1rem;margin:0;">Identitas Sekolah & Sistem</h3>
+            </div>
 
-// --- PWA Installation Logic ---
-let deferredPrompt;
-window.addEventListener('beforeinstallprompt', (e) => {
-  e.preventDefault();
-  deferredPrompt = e;
-  // Tampilkan tombol install di PWA blocker overlay jika sedang tampil
-  const btnInstall = document.getElementById('btnTriggerInstall');
-  if (btnInstall) {
-    btnInstall.style.display = 'block';
-    // Pastikan listener tidak duplikat
-    btnInstall.onclick = async function () {
-      if (!deferredPrompt) return;
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') {
-        deferredPrompt = null;
-        btnInstall.style.display = 'none';
-      }
-    };
-  }
-});
+            <div class="card" style="display:flex; flex-direction:column; gap:16px; margin-bottom:16px;">
+              <div class="form-group">
+                <label>Nama Sekolah (Digunakan di Kop Berita Acara & Judul Browser)</label>
+                <input type="text" id="cfgSchoolName" class="form-control" placeholder="Contoh: SMP Negeri 1 Dander"
+                  value="SMP Negeri 1 Dander">
+              </div>
+              <div class="form-group">
+                <label>Sub-Judul / Nama Instansi (Digunakan di Layar Utama / Login)</label>
+                <input type="text" id="cfgSchoolSub" class="form-control" placeholder="Contoh: MGMP INF/KKA BJN"
+                  value="MGMP INF/KKA BJN">
+              </div>
+              <div class="form-group">
+                <label>Logo Sekolah (Format Gambar, ukuran ideal persegi)</label>
+                <div style="display:flex; gap:16px; align-items:center; margin-top:8px;">
+                  <div id="cfgLogoPreview"
+                    style="width:80px; height:80px; border:2px dashed var(--border); border-radius:12px; display:flex; align-items:center; justify-content:center; overflow:hidden; background:#f8fafc;">
+                    <span style="font-size:0.7rem; color:var(--text-muted);">No Logo</span>
+                  </div>
+                  <div style="flex:1;">
+                    <input type="file" id="cfgLogoInput" accept="image/*" class="form-control"
+                      style="font-size:0.8rem; padding:8px;">
+                    <p style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">File akan dikonversi ke
+                      Base64 (Maks 1MB disarankan)</p>
+                  </div>
+                </div>
+              </div>
+            </div>
 
-// Jika sudah installed, sembunyikan blocker (event appinstalled)
-window.addEventListener('appinstalled', () => {
-  const overlay = document.getElementById('pwa-blocker-overlay');
-  if (overlay) overlay.classList.remove('active');
-});
+            <div class="card"
+              style="display:flex; flex-direction:column; gap:16px; margin-bottom:16px; border: 1px dashed var(--accent);">
+              <div style="font-weight:600; color:var(--accent);">Pemeliharaan Sistem</div>
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div style="font-size:0.8rem; color:var(--text-muted);">Nama siswa tidak muncul saat login? Klik ini
+                  untuk memperbaiki database.</div>
+                <button class="btn btn-outline" onclick="fixPesertaIndex()"
+                  style="padding:8px 12px; font-size:0.75rem; border-color:var(--accent); color:var(--accent);">🔧 Fix
+                  Search Index</button>
+              </div>
+            </div>
 
-// --- Bypass PWA Blocker ---
-window.verifyPwaBypass = async function () {
-  const input = document.getElementById('pwaBypassInput');
-  const errEl = document.getElementById('pwaBypassError');
-  if (!input || !errEl) return;
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+              <h3 style="font-size:1.1rem;margin:0;">Pengaturan Keamanan CBT</h3>
+              <button class="btn btn-primary" onclick="saveAdminSettings()"
+                style="padding:8px 12px; font-size:0.8rem;">💾 Simpan Pengaturan</button>
+            </div>
 
-  const code = input.value.trim().toUpperCase();
-  if (!code) { errEl.textContent = 'Masukkan kode bypass terlebih dahulu.'; errEl.style.display = 'block'; return; }
+            <div class="card" style="display:flex; flex-direction:column; gap:16px;">
+              <!-- PWA Enforcer -->
+              <div
+                style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
+                <div>
+                  <div style="font-weight:600; color:var(--text-main);">Paksa Mode PWA</div>
+                  <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">Siswa wajib "Add to Home
+                    Screen" / Install aplikasi sebelum ujian. Tidak bisa dikerjakan via tab browser biasa.</div>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="cfgPWA">
+                  <span class="slider round"></span>
+                </label>
+              </div>
 
-  try {
-    const snap = await db.ref('/config/security/bypassCode').once('value');
-    const validCode = snap.val();
+              <!-- Fullscreen -->
+              <div
+                style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
+                <div>
+                  <div style="font-weight:600; color:var(--text-main);">Ujian Fullscreen</div>
+                  <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">Layar ujian otomatis
+                    fullscreen. UI browser (address bar) akan disembunyikan.</div>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="cfgFullscreen">
+                  <span class="slider round"></span>
+                </label>
+              </div>
 
-    if (validCode && code === String(validCode).toUpperCase()) {
-      // Simpan bypass di sessionStorage agar tidak perlu ulang dalam sesi ini
-      sessionStorage.setItem('pwa_bypass_granted', '1');
-      errEl.style.display = 'none';
-      const overlay = document.getElementById('pwa-blocker-overlay');
-      if (overlay) overlay.classList.remove('active');
-    } else {
-      errEl.textContent = 'Kode bypass tidak valid. Hubungi pengawas.';
-      errEl.style.display = 'block';
-      input.value = '';
-      input.focus();
-    }
-  } catch (e) {
-    errEl.textContent = 'Gagal verifikasi, periksa koneksi internet.';
-    errEl.style.display = 'block';
-    console.error(e);
-  }
-};
-function showCustomAlert(title, message, icon = '⚠️') {
-  const modal = document.getElementById('custom-alert-modal');
-  if (!modal) return;
-  // Pastikan loading overlay tertutup dulu sebelum modal tampil
-  hideLoading();
-  const titleEl = document.getElementById('custom-alert-title');
-  const msgEl = document.getElementById('custom-alert-message');
-  const iconEl = document.getElementById('custom-alert-icon');
-  if (titleEl) titleEl.textContent = title;
-  if (msgEl) msgEl.textContent = (message !== undefined && message !== null) ? message : '';
-  if (iconEl) iconEl.textContent = icon;
-  // Tampilkan modal dengan class active (mengikuti sistem CSS overlay baru)
-  modal.classList.add('active');
-}
+              <!-- Anti-Cheat (Blur) -->
+              <div
+                style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
+                <div>
+                  <div style="font-weight:600; color:var(--text-main);">Deteksi Anti-Cheat (Ganti Tab)</div>
+                  <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">Membunyikan peringatan keras
+                    dan membekukan layar selama 5 detik jika siswa ketahuan pindah aplikasi/tab.</div>
+                </div>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="cfgAntiCheat">
+                  <span class="slider round"></span>
+                </label>
+              </div>
 
-function closeCustomAlert() {
-  const modal = document.getElementById('custom-alert-modal');
-  if (!modal) return;
-  modal.classList.remove('active');
-}
+              <!-- Minimal Mengerjakan -->
+              <div
+                style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
+                <div>
+                  <div style="font-weight:600; color:var(--text-main);">Waktu Minimal Ujian (Menit)</div>
+                  <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">Siswa tidak bisa mengumpulkan
+                    jawaban jika durasi pengerjaan belum mencapai angka ini.</div>
+                </div>
+                <input type="number" id="cfgMinTime" class="form-control" style="width:80px; text-align:center;" min="0"
+                  placeholder="0">
+              </div>
+
+              <!-- Bypass Code -->
+              <div style="display:flex; justify-content:space-between; align-items:center;">
+                <div style="flex:1; margin-right:16px;">
+                  <div style="font-weight:600; color:var(--text-main);">Kode Bypass PWA</div>
+                  <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">Kode darurat untuk siswa yang
+                    <b>tidak bisa install PWA</b>. Bagikan hanya ke siswa bermasalah. Kosongkan untuk menonaktifkan.
+                  </div>
+                </div>
+                <input type="text" id="cfgBypassCode" class="form-control"
+                  style="width:130px; text-align:center; font-family:monospace; letter-spacing:2px; text-transform:uppercase; font-size:1rem;"
+                  placeholder="Contoh: CBT2026" maxlength="12" oninput="this.value=this.value.toUpperCase()">
+              </div>
+            </div>
+
+            <!-- Firebase Config (Advanced) -->
+            <div
+              style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; margin-bottom:12px;">
+              <h3 style="font-size:1.1rem;margin:0; color:var(--danger);">Koneksi & Database (Advanced)</h3>
+            </div>
+            <div class="card"
+              style="display:flex; flex-direction:column; gap:12px; border: 1px solid var(--danger-soft); margin-bottom: 20px;">
+              <p style="font-size:0.8rem; color:var(--danger); font-weight:600;">⚠️ Peringatan: Jangan ubah data di
+                bawah ini kecuali Anda memindahkan server database ke Firebase lain.</p>
+              <div class="grid-2" style="gap:12px;">
+                <div class="form-group"><label style="font-size:0.8rem;">API Key</label><input type="password"
+                    id="fbApiKey" class="form-control" style="font-size:0.85rem;"></div>
+                <div class="form-group"><label style="font-size:0.8rem;">Auth Domain</label><input type="text"
+                    id="fbAuthDomain" class="form-control" style="font-size:0.85rem;"></div>
+                <div class="form-group"><label style="font-size:0.8rem;">Database URL</label><input type="text"
+                    id="fbDbUrl" class="form-control" style="font-size:0.85rem;"></div>
+                <div class="form-group"><label style="font-size:0.8rem;">Project ID</label><input type="text"
+                    id="fbProjectId" class="form-control" style="font-size:0.85rem;"></div>
+                <div class="form-group"><label style="font-size:0.8rem;">Storage Bucket</label><input type="text"
+                    id="fbStorageBucket" class="form-control" style="font-size:0.85rem;"></div>
+                <div class="form-group"><label style="font-size:0.8rem;">Messaging ID</label><input type="text"
+                    id="fbMessagingId" class="form-control" style="font-size:0.85rem;"></div>
+                <div class="form-group" style="grid-column: span 2;"><label style="font-size:0.8rem;">App
+                    ID</label><input type="text" id="fbAppId" class="form-control" style="font-size:0.85rem;"></div>
+              </div>
+              <button class="btn btn-outline" onclick="resetFirebaseConfig()"
+                style="color:var(--danger); border-color:var(--danger); margin-top:8px; font-size:0.8rem;">🔄 Reset ke
+                Bawaan Sistem</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  </div><!-- /.app-container -->
+
+
+  <!-- ══════════════════════════════════════
+     OVERLAYS & MODALS
+══════════════════════════════════════ -->
+
+  <div class="overlay" id="overlay"></div>
+
+  <!-- Anti-Cheat Overlays -->
+  <div id="pwa-blocker-overlay" class="overlay"
+    style="background:#f8fafc; z-index:99999; flex-direction:column; text-align:center; padding:24px; overflow-y:auto;">
+    <div style="width:100%; max-width:440px; margin:0 auto;">
+
+      <!-- Ikon -->
+      <div
+        style="width:80px;height:80px;background:linear-gradient(135deg,#1D4ED8,#0EA5E9);border-radius:24px;display:flex;align-items:center;justify-content:center;margin:0 auto 20px;box-shadow:0 8px 24px rgba(29,78,216,0.25);">
+        <svg style="width:42px;height:42px;color:white;" fill="none" stroke="currentColor" stroke-width="1.5"
+          viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+        </svg>
+      </div>
+
+      <h2 style="font-size:1.4rem;font-weight:800;color:#1e293b;margin-bottom:8px;">Wajib Install Aplikasi</h2>
+      <p style="font-size:0.9rem;color:#64748b;line-height:1.6;margin-bottom:20px;">Ujian ini hanya bisa dikerjakan
+        melalui aplikasi yang terinstall (PWA / Add to Home Screen).</p>
+
+      <!-- Tombol Install Otomatis (muncul jika browser support) -->
+      <button id="btnTriggerInstall"
+        style="display:none;width:100%;padding:14px;background:linear-gradient(135deg,#1D4ED8,#0EA5E9);color:white;border:none;border-radius:14px;font-size:1rem;font-weight:700;cursor:pointer;margin-bottom:12px;box-shadow:0 4px 16px rgba(29,78,216,0.3);letter-spacing:0.3px;">
+        ⬇️ Install Aplikasi Sekarang
+      </button>
+
+      <!-- Panduan manual -->
+      <div
+        style="background:white;border:1px solid #e2e8f0;border-radius:14px;padding:16px;text-align:left;margin-bottom:12px;">
+        <div
+          style="font-size:0.78rem;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:10px;letter-spacing:0.5px;">
+          Cara Install Manual</div>
+        <div style="font-size:0.85rem;color:#334155;line-height:1.7;">
+          <div style="display:flex;gap:10px;margin-bottom:6px;align-items:flex-start;">
+            <span style="font-size:1rem;">📱</span>
+            <span><b>Android Chrome:</b> Ketuk menu (⋮) → <em>Tambahkan ke Layar Utama</em></span>
+          </div>
+          <div style="display:flex;gap:10px;margin-bottom:6px;align-items:flex-start;">
+            <span style="font-size:1rem;">🍎</span>
+            <span><b>iPhone Safari:</b> Ketuk ikon Share → <em>Add to Home Screen</em></span>
+          </div>
+          <div style="display:flex;gap:10px;align-items:flex-start;">
+            <span style="font-size:1rem;">💻</span>
+            <span><b>PC Chrome:</b> Ikon install (⊕) di address bar → <em>Install</em></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tombol sudah install -->
+      <button onclick="window.location.reload()"
+        style="width:100%;padding:13px;background:white;color:#1D4ED8;border:2px solid #1D4ED8;border-radius:14px;font-size:0.95rem;font-weight:700;cursor:pointer;margin-bottom:20px;">
+        ✅ Saya Sudah Install — Muat Ulang
+      </button>
+
+      <!-- Divider bypass -->
+      <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px;">
+        <div style="flex:1;height:1px;background:#e2e8f0;"></div>
+        <span style="font-size:0.75rem;color:#94a3b8;white-space:nowrap;">atau gunakan kode bypass dari pengawas</span>
+        <div style="flex:1;height:1px;background:#e2e8f0;"></div>
+      </div>
+
+      <!-- Bypass Code Input -->
+      <div style="background:white;border:1px solid #e2e8f0;border-radius:14px;padding:16px;">
+        <div
+          style="font-size:0.78rem;font-weight:700;text-transform:uppercase;color:#94a3b8;margin-bottom:10px;letter-spacing:0.5px;">
+          🔑 Kode Bypass (untuk HP bermasalah)</div>
+        <div style="display:flex;gap:8px;">
+          <input id="pwaBypassInput" type="text" placeholder="Masukkan kode bypass..."
+            style="flex:1;padding:11px 14px;border:1.5px solid #e2e8f0;border-radius:10px;font-size:0.95rem;outline:none;font-family:monospace;letter-spacing:2px;text-transform:uppercase;"
+            onkeydown="if(event.key==='Enter') verifyPwaBypass()" oninput="this.value=this.value.toUpperCase()">
+          <button onclick="verifyPwaBypass()"
+            style="padding:11px 16px;background:#475569;color:white;border:none;border-radius:10px;font-weight:700;cursor:pointer;font-size:0.9rem;white-space:nowrap;">
+            Masuk
+          </button>
+        </div>
+        <div id="pwaBypassError" style="display:none;margin-top:8px;font-size:0.8rem;color:#ef4444;font-weight:600;">
+          Kode bypass tidak valid.</div>
+      </div>
+
+    </div>
+  </div>
+
+  <div id="cheat-alert-overlay" class="overlay"
+    style="background:#DC2626; color:white; z-index:100000; flex-direction:column; text-align:center; padding:20px;">
+    <div style="font-size:5rem; margin-bottom:20px;">⚠️</div>
+    <h2 style="font-size:2rem; font-weight:900; margin-bottom:12px;">PELANGGARAN TERDETEKSI</h2>
+    <p style="font-size:1.1rem; max-width:400px; line-height:1.5; margin-bottom:20px;">Anda terdeteksi keluar dari layar
+      ujian! Waktu penalti akan <strong>dilipatgandakan</strong> untuk pelanggaran berikutnya.</p>
+    <div style="background:rgba(0,0,0,0.2); padding:10px 20px; border-radius:8px; font-weight:700; font-size:1.2rem;"
+      id="cheat-countdown">5</div>
+  </div>
+
+  <!-- Question Grid Bottom Sheet -->
+  <div class="q-grid-container" id="qGridContainer">
+    <div class="q-grid-header">
+      <div>
+        <h3>Navigasi Soal</h3>
+        <p style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">Ketuk nomor untuk berpindah soal</p>
+      </div>
+      <button class="btn btn-outline" id="btnCloseGrid"
+        style="padding:7px 14px;font-size:0.85rem;width:auto;border-radius:0;">Tutup</button>
+    </div>
+    <div class="q-grid" id="qGrid"></div>
+    <div style="margin-top:16px;display:flex;gap:14px;flex-wrap:wrap;font-size:0.77rem;color:var(--text-muted);">
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div style="width:14px;height:14px;background:white;border:1.5px solid var(--border-strong);">
+        </div>Belum
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div style="width:14px;height:14px;background:var(--primary);"></div>Sudah
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <div style="width:14px;height:14px;background:var(--warning);"></div>Ragu-ragu
+      </div>
+    </div>
+  </div>
+
+  <!-- Token Modal -->
+  <div class="overlay" id="token-overlay"></div>
+  <div class="card modal-card" id="token-modal" style="
+  position:fixed;top:50%;left:50%;
+  transform:translate(-50%,-50%) scale(0.95);
+  display:none;flex-direction:column;
+  width:90%;max-width:360px;
+  opacity:0;transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+">
+    <div style="text-align:center;margin-bottom:20px;">
+      <div
+        style="width:56px;height:56px;background:linear-gradient(135deg,#1D4ED8,#0EA5E9);border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;box-shadow:var(--shadow-pri-sm);">
+        <svg style="width:26px;height:26px;color:white;" fill="none" stroke="currentColor" stroke-width="1.5"
+          viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+        </svg>
+      </div>
+      <h3 style="margin-bottom:6px;">Masukkan Token</h3>
+      <p class="text-muted" style="font-size:0.875rem;">Hubungi pengawas untuk mendapatkan Token ujian ini.</p>
+    </div>
+    <input type="text" id="examTokenInput" class="form-control" placeholder="TOKEN..." autocomplete="off"
+      style="margin-bottom:20px;">
+    <div style="display:flex;gap:10px;">
+      <button id="btnCancelToken" class="btn btn-outline" style="flex:1;">Batal</button>
+      <button id="btnSubmitToken" class="btn btn-primary" style="flex:1;">Mulai</button>
+    </div>
+  </div>
+
+  <!-- Image Zoom Modal -->
+  <div class="overlay" id="zoom-overlay" onclick="closeZoomModal()"
+    style="z-index:999;display:none;justify-content:center;align-items:center;background:rgba(15,23,90,0.85);">
+    <button
+      style="position:absolute;top:20px;right:20px;background:rgba(0,0,0,0.4);border:none;color:white;width:40px;height:40px;border-radius:50%;font-size:22px;display:flex;align-items:center;justify-content:center;cursor:pointer;">&times;</button>
+    <img id="zoom-image" src=""
+      style="max-width:95vw;max-height:85vh;object-fit:contain;border-radius:12px;box-shadow:0 20px 60px rgba(0,0,0,0.3);pointer-events:none;" />
+  </div>
+
+  <!-- Admin Auth Modal -->
+  <div class="overlay" id="admin-overlay" style="z-index:1003;"></div>
+  <div class="card modal-card" id="admin-login-modal" style="
+  position:fixed;top:50%;left:50%;
+  transform:translate(-50%,-50%) scale(0.95);
+  z-index:1004;display:none;flex-direction:column;
+  width:90%;max-width:360px;
+  opacity:0;transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+">
+    <div style="text-align:center;margin-bottom:20px;">
+      <div
+        style="width:56px;height:56px;background:linear-gradient(135deg,#DC2626,#EF4444);border-radius:16px;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;box-shadow:0 4px 12px rgba(239,68,68,0.3);">
+        <svg style="width:26px;height:26px;color:white;" fill="none" stroke="currentColor" stroke-width="1.5"
+          viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+        </svg>
+      </div>
+      <h3 style="margin-bottom:6px;">Otorisasi Proktor</h3>
+      <p class="text-muted" style="font-size:0.875rem;">Masukkan sandi keamanan</p>
+    </div>
+    <input type="password" id="adminTokenInput" class="form-control" placeholder="••••••••" autocomplete="off"
+      style="text-align:center;margin-bottom:20px;">
+    <div style="display:flex;gap:10px;">
+      <button id="btnCancelAdmin" class="btn btn-outline" style="flex:1;">Tutup</button>
+      <button id="btnSubmitAdmin" class="btn btn-danger" style="flex:1;">Verifikasi</button>
+    </div>
+  </div>
+
+  <!-- Generic Import Modal -->
+  <div class="overlay" id="import-overlay" style="z-index:1005;"></div>
+  <div class="card modal-card" id="import-modal" style="
+  position:fixed;top:50%;left:50%;
+  transform:translate(-50%,-50%) scale(0.95);
+  z-index:1006;display:none;flex-direction:column;
+  width:90%;max-width:400px;
+  opacity:0;transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  ">
+    <h3 style="margin-bottom:12px;" id="import-title">Import Data</h3>
+    <p class="text-muted" style="font-size:0.875rem; margin-bottom:6px;" id="import-desc">Pilih file Excel (.xlsx) untuk
+      diunggah.</p>
+    <a href="#" id="import-download-btn" onclick="downloadTemplateExcel(); return false;"
+      style="font-size:0.8rem; margin-bottom:16px; display:inline-block; color:var(--primary); font-weight:600; text-decoration:none;">⬇️
+      Unduh Template Excel</a>
+
+    <div id="import-extra-inputs" style="display:none; flex-direction:column; gap:10px; margin-bottom:16px;">
+      <input type="text" id="importBankId" class="form-control" placeholder="Kode Bank Soal (cth: MTK_9)">
+    </div>
+
+    <input type="file" id="importFileInput" accept=".xlsx, .xls" class="form-control"
+      style="margin-bottom:20px; padding:10px;">
+
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-outline" style="flex:1;" onclick="closeImportModal()">Batal</button>
+      <button class="btn btn-primary" style="flex:1;" onclick="processImport()">Mulai Import</button>
+    </div>
+  </div>
+
+  <!-- Siswa CRUD Modal -->
+  <div class="overlay" id="siswa-overlay" style="z-index:1005;"></div>
+  <div class="card modal-card" id="siswa-modal" style="
+  position:fixed;top:50%;left:50%;
+  transform:translate(-50%,-50%) scale(0.95);
+  z-index:1006;display:none;flex-direction:column;
+  width:90%;max-width:400px;
+  opacity:0;transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  ">
+    <h3 style="margin-bottom:12px;" id="siswa-modal-title">Tambah Siswa</h3>
+
+    <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px;">
+      <div>
+        <label style="font-size:0.8rem; color:var(--text-muted); font-weight:600; margin-bottom:4px; display:block;">NIS
+          / ID Siswa</label>
+        <input type="text" id="siswaIdInput" class="form-control" placeholder="Cth: 12345">
+      </div>
+      <div>
+        <label
+          style="font-size:0.8rem; color:var(--text-muted); font-weight:600; margin-bottom:4px; display:block;">Nama
+          Siswa</label>
+        <input type="text" id="siswaNamaInput" class="form-control" placeholder="Cth: Budi Santoso">
+      </div>
+      <div>
+        <label
+          style="font-size:0.8rem; color:var(--text-muted); font-weight:600; margin-bottom:4px; display:block;">Kelas</label>
+        <input type="text" id="siswaKelasInput" class="form-control" placeholder="Cth: 9A">
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-outline" style="flex:1;" onclick="closeSiswaModal()">Batal</button>
+      <button class="btn btn-primary" style="flex:1;" onclick="saveSiswa()">Simpan</button>
+    </div>
+  </div>
+
+  <!-- Soal Quick Edit Modal -->
+  <div class="overlay" id="soal-edit-overlay" style="z-index:1009;"></div>
+  <div class="card modal-card" id="soal-edit-modal" style="
+  position:fixed;top:50%;left:50%;
+  transform:translate(-50%,-50%) scale(0.95);
+  z-index:1010;display:none;flex-direction:column;
+  width:95%;max-width:600px; max-height:85vh; overflow-y:auto;
+  opacity:0;transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  ">
+    <h3 style="margin-bottom:12px;" id="soal-edit-title">Edit Soal</h3>
+
+    <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:20px;">
+      <input type="hidden" id="soalEditBankId">
+      <input type="hidden" id="soalEditId">
+
+      <div>
+        <label
+          style="font-size:0.8rem; color:var(--text-muted); font-weight:600; margin-bottom:4px; display:block;">Teks
+          Soal</label>
+        <textarea id="soalEditPertanyaan" class="form-control" rows="4" style="resize:vertical;"></textarea>
+      </div>
+      <div>
+        <label
+          style="font-size:0.8rem; color:var(--text-muted); font-weight:600; margin-bottom:4px; display:block;">Tautan
+          Gambar Soal (Opsional)</label>
+        <input type="text" id="soalEditGambar" class="form-control" placeholder="https://...">
+      </div>
+
+      <div style="border:1px solid var(--border); border-radius:8px; padding:12px; background:var(--bg-subtle);">
+        <label style="font-size:0.8rem; color:var(--text-main); font-weight:700; margin-bottom:8px; display:block;">Opsi
+          & Kunci Jawaban (PG)</label>
+        <div id="soalEditOpsiContainer" style="display:flex; flex-direction:column; gap:8px;">
+          <!-- Opsi generated via JS -->
+        </div>
+        <div style="margin-top:12px;">
+          <label
+            style="font-size:0.8rem; color:var(--text-muted); font-weight:600; margin-bottom:4px; display:block;">Kunci
+            Jawaban Benar</label>
+          <input type="text" id="soalEditKunci" class="form-control"
+            placeholder="Contoh: A (untuk PG) atau A,C (untuk Kompleks)">
+        </div>
+      </div>
+    </div>
+
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-outline" style="flex:1;" onclick="closeSoalEditModal()">Batal</button>
+      <button class="btn btn-primary" style="flex:1;" onclick="saveSoalEdit()">Simpan</button>
+    </div>
+  </div>
+
+  <!-- Admin Preview Soal Modal -->
+  <div class="overlay" id="preview-overlay" style="z-index:1007;"></div>
+  <div class="card modal-card" id="admin-preview-modal" style="
+  position:fixed;top:50%;left:50%;
+  transform:translate(-50%,-50%) scale(0.95);
+  z-index:1008;display:none;flex-direction:column;
+  width:95%;max-width:800px; height:90vh; max-height:800px;
+  opacity:0;transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  padding:0; overflow:hidden;
+">
+    <div
+      style="padding:16px 20px; border-bottom:1px solid var(--border); background:var(--surface-0); display:flex; justify-content:space-between; align-items:center; z-index:10;">
+      <div>
+        <h3 style="margin:0; font-size:1.1rem; color:var(--text-main);" id="preview-title">Bank Soal</h3>
+        <p style="margin:0; font-size:0.8rem; color:var(--danger); font-weight:600; margin-top:2px;">RAHASIA: Terdapat
+          Kunci Jawaban</p>
+      </div>
+      <button id="btnClosePreview" class="btn btn-outline" style="padding:6px 12px; font-size:0.85rem;"
+        onclick="hideAdminPreview()">Tutup</button>
+    </div>
+    <div id="preview-content-area"
+      style="flex:1; overflow-y:auto; padding:20px; background:var(--bg-page); display:flex; flex-direction:column;">
+      <div class="question-container" style="flex:1;">
+        <div class="question-number" id="prev-q-number"
+          style="display:inline-block; margin-bottom:15px; font-weight:700; color:var(--primary); background:var(--surface-1); padding:6px 12px;">
+          SOAL 1</div>
+        <div class="question-text" id="prev-q-text">Memuat soal...</div>
+        <div id="prev-q-image-container" style="display:none;text-align:center;margin-bottom:20px;"></div>
+        <div class="option-list" id="prev-q-options"></div>
+      </div>
+    </div>
+    <div
+      style="padding:16px; border-top:1px solid var(--border); background:var(--surface-0); display:flex; justify-content:space-between; align-items:center;">
+      <button id="btnPrevPreview" class="btn btn-outline" style="min-width:100px;" onclick="navigatePreview(-1)">&laquo;
+        Prev</button>
+      <div id="prev-q-indicator" style="font-size:0.9rem; font-weight:600; color:var(--text-muted);">1 / 10</div>
+      <button id="btnNextPreview" class="btn btn-primary" style="min-width:100px;" onclick="navigatePreview(1)">Next
+        &raquo;</button>
+    </div>
+  </div>
+
+  <!-- Jadwal Builder Modal -->
+  <div class="overlay" id="jadwal-overlay" style="z-index:1005;"></div>
+  <div class="card modal-card" id="jadwal-modal" style="
+  position:fixed;top:50%;left:50%;
+  transform:translate(-50%,-50%) scale(0.95);
+  z-index:1006;display:none;flex-direction:column;
+  width:95%;max-width:500px;
+  opacity:0;transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  max-height:90vh; overflow-y:auto;
+  ">
+    <h3 style="margin-bottom:12px;">Buat Jadwal Ujian Baru</h3>
+
+    <div class="form-group">
+      <label>Kode Ujian (Tanpa Spasi)</label>
+      <input type="text" id="jId" class="form-control" placeholder="Contoh: PAS_MTK_9">
+    </div>
+    <div class="form-group">
+      <label>Nama Ujian</label>
+      <input type="text" id="jNama" class="form-control" placeholder="Contoh: Penilaian Akhir Semester Matematika">
+    </div>
+    <div class="form-group">
+      <label>Pilih Bank Soal</label>
+      <select id="jSoal" class="form-control" style="background:#fff;"></select>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <div class="form-group" style="flex:1;">
+        <label>Durasi (Menit)</label>
+        <input type="number" id="jDurasi" class="form-control" value="60">
+      </div>
+      <div class="form-group" style="flex:1;">
+        <label>Min. Selesai (Menit)</label>
+        <input type="number" id="jMinSelesai" class="form-control" value="0" placeholder="0 = bebas">
+      </div>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <div class="form-group" style="flex:1;">
+        <label>Waktu Mulai</label>
+        <input type="datetime-local" id="jMulai" class="form-control">
+      </div>
+      <div class="form-group" style="flex:1;">
+        <label>Waktu Selesai</label>
+        <input type="datetime-local" id="jSelesai" class="form-control">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Target Kelas (Pisahkan dengan Koma)</label>
+      <input type="text" id="jKelas" class="form-control" placeholder="Kosongkan untuk semua kelas">
+    </div>
+
+    <div style="display:flex;gap:10px; margin-top:10px;">
+      <button class="btn btn-outline" style="flex:1;" onclick="closeJadwalModal()">Batal</button>
+      <button class="btn btn-primary" style="flex:1;" onclick="saveJadwal()">Simpan</button>
+    </div>
+  </div>
+
+  <!-- Modal Konfigurasi Cetak -->
+  <div class="overlay" id="print-overlay" style="z-index:1010;"></div>
+  <div class="card modal-card" id="print-config-modal" style="
+  position:fixed;top:50%;left:50%;
+  transform:translate(-50%,-50%) scale(0.95);
+  z-index:1011;display:none;flex-direction:column;
+  width:95%;max-width:500px;
+  opacity:0;transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  max-height:90vh; overflow-y:auto;
+  ">
+    <h3 style="margin-bottom:12px;">Konfigurasi Berita Acara & Presensi</h3>
+    <input type="hidden" id="printExamId">
+
+    <div class="form-group">
+      <label>Mata Pelajaran / Nama Ujian</label>
+      <input type="text" id="printExamName" class="form-control" readonly style="background:var(--surface-0);">
+    </div>
+    <div class="form-group">
+      <label>Pilih Kelas</label>
+      <select id="printKelas" class="form-control">
+        <option value="">-- Memuat Kelas... --</option>
+      </select>
+    </div>
+    <div style="display:flex; gap:10px;">
+      <div class="form-group" style="flex:1;">
+        <label>Tanggal Pelaksanaan</label>
+        <input type="date" id="printTanggal" class="form-control">
+      </div>
+      <div class="form-group" style="flex:1;">
+        <label>Sesi & Ruang</label>
+        <input type="text" id="printRuang" class="form-control" placeholder="Contoh: Sesi 1 / Lab 1">
+      </div>
+    </div>
+    <div class="form-group">
+      <label>Nama Pengawas (beserta NIP jika ada)</label>
+      <input type="text" id="printPengawas" class="form-control" placeholder="Contoh: Budi Santoso, S.Pd.">
+    </div>
+    <div class="form-group">
+      <label>Nama Proktor (beserta NIP jika ada)</label>
+      <input type="text" id="printProktor" class="form-control" placeholder="Contoh: Andi, S.Kom.">
+    </div>
+
+    <div style="display:flex;gap:10px; margin-top:10px;">
+      <button class="btn btn-outline" style="flex:1;" onclick="closePrintModal()">Batal</button>
+      <button class="btn btn-primary" style="flex:1;" onclick="executePrint()"><span
+          style="margin-right:6px;">🖨️</span> Cetak Sekarang</button>
+    </div>
+  </div>
+
+  <!-- Modal Panduan Ujian -->
+  <div class="overlay" id="guide-overlay" style="z-index:1020;" onclick="closeGuideModal()"></div>
+  <div class="card modal-card" id="guide-modal" style="
+  position:fixed;top:50%;left:50%;
+  transform:translate(-50%,-50%) scale(0.95);
+  z-index:1021;display:none;flex-direction:column;
+  width:90%;max-width:400px;
+  opacity:0;transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  padding:24px;
+  ">
+    <div style="text-align:center; margin-bottom:20px;">
+      <div
+        style="width:60px; height:60px; background:var(--warning-soft); color:var(--warning); border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 12px;">
+        <svg style="width:30px; height:30px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round"
+            d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253">
+          </path>
+        </svg>
+      </div>
+      <h3 style="margin:0; font-size:1.25rem;">Panduan Ujian</h3>
+      <p style="font-size:0.85rem; color:var(--text-muted); margin-top:4px;">Baca petunjuk berikut dengan teliti</p>
+    </div>
+
+    <div style="display:flex; flex-direction:column; gap:12px; margin-bottom:24px;">
+      <div style="display:flex; gap:12px; align-items:flex-start;">
+        <div style="font-weight:700; color:var(--primary); font-size:1rem;">01</div>
+        <div style="font-size:0.9rem; color:var(--text-main);">Ketik nama Anda di kolom pencarian dan pilih nama yang
+          sesuai dari daftar.</div>
+      </div>
+      <div style="display:flex; gap:12px; align-items:flex-start;">
+        <div style="font-weight:700; color:var(--primary); font-size:1rem;">02</div>
+        <div style="font-size:0.9rem; color:var(--text-main);">Pastikan Anda memiliki <b>Token Valid</b> dari pengawas
+          untuk memulai ujian.</div>
+      </div>
+      <div style="display:flex; gap:12px; align-items:flex-start;">
+        <div style="font-weight:700; color:var(--primary); font-size:1rem;">03</div>
+        <div style="font-size:0.9rem; color:var(--text-main);"><b>Anti-Cheat Aktif:</b> Jangan keluar dari layar ujian
+          atau pindah aplikasi, atau ujian Anda akan dibekukan.</div>
+      </div>
+      <div style="display:flex; gap:12px; align-items:flex-start;">
+        <div style="font-weight:700; color:var(--primary); font-size:1rem;">04</div>
+        <div style="font-size:0.9rem; color:var(--text-main);">Jawaban tersimpan otomatis. Jika koneksi terputus, Anda
+          bisa melanjutkan kembali.</div>
+      </div>
+    </div>
+
+    <button class="btn btn-primary btn-block" onclick="closeGuideModal()">Saya Mengerti</button>
+  </div>
+
+  <!-- LAYAR CETAK (Tersembunyi secara default, hanya tampil di @media print atau JS) -->
+  <div id="print-view" style="display:none; background:white; color:black; width:100%; min-height:100vh;">
+    <!-- HALAMAN 1: BERITA ACARA -->
+    <div class="print-page">
+      <div class="print-header"
+        style="text-align:center; border-bottom:3px solid black; padding-bottom:10px; margin-bottom:20px;">
+        <h2 style="margin:0; font-size:16pt; text-transform:uppercase;">BERITA ACARA PELAKSANAAN UJIAN</h2>
+        <h3 style="margin:5px 0 0 0; font-size:14pt; font-weight:normal;" id="ph-sekolah">SMP NEGERI 1 DANDER</h3>
+      </div>
+      <div style="text-align:justify; line-height:1.6; font-size:12pt; margin-bottom:20px;">
+        Pada hari ini <span class="print-line" id="pb-hari" style="min-width:150px;"></span> tanggal <span
+          class="print-line" id="pb-tanggal" style="min-width:150px;"></span>
+        telah diselenggarakan ujian <span class="print-line" id="pb-mapel" style="min-width:200px;"></span>
+        untuk kelas <span class="print-line" id="pb-kelas" style="min-width:100px;"></span>
+        di ruang <span class="print-line" id="pb-ruang" style="min-width:100px;"></span>.
+      </div>
+
+      <table style="width:100%; font-size:12pt; margin-bottom:20px; border-collapse:collapse;">
+        <tr>
+          <td style="width:30%; padding:8px 0;">1. Jumlah Peserta Seharusnya</td>
+          <td style="width:5%; text-align:center;">:</td>
+          <td style="border-bottom:1px dotted black; width:15%; text-align:center;" id="pb-jml-total"></td>
+          <td>Orang</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;">2. Jumlah Peserta Hadir</td>
+          <td style="text-align:center;">:</td>
+          <td style="border-bottom:1px dotted black; text-align:center;" id="pb-jml-hadir"></td>
+          <td>Orang</td>
+        </tr>
+        <tr>
+          <td style="padding:8px 0;">3. Jumlah Peserta Tidak Hadir</td>
+          <td style="text-align:center;">:</td>
+          <td style="border-bottom:1px dotted black; text-align:center;" id="pb-jml-absen"></td>
+          <td>Orang</td>
+        </tr>
+      </table>
+
+      <div style="font-size:12pt; margin-bottom:10px;">Catatan selama pelaksanaan ujian:</div>
+      <div style="border:1px solid black; min-height:150px; margin-bottom:40px; padding:10px;"></div>
+
+      <table style="width:100%; font-size:12pt; text-align:center; margin-top:40px;">
+        <tr>
+          <td style="width:50%;">
+            <b>Proktor</b>
+            <br><br><br><br>
+            <span id="pb-ttd-proktor" style="text-decoration:underline; font-weight:bold;"></span>
+          </td>
+          <td style="width:50%;">
+            <b>Pengawas</b>
+            <br><br><br><br>
+            <span id="pb-ttd-pengawas" style="text-decoration:underline; font-weight:bold;"></span>
+          </td>
+        </tr>
+      </table>
+    </div>
+
+    <!-- HALAMAN 2: DAFTAR HADIR -->
+    <div class="print-page" style="page-break-before: always;">
+      <div class="print-header"
+        style="text-align:center; border-bottom:3px solid black; padding-bottom:10px; margin-bottom:20px;">
+        <h2 style="margin:0; font-size:16pt; text-transform:uppercase;">DAFTAR HADIR PESERTA UJIAN</h2>
+        <h3 style="margin:5px 0 0 0; font-size:14pt; font-weight:normal;" id="ph-sekolah-print">SMP NEGERI 1 DANDER</h3>
+      </div>
+
+      <table style="width:100%; font-size:11pt; margin-bottom:20px;">
+        <tr>
+          <td style="width:15%;">Mata Pelajaran</td>
+          <td style="width:35%;">: <b id="pd-mapel"></b></td>
+          <td style="width:15%;">Tanggal</td>
+          <td style="width:35%;">: <b id="pd-tanggal"></b></td>
+        </tr>
+        <tr>
+          <td>Kelas</td>
+          <td>: <b id="pd-kelas"></b></td>
+          <td>Sesi / Ruang</td>
+          <td>: <b id="pd-ruang"></b></td>
+        </tr>
+      </table>
+
+      <table class="print-table" style="width:100%; font-size:11pt; border-collapse:collapse; text-align:left;">
+        <thead>
+          <tr>
+            <th style="width:5%; text-align:center; padding:8px; border:1px solid black;">No.</th>
+            <th style="width:20%; padding:8px; border:1px solid black;">Username/ID</th>
+            <th style="width:40%; padding:8px; border:1px solid black;">Nama Peserta</th>
+            <th colspan="2" style="width:35%; text-align:center; padding:8px; border:1px solid black;">Tanda Tangan</th>
+          </tr>
+        </thead>
+        <tbody id="print-siswa-tbody">
+          <!-- Diisi oleh JS -->
+        </tbody>
+      </table>
+
+      <table style="width:100%; font-size:11pt; text-align:center; margin-top:40px;">
+        <tr>
+          <td style="width:50%;">
+            <b>Proktor</b>
+            <br><br><br><br>
+            <span id="pd-ttd-proktor" style="text-decoration:underline; font-weight:bold;"></span>
+          </td>
+          <td style="width:50%;">
+            <b>Pengawas</b>
+            <br><br><br><br>
+            <span id="pd-ttd-pengawas" style="text-decoration:underline; font-weight:bold;"></span>
+          </td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+
+  <!-- Custom Alert Modal -->
+  <div id="custom-alert-modal" class="overlay" style="z-index:200005;">
+    <div class="card" style="width:90%; max-width:400px; padding:24px; text-align:center;">
+      <div id="custom-alert-icon" style="font-size:3.5rem; margin-bottom:16px;">⚠️</div>
+      <h3 id="custom-alert-title" style="margin-bottom:12px; color:var(--text-main); font-size:1.5rem;">Peringatan</h3>
+      <p id="custom-alert-message"
+        style="color:var(--text-muted); line-height:1.6; margin-bottom:24px; font-size:1rem;">Pesan alert di sini.</p>
+      <button class="btn btn-primary" onclick="closeCustomAlert()"
+        style="width:100%; padding:14px; font-weight:600;">Tutup</button>
+    </div>
+  </div>
+
+  <!-- Modern Loading Overlay -->
+  <div id="loading-overlay" class="loading-overlay">
+    <div class="loader-content-card">
+      <div class="spinner-premium"></div>
+      <p id="loading-overlay-text">Memuat data...</p>
+    </div>
+  </div>
+
+  <script defer src="script.js"></script>
+</body>
+
+</html>
