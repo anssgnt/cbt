@@ -290,14 +290,8 @@ textarea.q-input:focus{border-color:var(--primary)}
         <div class="sec-card" id="sec-gambar" style="display:none">
           <div class="sec-lbl"><svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z"/></svg>Gambar Soal <span style="font-size:.7rem;font-weight:400;color:var(--text-3)">(opsional)</span></div>
           <div id="gambar-preview-wrap" style="display:none"><div class="img-preview-wrap"><img id="gambar-preview" src="" alt=""><button class="img-del" onclick="removeGambar()" title="Hapus">✕</button></div></div>
-          <div id="gambar-drop" class="img-drop" onclick="document.getElementById('gambar-file').click()" ondragover="onDragOver(event,'gambar-drop')" ondragleave="onDragLeave('gambar-drop')" ondrop="onDrop(event)">
-            <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/></svg>
-            <p><b>Klik</b> atau seret gambar ke sini</p>
-            <span>PNG/JPG — Maks 500KB (Base64)</span>
-            <input type="file" id="gambar-file" accept="image/*" style="display:none" onchange="onGambarFile(event)">
-          </div>
           <div class="url-row">
-            <input type="text" id="gambar-url" placeholder="Atau tempel URL gambar eksternal..." oninput="markDirty()" onblur="applyGambarUrl()">
+            <input type="text" id="gambar-url" placeholder="Tempel URL gambar eksternal di sini..." oninput="markDirty()" onblur="applyGambarUrl()">
             <button class="btn btn-outline btn-sm" onclick="applyGambarUrl()">Terapkan</button>
           </div>
         </div>
@@ -462,13 +456,26 @@ function autoResize(el){ el.style.height='auto'; el.style.height=(el.scrollHeigh
 function enableCtrl(on){ ['btn-save','btn-preview','btn-add'].forEach(id=>{ const el=document.getElementById(id); if(el) el.disabled=!on; }); }
 
 // ===== BANK LIST =====
+function formatBytes(bytes) {
+  if (bytes === 0) return '0 B';
+  const k = 1024, sizes = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
 async function loadBankList() {
   try {
     const snap = await db.ref('/soal').once('value');
     const data = snap.val()||{};
     const sel = document.getElementById('sel-bank');
     while(sel.options.length>1) sel.remove(1);
-    for(let id in data){ const o=document.createElement('option');o.value=id;o.textContent=id+' ('+Object.keys(data[id]).length+' soal)';sel.appendChild(o); }
+    for(let id in data){ 
+      const o=document.createElement('option');
+      o.value=id;
+      const sizeStr = formatBytes(JSON.stringify(data[id]).length);
+      o.textContent=id+' ('+Object.keys(data[id]).length+' soal | '+sizeStr+')';
+      sel.appendChild(o); 
+    }
   } catch(e) { showToast('⚠️ Gagal muat daftar bank soal',3000); }
 }
 
@@ -545,16 +552,12 @@ function onTipeChange(){
 
 // ===== GAMBAR =====
 function setGambarPreview(url){
-  const wrap=document.getElementById('gambar-preview-wrap'),img=document.getElementById('gambar-preview'),drop=document.getElementById('gambar-drop'),urlInp=document.getElementById('gambar-url');
-  if(url&&url.trim()){ img.src=url;wrap.style.display='block';drop.style.display='none';urlInp.value=url.startsWith('data:')?'':url; }
-  else{ wrap.style.display='none';drop.style.display='flex';urlInp.value=''; }
+  const wrap=document.getElementById('gambar-preview-wrap'),img=document.getElementById('gambar-preview'),urlInp=document.getElementById('gambar-url');
+  if(url&&url.trim()){ img.src=url;wrap.style.display='block';urlInp.value=url.startsWith('data:')?'':url; }
+  else{ wrap.style.display='none';urlInp.value=''; }
 }
 function removeGambar(){ const idx=ES.currentIndex;if(idx<0)return;ES.questions[idx].gambar='';setGambarPreview('');markDirty(); }
 function applyGambarUrl(){ const url=document.getElementById('gambar-url').value.trim();if(!url)return;const idx=ES.currentIndex;if(idx<0)return;ES.questions[idx].gambar=url;setGambarPreview(url);markDirty(); }
-function onGambarFile(e){ const file=e.target.files[0];if(!file)return;if(file.size>500*1024){showToast('❌ Gambar >500KB, kompres dulu',3000);return;} const r=new FileReader();r.onload=ev=>{const idx=ES.currentIndex;if(idx>=0){ES.questions[idx].gambar=ev.target.result;setGambarPreview(ev.target.result);markDirty();}};r.readAsDataURL(file); }
-function onDragOver(e,id){e.preventDefault();document.getElementById(id).classList.add('drag-over');}
-function onDragLeave(id){document.getElementById(id).classList.remove('drag-over');}
-function onDrop(e){e.preventDefault();document.getElementById('gambar-drop').classList.remove('drag-over');const file=e.dataTransfer.files[0];if(!file||!file.type.startsWith('image/'))return;if(file.size>500*1024){showToast('❌ Gambar >500KB',3000);return;}const r=new FileReader();r.onload=ev=>{const idx=ES.currentIndex;if(idx>=0){ES.questions[idx].gambar=ev.target.result;setGambarPreview(ev.target.result);markDirty();}};r.readAsDataURL(file);}
 
 // ===== OPSI RENDERER =====
 function renderOpsi(q){
@@ -580,7 +583,7 @@ function renderOpsi(q){
     if(tipe==='KOMPLEKS'){
       row.innerHTML=`<div style="display:flex;align-items:center;margin-top:3px"><input type="checkbox" id="chk-${lbl}" ${isC?'checked':''} style="width:16px;height:16px;accent-color:var(--success)" onchange="onKompleksChk()"></div><div class="opsi-lbl" style="cursor:default">${lbl}</div><div class="opsi-inputs"><input type="text" id="ot-${lbl}" placeholder="Teks opsi ${lbl}..." value="${esc(opt.text||'')}" oninput="markDirty()"><input type="text" id="og-${lbl}" placeholder="URL gambar opsi (opsional)..." value="${esc(opt.gambar||'')}" oninput="onOpsiImg('${lbl}');markDirty()">${imgP}</div>`;
     } else {
-      row.innerHTML=`<div class="opsi-lbl" onclick="setKunci('${lbl}')" title="Set kunci">${lbl}</div><div class="opsi-inputs"><input type="text" id="ot-${lbl}" placeholder="Teks opsi ${lbl}..." value="${esc(opt.text||'')}" oninput="markDirty()"><input type="text" id="og-${lbl}" placeholder="URL gambar opsi (opsional)..." value="${esc(opt.gambar||'')}" oninput="onOpsiImg('${lbl}');markDirty()">${imgP}</div><label style="display:flex;align-items:center;cursor:pointer;margin-top:2px"><input type="file" accept="image/*" style="display:none" onchange="onOpsiFile(event,'${lbl}')"><span class="btn btn-outline btn-sm" style="padding:3px 6px;font-size:.68rem" onclick="this.previousElementSibling.click()">📁</span></label>`;
+      row.innerHTML=`<div class="opsi-lbl" onclick="setKunci('${lbl}')" title="Set kunci">${lbl}</div><div class="opsi-inputs"><input type="text" id="ot-${lbl}" placeholder="Teks opsi ${lbl}..." value="${esc(opt.text||'')}" oninput="markDirty()"><input type="text" id="og-${lbl}" placeholder="URL gambar opsi (opsional)..." value="${esc(opt.gambar||'')}" oninput="onOpsiImg('${lbl}');markDirty()">${imgP}</div>`;
     }
     oc.appendChild(row);
   });
@@ -607,7 +610,7 @@ function onOpsiImg(lbl){
   if(url){ if(!ex){const img=document.createElement('img');img.className='opsi-img-mini';img.src=url;row.querySelector('.opsi-inputs').appendChild(img);}else{ex.src=url;} }
   else{ if(ex)ex.remove(); }
 }
-function onOpsiFile(e,lbl){ const file=e.target.files[0];if(!file)return;if(file.size>300*1024){showToast('❌ Gambar opsi max 300KB',3000);return;}const r=new FileReader();r.onload=ev=>{const el=document.getElementById('og-'+lbl);if(el){el.value=ev.target.result;onOpsiImg(lbl);markDirty();}};r.readAsDataURL(file); }
+// Opsi upload Base64 dihapus, hanya pakai URL
 </script>
 <script>
 // ===== SAVE =====
