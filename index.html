@@ -33,74 +33,101 @@
 
   <div class="app-container">
 
-      <div id="login-view" class="view active portal-layout">
-        
-        <!-- Blue Wave Background (Approx Half Screen) -->
-        <div style="position: absolute; top: 0; left: 0; width: 100%; height: 40vh; background: #1D4ED8; z-index: 0; overflow: hidden;">
-          <svg viewBox="0 0 1440 320" preserveAspectRatio="none" style="position: absolute; bottom: -1px; left: 0; width: 100%; height: auto; z-index: 1; display: block; min-height: 60px;">
-            <path fill="#FFFFFF" fill-opacity="1" d="M0,256L48,245.3C96,235,192,213,288,213.3C384,213,480,235,576,234.7C672,235,768,213,864,186.7C960,160,1056,128,1152,122.7C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
-          </svg>
-        </div>
+    <div id="login-view" class="view active portal-layout">
 
-        <!-- Panel Kanan: Form -->
-        <div class="saas-login-container stagger-1" style="max-width: 440px; margin: 0 auto; padding: 40px 24px 30px 24px; position: relative; z-index: 10;">
-          
-          <!-- Straight Header -->
-          <div class="centric-header" style="flex-direction: row; gap: 16px; align-items: center; justify-content: center; margin-bottom: 24px;">
-            <div class="centric-logo" id="school-logo-container" style="position: relative; width: 64px; height: 64px; margin: 0; box-shadow: 0 4px 16px rgba(0,0,0,0.15);">
-              <img id="school-logo-img" src="" style="display:none; max-width:100%; max-height:100%; object-fit:contain;">
-              <svg id="default-logo-svg" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 2L2 7L12 12L22 7L12 2Z" />
-                <path d="M2 9V14C2 14 7.5 17.5 12 19.5C16.5 17.5 22 14 22 14V9L12 14L2 9Z" />
-              </svg>
-              <!-- Armor 1000 Sync Badge -->
-              <div id="sync-badge" style="position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); background: #10B981; color: white; font-size: 9px; padding: 3px 8px; border-radius: 12px; font-weight: 800; box-shadow: 0 4px 12px rgba(16,185,129,0.4); display: none; white-space: nowrap; border: 2px solid white; z-index: 10;">
-                UJIAN READY
-              </div>
-            </div>
-            <div class="centric-identity" style="text-align: left;">
-              <h1 id="portal-school-sub" style="font-size: 1.4rem; margin-bottom: 0; color: #FFFFFF; text-shadow: 0 2px 4px rgba(0,0,0,0.1);">SMP Negeri 7</h1>
-              <p style="font-size: 0.85rem; color: rgba(255,255,255,0.9); margin: 0; text-shadow: 0 1px 2px rgba(0,0,0,0.1);">Computer Based Test Portal</p>
+      <!-- Blue Wave Background (Approx Half Screen) -->
+      <div
+        style="position: absolute; top: 0; left: 0; width: 100%; height: 40vh; background: #1D4ED8; z-index: 0; overflow: hidden;">
+        <svg viewBox="0 0 1440 320" preserveAspectRatio="none"
+          style="position: absolute; bottom: -1px; left: 0; width: 100%; height: auto; z-index: 1; display: block; min-height: 60px;">
+          <path fill="#FFFFFF" fill-opacity="1"
+            d="M0,256L48,245.3C96,235,192,213,288,213.3C384,213,480,235,576,234.7C672,235,768,213,864,186.7C960,160,1056,128,1152,122.7C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z">
+          </path>
+        </svg>
+      </div>
+
+      <!-- Panel Kanan: Form -->
+      <div class="saas-login-container stagger-1"
+        style="max-width: 440px; margin: 0 auto; padding: 40px 24px 30px 24px; position: relative; z-index: 10;">
+
+        <!-- Straight Header -->
+        <div class="centric-header"
+          style="flex-direction: row; gap: 16px; align-items: center; justify-content: center; margin-bottom: 24px;">
+          <div class="centric-logo" id="school-logo-container"
+            style="position: relative; width: 64px; height: 64px; margin: 0; box-shadow: 0 4px 16px rgba(0,0,0,0.15);">
+            <img id="school-logo-img" src="" style="display:none; max-width:100%; max-height:100%; object-fit:contain;">
+            <svg id="default-logo-svg" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 2L2 7L12 12L22 7L12 2Z" />
+              <path d="M2 9V14C2 14 7.5 17.5 12 19.5C16.5 17.5 22 14 22 14V9L12 14L2 9Z" />
+            </svg>
+            <!-- Armor 1000 Sync Badge -->
+            <div id="sync-badge"
+              style="position: absolute; bottom: -8px; left: 50%; transform: translateX(-50%); background: #10B981; color: white; font-size: 9px; padding: 3px 8px; border-radius: 12px; font-weight: 800; box-shadow: 0 4px 12px rgba(16,185,129,0.4); display: none; white-space: nowrap; border: 2px solid white; z-index: 10;">
+              UJIAN READY
             </div>
           </div>
+          <div class="centric-identity" style="text-align: left;">
+            <h1 id="portal-school-sub"
+              style="font-size: 1.4rem; margin-bottom: 0; color: #FFFFFF; text-shadow: 0 2px 4px rgba(0,0,0,0.1);">SMP
+              Negeri 7</h1>
+            <p
+              style="font-size: 0.85rem; color: rgba(255,255,255,0.9); margin: 0; text-shadow: 0 1px 2px rgba(0,0,0,0.1);">
+              Computer Based Test Portal</p>
+          </div>
+        </div>
 
-          <div class="landing-welcome-card stagger-2">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; width: 100%;">
-              <div style="background: #F3F4F6; padding: 6px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; color: #111827; display: flex; align-items: center; gap: 6px;">
-                <span id="top-sync-dot" style="width:8px; height:8px; background:#EF4444; border-radius:50%; display:inline-block;"></span> <span id="top-sync-text">Belum Sinkron</span>
-              </div>
-              <div class="portal-clock-container" style="background: #F3F4F6; padding: 6px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; color: #111827; display: flex; align-items: center; gap: 6px;">
-                <svg class="clock-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width: 14px; height: 14px; color: #111827;">
-                  <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                  <line x1="16" y1="2" x2="16" y2="6"></line>
-                  <line x1="8" y1="2" x2="8" y2="6"></line>
-                  <line x1="3" y1="10" x2="21" y2="10"></line>
-                </svg>
-                <div id="portal-clock" class="portal-clock-centric" style="font-size: 0.75rem; color: #111827;">Memuat...</div>
+        <div class="landing-welcome-card stagger-2">
+          <div
+            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; width: 100%;">
+            <div
+              style="background: #F3F4F6; padding: 6px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; color: #111827; display: flex; align-items: center; gap: 6px;">
+              <span id="top-sync-dot"
+                style="width:8px; height:8px; background:#EF4444; border-radius:50%; display:inline-block;"></span>
+              <span id="top-sync-text">Belum Sinkron</span>
+            </div>
+            <div class="portal-clock-container"
+              style="background: #F3F4F6; padding: 6px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; color: #111827; display: flex; align-items: center; gap: 6px;">
+              <svg class="clock-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"
+                style="width: 14px; height: 14px; color: #111827;">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+              </svg>
+              <div id="portal-clock" class="portal-clock-centric" style="font-size: 0.75rem; color: #111827;">Memuat...
               </div>
             </div>
+          </div>
           <img src="13.jpg" class="landing-illustration" alt="Student Laptop">
           <h2>Selamat Datang 👋</h2>
           <p>Temukan nama lengkap Anda untuk masuk</p>
-          
-          <div id="login-alert" class="alert alert-danger" style="margin-top:0; margin-bottom:12px; width:100%; display:none;"></div>
-          
+
+          <div id="login-alert" class="alert alert-danger"
+            style="margin-top:0; margin-bottom:12px; width:100%; display:none;"></div>
+
           <div class="landing-input-group search-group">
             <svg class="icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
             </svg>
-            <input type="text" id="userName" class="landing-input" placeholder="Ketik nama lengkap Anda..." autocomplete="off">
+            <input type="text" id="userName" class="landing-input" placeholder="Ketik nama lengkap Anda..."
+              autocomplete="off">
             <div id="autocomplete-list" class="autocomplete-items" style="text-align: left;"></div>
           </div>
-          
+
           <div class="landing-input-info">
-            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+            <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+            </svg>
             Nama harus sesuai data sekolah
           </div>
 
           <button class="landing-btn-outline" onclick="openGuideModal()">
             <svg class="icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path>
+              <path stroke-linecap="round" stroke-linejoin="round"
+                d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253">
+              </path>
             </svg>
             PANDUAN UJIAN
           </button>
@@ -123,22 +150,31 @@
           </div>
           <div class="landing-sys-grid">
             <div class="landing-sys-item">
-              <svg class="landing-sys-icon" style="width:24px;height:24px;color:#10B981;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0"></path>
+              <svg class="landing-sys-icon" style="width:24px;height:24px;color:#10B981;" fill="none"
+                stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M8.111 16.404a5.5 5.5 0 017.778 0M12 20h.01m-7.08-7.071c3.904-3.905 10.236-3.905 14.141 0M1.394 9.393c5.857-5.857 15.355-5.857 21.213 0">
+                </path>
               </svg>
               <h5>Koneksi</h5>
               <p id="landing-koneksi-status">Stabil</p>
             </div>
             <div class="landing-sys-item">
-              <svg class="landing-sys-icon" style="width:24px;height:24px;color:#10B981;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01"></path>
+              <svg class="landing-sys-icon" style="width:24px;height:24px;color:#10B981;" fill="none"
+                stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01">
+                </path>
               </svg>
               <h5>Server</h5>
               <p id="landing-server-status">Online</p>
             </div>
             <div class="landing-sys-item">
-              <svg class="landing-sys-icon" style="width:24px;height:24px;color:#10B981;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path>
+              <svg class="landing-sys-icon" style="width:24px;height:24px;color:#10B981;" fill="none"
+                stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15">
+                </path>
               </svg>
               <h5>Sinkronisasi</h5>
               <p id="landing-sync-status">Aktif</p>
@@ -157,7 +193,9 @@
         <!-- Copyright -->
         <div class="login-footer" style="padding-top: 20px;">
           <svg class="shield-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"></path>
+            <path stroke-linecap="round" stroke-linejoin="round"
+              d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z">
+            </path>
           </svg>
           <p>© 2026 <span id="ph-sekolah-3">SMP Negeri 1 Dander</span>. Hak cipta dilindungi.</p>
         </div>
@@ -170,29 +208,37 @@
   ══════════════════════════════════════ -->
     <div id="login-confirm-view" class="view portal-layout">
       <!-- Blue Wave Background -->
-      <div style="position: absolute; top: 0; left: 0; width: 100%; height: 40vh; background: #1D4ED8; z-index: 0; overflow: hidden;">
-        <svg viewBox="0 0 1440 320" preserveAspectRatio="none" style="position: absolute; bottom: -1px; left: 0; width: 100%; height: auto; z-index: 1; display: block; min-height: 60px;">
-          <path fill="#FFFFFF" fill-opacity="1" d="M0,256L48,245.3C96,235,192,213,288,213.3C384,213,480,235,576,234.7C672,235,768,213,864,186.7C960,160,1056,128,1152,122.7C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
+      <div
+        style="position: absolute; top: 0; left: 0; width: 100%; height: 40vh; background: #1D4ED8; z-index: 0; overflow: hidden;">
+        <svg viewBox="0 0 1440 320" preserveAspectRatio="none"
+          style="position: absolute; bottom: -1px; left: 0; width: 100%; height: auto; z-index: 1; display: block; min-height: 60px;">
+          <path fill="#FFFFFF" fill-opacity="1"
+            d="M0,256L48,245.3C96,235,192,213,288,213.3C384,213,480,235,576,234.7C672,235,768,213,864,186.7C960,160,1056,128,1152,122.7C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z">
+          </path>
         </svg>
       </div>
 
-      <div class="saas-login-container" style="padding-top: 40px; position: relative; z-index: 10; width: 100%; max-width: 620px;">
+      <div class="saas-login-container"
+        style="padding-top: 40px; position: relative; z-index: 10; width: 100%; max-width: 620px;">
         <div style="text-align: center; padding: 10px 20px;">
-           <div class="confirm-avatar-wrap" style="margin: 0 auto 20px auto; position: relative; z-index: 5; width: 64px;">
-             <div class="confirm-avatar" style="box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-                <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
-                </svg>
-             </div>
-             <div class="confirm-avatar-badge">
-                <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-                  <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
-                </svg>
-             </div>
-           </div>
+          <div class="confirm-avatar-wrap"
+            style="margin: 0 auto 20px auto; position: relative; z-index: 5; width: 64px;">
+            <div class="confirm-avatar" style="box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+              <svg fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+              </svg>
+            </div>
+            <div class="confirm-avatar-badge">
+              <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+              </svg>
+            </div>
+          </div>
           <div class="confirm-heading">
             <h2 style="font-size: 1.6rem; font-weight: 800; color: #FFFFFF; margin-bottom: 8px;">Konfirmasi</h2>
-            <p style="font-size: 0.95rem; color: rgba(255,255,255,0.9); margin-bottom: 24px;">Lanjutkan jika data di bawah ini benar.</p>
+            <p style="font-size: 0.95rem; color: rgba(255,255,255,0.9); margin-bottom: 24px;">Lanjutkan jika data di
+              bawah ini benar.</p>
           </div>
           <div id="confirm-name-text">-</div>
           <div class="confirm-actions">
@@ -219,66 +265,86 @@
   ══════════════════════════════════════ -->
     <div id="schedule-view" class="view portal-layout">
       <!-- Blue Wave Background -->
-      <div style="position: absolute; top: 0; left: 0; width: 100%; height: 40vh; background: #1D4ED8; z-index: 0; overflow: hidden;">
-        <svg viewBox="0 0 1440 320" preserveAspectRatio="none" style="position: absolute; bottom: -1px; left: 0; width: 100%; height: auto; z-index: 1; display: block; min-height: 60px;">
-          <path fill="#FFFFFF" fill-opacity="1" d="M0,256L48,245.3C96,235,192,213,288,213.3C384,213,480,235,576,234.7C672,235,768,213,864,186.7C960,160,1056,128,1152,122.7C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
+      <div
+        style="position: absolute; top: 0; left: 0; width: 100%; height: 40vh; background: #1D4ED8; z-index: 0; overflow: hidden;">
+        <svg viewBox="0 0 1440 320" preserveAspectRatio="none"
+          style="position: absolute; bottom: -1px; left: 0; width: 100%; height: auto; z-index: 1; display: block; min-height: 60px;">
+          <path fill="#FFFFFF" fill-opacity="1"
+            d="M0,256L48,245.3C96,235,192,213,288,213.3C384,213,480,235,576,234.7C672,235,768,213,864,186.7C960,160,1056,128,1152,122.7C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z">
+          </path>
         </svg>
       </div>
 
-      <div class="saas-login-container" style="padding-top: 40px; position: relative; z-index: 10; width: 100%; max-width: 620px;">
-        <div style="display: flex; flex-direction: row; justify-content: space-between; width: 100%; align-items: center; margin-bottom: 24px;">
+      <div class="saas-login-container"
+        style="padding-top: 40px; position: relative; z-index: 10; width: 100%; max-width: 620px;">
+        <div
+          style="display: flex; flex-direction: row; justify-content: space-between; width: 100%; align-items: center; margin-bottom: 24px;">
           <div class="schedule-header-left" style="display: flex; align-items: center; gap: 14px;">
-            <div class="schedule-header-icon" style="width: 44px; height: 44px; border-radius: 12px; background: rgba(255,255,255,0.9); color: #1D4ED8; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
-              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width: 22px; height: 22px;">
+            <div class="schedule-header-icon"
+              style="width: 44px; height: 44px; border-radius: 12px; background: rgba(255,255,255,0.9); color: #1D4ED8; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"
+                style="width: 22px; height: 22px;">
                 <path stroke-linecap="round" stroke-linejoin="round"
                   d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
               </svg>
             </div>
             <div>
-              <h2 class="schedule-header-title" style="margin: 0; font-size: 1.25rem; font-weight: 800; color: #FFFFFF;">Daftar Ujian</h2>
-              <div class="schedule-header-sub" id="schedule-user-name" style="font-size: 0.85rem; font-weight: 500; color: rgba(255,255,255,0.9);"></div>
+              <h2 class="schedule-header-title"
+                style="margin: 0; font-size: 1.25rem; font-weight: 800; color: #FFFFFF;">Daftar Ujian</h2>
+              <div class="schedule-header-sub" id="schedule-user-name"
+                style="font-size: 0.85rem; font-weight: 500; color: rgba(255,255,255,0.9);"></div>
             </div>
           </div>
-          <button id="btnScheduleLogout" class="btn btn-outline" style="background: rgba(255,255,255,0.9); border:none; color:#111827; padding: 8px 12px; border-radius: 8px; font-weight: 600; display:flex; gap:6px; align-items:center; box-shadow: 0 4px 12px rgba(0,0,0,0.05);" title="Keluar">
-            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 18px; height: 18px;">
+          <button id="btnScheduleLogout" class="btn btn-outline"
+            style="background: rgba(255,255,255,0.9); border:none; color:#111827; padding: 8px 12px; border-radius: 8px; font-weight: 600; display:flex; gap:6px; align-items:center; box-shadow: 0 4px 12px rgba(0,0,0,0.05);"
+            title="Keluar">
+            <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              style="width: 18px; height: 18px;">
               <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" />
             </svg>
-            
+            Keluar
           </button>
         </div>
-      <!-- Armor 1000: Pre-sync H-1 Section -->
-      <div id="pre-sync-container" class="card"
-        style="background: #EEF2FF; border: 1px dashed #6366F1; margin: 0 20px 20px 20px; padding: 16px; border-radius: 16px;">
-        <div id="pre-sync-content-not-synced">
-          <h4 style="margin:0 0 4px 0; color: #4338CA; display: flex; align-items: center; gap: 8px; font-size: 1rem;">
-            <span>📥</span> Persiapan Ujian
-          </h4>
-          <p style="font-size: 0.75rem; color: #4B5563; margin-bottom: 12px; line-height: 1.3;">
-            Sinkron sekarang untuk kelancaran ujian besok.
-          </p>
-          <button id="btnSyncAllSoal" class="btn btn-primary"
-            style="width: 100%; background: #4F46E5; border: none; font-size: 0.85rem; padding: 10px;">
-            Mulai Sinkronisasi
-          </button>
-          <div id="sync-all-progress" style="display:none; margin-top:12px;">
-            <!-- Info Detail Storage -->
-            <div id="sync-storage-info" style="display:flex; justify-content:space-between; font-size:0.68rem; color:#6B7280; margin-bottom:6px; background:white; padding:4px 8px; border-radius:6px; border:1px solid #E5E7EB;">
-              <span>Memori HP: <b id="sync-storage-avail">-</b></span>
-              <span>Total Data: <b id="sync-storage-req">-</b></span>
+        <!-- Armor 1000: Pre-sync H-1 Section -->
+        <div id="pre-sync-container" class="card"
+          style="background: #EEF2FF; border: 1px dashed #6366F1; margin: 0 20px 20px 20px; padding: 16px; border-radius: 16px;">
+          <div id="pre-sync-content-not-synced">
+            <h4
+              style="margin:0 0 4px 0; color: #4338CA; display: flex; align-items: center; gap: 8px; font-size: 1rem;">
+              <span>📥</span> Persiapan Offline
+            </h4>
+            <p style="font-size: 0.75rem; color: #4B5563; margin-bottom: 12px; line-height: 1.3;">
+              Download soal sekarang untuk kelancaran ujian besok.
+            </p>
+            <button id="btnSyncAllSoal" class="btn btn-primary"
+              style="width: 100%; background: #4F46E5; border: none; font-size: 0.85rem; padding: 10px;">
+              Mulai Sinkronisasi
+            </button>
+            <div id="sync-all-progress" style="display:none; margin-top:12px;">
+              <!-- Info Detail Storage -->
+              <div id="sync-storage-info"
+                style="display:flex; justify-content:space-between; font-size:0.68rem; color:#6B7280; margin-bottom:6px; background:white; padding:4px 8px; border-radius:6px; border:1px solid #E5E7EB;">
+                <span>Memori HP: <b id="sync-storage-avail">-</b></span>
+                <span>Total Data: <b id="sync-storage-req">-</b></span>
+              </div>
+              <div
+                style="height: 8px; background: #E0E7FF; border-radius: 10px; overflow: hidden; margin-bottom: 8px; border: 1px solid #C7D2FE;">
+                <div id="sync-all-bar"
+                  style="width: 0%; height: 100%; background: linear-gradient(90deg, #6366F1, #4F46E5); transition: width 0.3s; box-shadow: 0 0 8px rgba(79, 70, 229, 0.4);">
+                </div>
+              </div>
+              <div id="sync-all-text"
+                style="font-size: 0.72rem; color: #4338CA; font-weight: 700; text-align: center; text-transform: uppercase; letter-spacing: 0.02em;">
+                Menyiapkan...</div>
             </div>
-            <div style="height: 8px; background: #E0E7FF; border-radius: 10px; overflow: hidden; margin-bottom: 8px; border: 1px solid #C7D2FE;">
-              <div id="sync-all-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #6366F1, #4F46E5); transition: width 0.3s; box-shadow: 0 0 8px rgba(79, 70, 229, 0.4);"></div>
-            </div>
-            <div id="sync-all-text" style="font-size: 0.72rem; color: #4338CA; font-weight: 700; text-align: center; text-transform: uppercase; letter-spacing: 0.02em;">
-              Menyiapkan...</div>
+          </div>
+          <div id="pre-sync-content-synced"
+            style="display: none; text-align: center; color: #ffffff; font-size: 0.85rem; font-weight: 600; padding: 4px;">
+            ✅ <span id="sync-synced-name"></span> sudah sinkron 100%.
           </div>
         </div>
-        <div id="pre-sync-content-synced" style="display: none; text-align: center; color: #ffffff; font-size: 0.85rem; font-weight: 600; padding: 4px;">
-           ✅ <span id="sync-synced-name"></span> sudah sinkron 100%.
-        </div>
-      </div>
 
-      <div id="schedule-list" style="padding:0 20px 20px 20px;display:flex;flex-direction:column;gap:14px;"></div>
+        <div id="schedule-list" style="padding:0 20px 20px 20px;display:flex;flex-direction:column;gap:14px;"></div>
       </div> <!-- End of saas-login-container -->
     </div>
 
@@ -287,9 +353,13 @@
   ══════════════════════════════════════ -->
     <div id="dashboard-view" class="view portal-layout">
       <!-- Blue Wave Background -->
-      <div style="position: absolute; top: 0; left: 0; width: 100%; height: 40vh; background: #1D4ED8; z-index: 0; overflow: hidden;">
-        <svg viewBox="0 0 1440 320" preserveAspectRatio="none" style="position: absolute; bottom: -1px; left: 0; width: 100%; height: auto; z-index: 1; display: block; min-height: 60px;">
-          <path fill="#FFFFFF" fill-opacity="1" d="M0,256L48,245.3C96,235,192,213,288,213.3C384,213,480,235,576,234.7C672,235,768,213,864,186.7C960,160,1056,128,1152,122.7C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
+      <div
+        style="position: absolute; top: 0; left: 0; width: 100%; height: 40vh; background: #1D4ED8; z-index: 0; overflow: hidden;">
+        <svg viewBox="0 0 1440 320" preserveAspectRatio="none"
+          style="position: absolute; bottom: -1px; left: 0; width: 100%; height: auto; z-index: 1; display: block; min-height: 60px;">
+          <path fill="#FFFFFF" fill-opacity="1"
+            d="M0,256L48,245.3C96,235,192,213,288,213.3C384,213,480,235,576,234.7C672,235,768,213,864,186.7C960,160,1056,128,1152,122.7C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z">
+          </path>
         </svg>
       </div>
 
@@ -458,9 +528,13 @@
   ══════════════════════════════════════ -->
     <div id="result-view" class="view portal-layout">
       <!-- Blue Wave Background -->
-      <div style="position: absolute; top: 0; left: 0; width: 100%; height: 40vh; background: #1D4ED8; z-index: 0; overflow: hidden;">
-        <svg viewBox="0 0 1440 320" preserveAspectRatio="none" style="position: absolute; bottom: -1px; left: 0; width: 100%; height: auto; z-index: 1; display: block; min-height: 60px;">
-          <path fill="#FFFFFF" fill-opacity="1" d="M0,256L48,245.3C96,235,192,213,288,213.3C384,213,480,235,576,234.7C672,235,768,213,864,186.7C960,160,1056,128,1152,122.7C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z"></path>
+      <div
+        style="position: absolute; top: 0; left: 0; width: 100%; height: 40vh; background: #1D4ED8; z-index: 0; overflow: hidden;">
+        <svg viewBox="0 0 1440 320" preserveAspectRatio="none"
+          style="position: absolute; bottom: -1px; left: 0; width: 100%; height: auto; z-index: 1; display: block; min-height: 60px;">
+          <path fill="#FFFFFF" fill-opacity="1"
+            d="M0,256L48,245.3C96,235,192,213,288,213.3C384,213,480,235,576,234.7C672,235,768,213,864,186.7C960,160,1056,128,1152,122.7C1248,117,1344,139,1392,149.3L1440,160L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z">
+          </path>
         </svg>
       </div>
 
@@ -642,16 +716,23 @@
               <div class="hero-card-content">
                 <div class="hero-icon-wrap" style="color: #7C3AED; background: #EDE9FE;">
                   <svg fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
+                    <path stroke-linecap="round" stroke-linejoin="round"
+                      d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"></path>
                   </svg>
                 </div>
                 <div class="hero-text-wrap" style="flex:1;">
-                  <span class="badge" style="background: #8B5CF6; color: white; border:none; padding:6px 12px; font-size:0.75rem; margin-bottom:8px; display:inline-block;">OFFLINE READY</span>
+                  <span class="badge"
+                    style="background: #8B5CF6; color: white; border:none; padding:6px 12px; font-size:0.75rem; margin-bottom:8px; display:inline-block;">OFFLINE
+                    READY</span>
                   <h3>Status Sinkronisasi H-1</h3>
-                  <div style="display:flex; justify-content:space-between; margin-bottom: 4px; font-size: 0.85rem; font-weight: 600; color: #4C1D95;">
+                  <div
+                    style="display:flex; justify-content:space-between; margin-bottom: 4px; font-size: 0.85rem; font-weight: 600; color: #4C1D95;">
                     <span id="admin-sync-count">Memuat data...</span>
                   </div>
-                  <p class="text-muted" style="font-size: 0.8rem; margin-top: 4px;">Siswa yang telah men-download soal. <button class="btn btn-outline" style="padding: 4px 8px; font-size: 0.7rem; margin-left: 8px;" onclick="loadAdminSyncStatus()">Refresh Data</button></p>
+                  <p class="text-muted" style="font-size: 0.8rem; margin-top: 4px;">Siswa yang telah men-download soal.
+                    <button class="btn btn-outline" style="padding: 4px 8px; font-size: 0.7rem; margin-left: 8px;"
+                      onclick="loadAdminSyncStatus()">Refresh Data</button>
+                  </p>
                 </div>
               </div>
             </div>
@@ -737,7 +818,8 @@
                 <button class="btn btn-outline" onclick="openImportModal('soal')"
                   style="padding:8px 12px; font-size:0.8rem;">📥 Import CSV</button>
                 <button class="btn btn-outline" onclick="openSoalEditorPage('')"
-                  style="padding:8px 12px; font-size:0.8rem; color:#4F46E5; border-color:#4F46E5;">✏️ Editor Soal</button>
+                  style="padding:8px 12px; font-size:0.8rem; color:#4F46E5; border-color:#4F46E5;">✏️ Editor
+                  Soal</button>
                 <button class="btn btn-primary" onclick="openBankSoalModal()"
                   style="padding:8px 12px; font-size:0.8rem;">➕ Bank Baru</button>
               </div>
@@ -951,7 +1033,8 @@
                 style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
                 <div>
                   <div style="font-weight:600; color:var(--text-main);">Tampilkan Status Ujian di Beranda</div>
-                  <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">Menampilkan daftar ujian hari ini pada halaman login.</div>
+                  <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">Menampilkan daftar ujian hari
+                    ini pada halaman login.</div>
                 </div>
                 <label class="toggle-switch">
                   <input type="checkbox" id="cfgShowExamStatus">
@@ -964,7 +1047,8 @@
                 style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
                 <div>
                   <div style="font-weight:600; color:var(--text-main);">Tampilkan Info Sistem di Beranda</div>
-                  <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">Menampilkan status koneksi, server, dan sinkronisasi pada halaman login.</div>
+                  <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">Menampilkan status koneksi,
+                    server, dan sinkronisasi pada halaman login.</div>
                 </div>
                 <label class="toggle-switch">
                   <input type="checkbox" id="cfgShowSystemInfo">
@@ -1682,6 +1766,15 @@
   </div>
 
   <script defer src="script.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js')
+          .then(reg => console.log('ServiceWorker registered:', reg.scope))
+          .catch(err => console.error('ServiceWorker registration failed:', err));
+      });
+    }
+  </script>
 </body>
 
 </html>

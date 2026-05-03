@@ -690,6 +690,43 @@ function simpleHash(str) {
 }
 
 // --- H-1 PRE-SYNC LOGIC ---
+/**
+ * Memindai semua soal dan menyimpan gambar eksternal ke CacheStorage (PWA)
+ * agar bisa diakses 100% offline tanpa internet.
+ */
+async function cacheAllImages(questions) {
+  if (!('caches' in window)) return;
+  try {
+    const cache = await caches.open('cbt-cache-v1');
+    const imageUrls = [];
+
+    questions.forEach(q => {
+      if (q.image) imageUrls.push(q.image);
+      if (q.opsi) {
+        q.opsi.forEach(o => {
+          if (o.image) imageUrls.push(o.image);
+        });
+      }
+      // Scan for img tags in text (jika ada)
+      const imgRegex = /<img[^>]+src="([^">]+)"/g;
+      let match;
+      if (q.soal) {
+        while ((match = imgRegex.exec(q.soal)) !== null) imageUrls.push(match[1]);
+      }
+    });
+
+    const uniqueUrls = [...new Set(imageUrls)].filter(u => u && u.startsWith('http'));
+    for (const url of uniqueUrls) {
+      try {
+        const cachedResponse = await cache.match(url);
+        if (!cachedResponse) {
+          await cache.add(new Request(url, { mode: 'no-cors' }));
+        }
+      } catch (e) { console.warn("Skip cache gambar:", url); }
+    }
+  } catch (e) { console.warn("PWA Cache error", e); }
+}
+
 async function syncAllQuestions() {
   if (!State.schedules || State.schedules.length === 0) {
     showCustomAlert('Informasi', 'Tidak ada jadwal ujian yang ditemukan untuk disinkronkan.', 'ℹ️');
@@ -747,31 +784,16 @@ async function syncAllQuestions() {
 
     try {
       // SkipTokenCheck = true agar bisa download H-1 tanpa tahu token
-      const data = await getExamDataOptimized(sch.id, '', true, true);
-
-      // 1. Validasi Integritas Data
-      if (!validateDataIntegrity(data)) {
-        throw new Error("Data korup atau tidak lengkap");
-      }
-
-      // 2. Simpan Hash Token untuk Offline Login (jika token tersedia di data)
-      if (data && data.rawToken) {
-        localStorage.setItem(`CBT_TOKEN_HASH_${sch.id}`, simpleHash(String(data.rawToken).trim().toUpperCase()));
-      }
 
       completed.add(sch.id);
-      localStorage.setItem('SYNC_PROGRESS', JSON.stringify({
-        completed: [...completed],
-        timestamp: Date.now()
-      }));
+      localStorage.setItem('SYNC_PROGRESS', JSON.stringify({ completed: [...completed] }));
+      await new Promise(r => setTimeout(r, baseDelay));
     } catch (e) {
-      console.warn("Gagal sinkron " + sch.nama, e);
+      console.warn("Gagal sync:", sch.id, e);
     }
-    // Jeda adaptif agar tidak membebani Firebase Free Tier
-    await sleep(baseDelay);
   }
 
-  // Matikan Wake Lock
+  // Aktifkan Wake Lock
   await toggleWakeLock(false);
 
   // Cek apakah semua benar-benar selesai
@@ -2574,7 +2596,36 @@ async function fetchPortalExams() {
   }
 }
 
-// masukUjianHandler removed as per user request
+// --- ADMIN CORE LAZY LOADING (Optimization) ---
+async function ensureAdminLoaded() {
+  if (window.loadAdminDashboard) return true;
+  showLoading('Menginisialisasi modul Proktor...');
+  try {
+    await new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = 'admin-core.js';
+      script.onload = resolve;
+      script.onerror = reject;
+      document.body.appendChild(script);
+    });
+    hideLoading();
+    return true;
+  } catch (e) {
+    hideLoading();
+    showCustomAlert('Gagal Memuat', 'Gagal memuat modul Admin. Periksa koneksi internet.', '❌');
+    return false;
+  }
+}
+
+// Stub function to trigger lazy loading
+window.showAdminAuthModal = async function () {
+  if (await ensureAdminLoaded()) {
+    if (typeof _showAdminAuthModal === 'function') _showAdminAuthModal();
+    else if (typeof window.showAdminAuthModal === 'function' && !window.showAdminAuthModal.toString().includes('ensureAdminLoaded')) {
+      window.showAdminAuthModal();
+    }
+  }
+};
 
 // Initial Call
 initPortal();
@@ -2593,698 +2644,7 @@ document.addEventListener('keydown', (e) => {
 
 // Logo tap handler is now registered inside initPortal() to ensure DOM is ready.
 
-function showAdminAuthModal() {
-  const overlay = document.getElementById('admin-overlay');
-  if (overlay) overlay.classList.add('active');
-  const modal = document.getElementById('admin-login-modal');
-  if (modal) {
-    modal.style.display = 'flex';
-    void modal.offsetWidth;
-    modal.style.opacity = '1';
-    modal.style.transform = 'translate(-50%, -50%) scale(1)';
-  }
-  document.getElementById('adminTokenInput').value = '';
-  document.getElementById('adminTokenInput').focus();
-}
-
-function hideAdminAuthModal() {
-  const modal = document.getElementById('admin-login-modal');
-  modal.style.opacity = '0';
-  modal.style.transform = 'translate(-50%, -50%) scale(0.95)';
-  setTimeout(() => {
-    modal.style.display = 'none';
-    const overlay = document.getElementById('admin-overlay');
-    if (overlay) overlay.classList.remove('active');
-  }, 300);
-}
-
-safeAddListener('btnCancelAdmin', 'click', hideAdminAuthModal);
-
-safeAddListener('btnSubmitAdmin', 'click', async function () {
-  const pwd = document.getElementById('adminTokenInput').value.trim();
-  if (!pwd) return;
-  const btn = document.getElementById('btnSubmitAdmin');
-  if (btn) btn.textContent = '...';
-  try {
-    const res = await gasRun('validateAdmin', pwd);
-    if (res.success && res.valid) {
-      hideAdminAuthModal();
-      loadAdminDashboard();
-    } else if (res.success && !res.valid) {
-      showCustomAlert('Akses Ditolak', 'Sandi Proktor tidak valid. Coba lagi.', '🔒');
-    } else {
-      showCustomAlert('Gagal', 'Gagal: ' + (res.message || 'Unknown error'), '❌');
-    }
-  } catch (e) {
-    console.error("Admin Auth Error:", e);
-    showCustomAlert('Network Error', 'Network Error: ' + e.message, '🌐');
-  }
-  if (btn) btn.textContent = 'Verifikasi';
-});
-
-safeAddListener('btnAdminLogout', 'click', () => {
-  showView('login-view');
-  initPortal();
-});
-
-async function loadAdminDashboard() {
-  showLoading('Memuat Intelijen Proktor...');
-  try {
-    // Only fetch peserta once and cache it to save bandwidth (Armor 1000)
-    const skipPeserta = !!(window.adminState && window.adminState.peserta && window.adminState.peserta.length > 0);
-    const res = await gasRun('getAdminMonitoringData', skipPeserta);
-
-    if (!skipPeserta) window.adminState.peserta = res.peserta || [];
-    else res.peserta = window.adminState.peserta;
-    if (res.success) {
-      showView('admin-dash-view');
-      renderAdminDashboard(res);
-      loadAdminSyncStatus(); // Armor 1000: Muat status sinkronisasi H-1
-    } else {
-      console.error("Monitoring Fetch Failed:", res.message);
-      showCustomAlert('Gagal Memuat', 'Gagal memuat monitoring: ' + res.message, '❌');
-      showView('login-view');
-    }
-  } catch (e) {
-    console.error("Admin Dashboard Crash:", e);
-    showCustomAlert('Koneksi Gagal', 'Koneksi ke server gagal. Periksa internet.', '🌐');
-    showView('login-view');
-  }
-}
-
-window.loadAdminSyncStatus = async function () {
-  const countEl = document.getElementById('admin-sync-count');
-  if (!countEl) return;
-
-  try {
-    countEl.textContent = 'Memuat data...';
-    await dbConnectFast();
-    const snap = await db.ref('/status_sync').once('value');
-    const data = snap.val() || {};
-
-    // Hitung total unik peserta dari semua jadwal
-    const uniqueStudents = new Set();
-    for (let examId in data) {
-      for (let studentId in data[examId]) {
-        uniqueStudents.add(studentId);
-      }
-    }
-
-    const syncCount = uniqueStudents.size;
-    const totalSiswa = (window.adminState && window.adminState.peserta) ? window.adminState.peserta.length : 0;
-
-    if (totalSiswa > 0) {
-      const pct = Math.min(100, Math.round((syncCount / totalSiswa) * 100));
-      countEl.textContent = `${syncCount} / ${totalSiswa} Siswa Siap (${pct}%)`;
-    } else {
-      countEl.textContent = `${syncCount} Siswa Siap`;
-    }
-
-  } catch (e) {
-    console.warn("Gagal muat status sync", e);
-    if (e.message && e.message.toLowerCase().includes('permission')) {
-      countEl.textContent = 'Akses Ditolak (Cek Rules Firebase)';
-    } else {
-      countEl.textContent = 'Gagal memuat: ' + (e.message || 'Error');
-    }
-  } finally {
-    dbDisconnect();
-  }
-};
-
-window.adminState = { hasil: [], radar: [], monitor: null, monitorPage: {}, peserta: [] };
-
-function renderPaginationControls(containerId, total, perPage, current, callbackName, idParam) {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-  const totalPages = Math.ceil(total / perPage);
-  if (totalPages <= 1) { container.innerHTML = ''; return; }
-
-  let html = `<button class="page-btn" onclick="${callbackName}(${current - 1}${idParam ? ',\'' + idParam + '\'' : ''})" ${current === 1 ? 'disabled' : ''}>&laquo;</button>`;
-  let start = Math.max(1, current - 2);
-  let end = Math.min(totalPages, current + 2);
-
-  if (start > 1) html += `<button class="page-btn" onclick="${callbackName}(1${idParam ? ',\'' + idParam + '\'' : ''})">1</button>${start > 2 ? '<span style="color:var(--text-muted)">...</span>' : ''}`;
-  for (let i = start; i <= end; i++) {
-    html += `<button class="page-btn ${i === current ? 'active' : ''}" onclick="${callbackName}(${i}${idParam ? ',\'' + idParam + '\'' : ''})">${i}</button>`;
-  }
-  if (end < totalPages) html += `${end < totalPages - 1 ? '<span style="color:var(--text-muted)">...</span>' : ''}<button class="page-btn" onclick="${callbackName}(${totalPages}${idParam ? ',\'' + idParam + '\'' : ''})">${totalPages}</button>`;
-  html += `<button class="page-btn" onclick="${callbackName}(${current + 1}${idParam ? ',\'' + idParam + '\'' : ''})" ${current === totalPages ? 'disabled' : ''}>&raquo;</button>`;
-
-  container.innerHTML = html;
-}
-
-function renderAdminDashboard(data = window.adminState.monitor) {
-  window.adminState.monitor = data;
-  if (!data) return;
-
-  // 1. Render Tokens
-  const tl = document.getElementById('admin-token-list');
-  if (data.activeExams.length > 0) {
-    tl.innerHTML = data.activeExams.map(x => `
-       <div style="border-bottom:1px solid var(--border); padding-bottom:8px;">
-         <div style="font-weight:600;">${x.nama}</div>
-         <div style="color:var(--danger); font-family:var(--mono); font-size:1.2rem; font-weight:700; letter-spacing:2px;">${x.token}</div>
-       </div>
-     `).join('');
-  } else { tl.innerHTML = '<p class="text-muted">Tidak ada ujian aktif.</p>'; }
-
-  // 2. Render Monitoring
-  const ml = document.getElementById('admin-monitoring-list');
-  if (data.activeExams.length === 0) {
-    ml.innerHTML = '<p class="text-muted">Tidak ada evaluasi kepesertaan. Jadwal ujian sedang kosong.</p>';
-    return;
-  }
-
-  ml.innerHTML = data.activeExams.map(ex => {
-    let selesai = 0, mengerjakan = 0, blmSelesai = 0;
-    const completedSet = new Set(data.completions[ex.id] || []);
-
-    const rRaw = data.peserta.map(p => {
-      let d = 'BELUM';
-      let badgeClass = 'status-belum';
-      const isOnline = (data.onlines && data.onlines[ex.id] && (p.id in data.onlines[ex.id]));
-      if (completedSet.has(p.id)) { d = 'SELESAI'; badgeClass = 'status-selesai'; selesai++; }
-      else if (isOnline) { d = 'MENGERJAKAN'; badgeClass = 'status-online'; mengerjakan++; }
-      else { blmSelesai++; }
-      return { html: `<tr><td>${p.nama}</td><td>${p.kelas}</td><td><span class="status-badge ${badgeClass}">${d}</span></td></tr>`, stat: d };
-    });
-
-    const absenMode = document.getElementById('chkAbsenMode') ? document.getElementById('chkAbsenMode').checked : false;
-    const filterRows = rRaw.filter(x => !absenMode || x.stat === 'BELUM');
-
-    const page = window.adminState.monitorPage[ex.id] || 1;
-    const perPage = 20;
-    const slicedRows = filterRows.slice((page - 1) * perPage, page * perPage).map(x => x.html).join('');
-
-    return `
-       <div class="admin-exam-card">
-         <h4 style="align-items:center;">
-           <span>${ex.nama}</span>
-           <button class="btn btn-outline" style="border-color:#38BDF8; color:#0284C7; padding:4px 10px; font-size:0.75rem;" onclick="promptBroadcast('${ex.id}')">📢 Kirim Pesan</button>
-         </h4>
-         <div class="admin-table-wrap">
-           <table class="admin-table">
-             <thead><tr><th>Nama</th><th>Kelas</th><th>Status</th></tr></thead>
-             <tbody>${slicedRows || '<tr><td colspan="3" class="text-muted text-center" style="padding:16px;">(Semua siswa sudah masuk)</td></tr>'}</tbody>
-           </table>
-         </div>
-         <div id="admin-monitor-pg-${ex.id}" class="pagination-controls"></div>
-         <div class="admin-stats" style="margin-top:12px;">
-           <span>Total: <b>${data.peserta.length}</b></span>
-           <span class="stat-done">Selesai: <b>${selesai}</b></span>
-           <span style="color:var(--primary);">Aktif: <b>${mengerjakan}</b></span>
-           <span class="stat-pending">Kosong: <b>${blmSelesai}</b></span>
-         </div>
-       </div>
-     `;
-  }).join('');
-
-  // Render Pagination Pijakan untuk Monitor
-  data.activeExams.forEach(ex => {
-    const absenMode = document.getElementById('chkAbsenMode') ? document.getElementById('chkAbsenMode').checked : false;
-    const total = absenMode ? ex.blmSelesai : data.peserta.length;
-    // Re-hitung total untuk filter 
-    const completedSet = new Set(data.completions[ex.id] || []);
-    let rawTotal = 0;
-    data.peserta.forEach(p => {
-      const hasSelesai = completedSet.has(p.id);
-      const hasMengerjakan = (data.onlines && data.onlines[ex.id] && (p.id in data.onlines[ex.id]));
-      const stat = hasSelesai ? 'SELESAI' : (hasMengerjakan ? 'MENGERJAKAN' : 'BELUM');
-      if (!absenMode || stat === 'BELUM') rawTotal++;
-    });
-    renderPaginationControls(`admin-monitor-pg-${ex.id}`, rawTotal, 20, window.adminState.monitorPage[ex.id] || 1, 'changeMonitorPage', ex.id);
-  });
-}
-
-function changeMonitorPage(page, examId) {
-  window.adminState.monitorPage[examId] = page;
-  renderAdminDashboard(window.adminState.monitor);
-}
-
-// --- Admin Super Dashboard Logic ---
-document.querySelectorAll('.admin-sidebar-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    if (!btn.dataset.tab) return;
-    document.querySelectorAll('.admin-sidebar-btn').forEach(b => b.classList.remove('active'));
-    document.querySelectorAll('.admin-tab-content').forEach(c => c.style.display = 'none');
-    btn.classList.add('active');
-    document.getElementById(btn.dataset.tab).style.display = 'flex';
-
-    const title = document.getElementById('admin-page-title');
-    if (title) title.innerText = btn.innerText;
-
-    if (btn.dataset.tab === 'tab-jadwal') loadAdminJadwal();
-    else if (btn.dataset.tab === 'tab-siswa') loadAdminSiswa();
-    else if (btn.dataset.tab === 'tab-soal') loadAdminSoal();
-  });
-});
-
-async function loadAdminSiswa() {
-  const tbody = document.getElementById('admin-siswa-tbody');
-  tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Memuat data dari Firebase...</td></tr>';
-  const snap = await db.ref('/peserta').once('value');
-  const data = snap.val() || {};
-  const keys = Object.keys(data);
-  if (keys.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Tidak ada data siswa.</td></tr>';
-    return;
-  }
-  let html = '';
-  for (let id in data) {
-    html += `<tr>
-           <td><strong>${id}</strong></td>
-           <td>${data[id].nama}</td>
-           <td>${data[id].kelas}</td>
-           <td>
-              <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem;" onclick="editSiswa('${id}')">✏️</button>
-              <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem; color:#EF4444; border-color:#EF4444;" onclick="deleteSiswa('${id}')">🗑️</button>
-           </td>
-       </tr>`;
-  }
-  tbody.innerHTML = html;
-}
-
-async function loadAdminSoal() {
-  const tbody = document.getElementById('admin-soal-tbody');
-  tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Memuat data dari Firebase...</td></tr>';
-  const snap = await db.ref('/soal').once('value');
-  const data = snap.val() || {};
-  const keys = Object.keys(data);
-  if (keys.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Belum ada bank soal.</td></tr>';
-    return;
-  }
-  let html = '';
-  for (let bankId in data) {
-    html += `<tr>
-           <td><strong>${bankId}</strong> <br><small class="text-muted">${Object.keys(data[bankId]).length} soal</small></td>
-           <td>
-              <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem;" onclick="previewSoal('${bankId}')">👀 Preview</button>
-              <button class="btn btn-primary" style="padding:4px 8px; font-size:0.75rem;" onclick="openSoalEditorPage('${bankId}')">✏️ Editor</button>
-              <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem; color:#EF4444; border-color:#EF4444;" onclick="deleteBankSoal('${bankId}')">🗑️</button>
-           </td>
-       </tr>`;
-  }
-  tbody.innerHTML = html;
-}
-
-let currentEditSiswaId = null;
-
-window.openSiswaModal = function () {
-  currentEditSiswaId = null;
-  document.getElementById('siswa-modal-title').innerText = 'Tambah Siswa Baru';
-  document.getElementById('siswaIdInput').value = '';
-  document.getElementById('siswaIdInput').disabled = false;
-  document.getElementById('siswaNamaInput').value = '';
-  document.getElementById('siswaKelasInput').value = '';
-
-  document.getElementById('siswa-overlay').classList.add('active');
-  document.getElementById('siswa-modal').style.display = 'flex';
-  setTimeout(() => {
-    document.getElementById('siswa-modal').style.opacity = '1';
-    document.getElementById('siswa-modal').style.transform = 'translate(-50%, -50%) scale(1)';
-  }, 10);
-}
-
-window.closeSiswaModal = function () {
-  document.getElementById('siswa-overlay').classList.remove('active');
-  document.getElementById('siswa-modal').style.opacity = '0';
-  document.getElementById('siswa-modal').style.transform = 'translate(-50%, -50%) scale(0.95)';
-  setTimeout(() => {
-    document.getElementById('siswa-modal').style.display = 'none';
-  }, 300);
-}
-
-window.editSiswa = async function (id) {
-  showLoading('Menarik data siswa...');
-  try {
-    const snap = await db.ref('/peserta/' + id).once('value');
-    const data = snap.val();
-    hideLoading();
-    if (data) {
-      currentEditSiswaId = id;
-      document.getElementById('siswa-modal-title').innerText = 'Edit Siswa';
-      document.getElementById('siswaIdInput').value = id;
-      document.getElementById('siswaIdInput').disabled = true; // prevent changing ID on edit
-      document.getElementById('siswaNamaInput').value = data.nama || '';
-      document.getElementById('siswaKelasInput').value = data.kelas || '';
-
-      document.getElementById('siswa-overlay').classList.add('active');
-      document.getElementById('siswa-modal').style.display = 'flex';
-      setTimeout(() => {
-        document.getElementById('siswa-modal').style.opacity = '1';
-        document.getElementById('siswa-modal').style.transform = 'translate(-50%, -50%) scale(1)';
-      }, 10);
-    } else {
-      showCustomAlert('Tidak Ditemukan', 'Data siswa tidak ditemukan.', '🔍');
-    }
-  } catch (e) {
-    hideLoading();
-    showCustomAlert('Gagal', 'Gagal mengambil data dari server.', '❌');
-  }
-}
-
-window.saveSiswa = async function () {
-  const id = document.getElementById('siswaIdInput').value.trim();
-  const nama = document.getElementById('siswaNamaInput').value.trim();
-  const kelas = document.getElementById('siswaKelasInput').value.trim();
-
-  if (!id || !nama || !kelas) return showCustomAlert('Data Tidak Lengkap', 'Semua kolom wajib diisi.', '📝');
-
-  showLoading('Menyimpan data...');
-  try {
-    await db.ref('/peserta/' + id).update({
-      nama,
-      nama_lower: nama.toLowerCase(),
-      kelas
-    });
-    hideLoading();
-    closeSiswaModal();
-    loadAdminSiswa();
-  } catch (e) {
-    hideLoading();
-    showCustomAlert('Gagal Menyimpan', 'Gagal menyimpan data siswa.', '❌');
-  }
-}
-
-window.fixPesertaIndex = async function () {
-  if (!confirm('Sistem akan memindai seluruh data siswa dan memperbaiki indeks pencarian (nama_lower). Proses ini mungkin memakan waktu beberapa detik tergantung jumlah siswa.\n\nLanjutkan?')) return;
-
-  showLoading('Memperbaiki Indeks...');
-  try {
-    const snap = await db.ref('/peserta').once('value');
-    const data = snap.val() || {};
-    const updates = {};
-    let count = 0;
-
-    for (let id in data) {
-      const nama = String(data[id].nama || '').trim();
-      const currentNamaLower = data[id].nama_lower || '';
-      const targetNamaLower = nama.toLowerCase();
-
-      if (currentNamaLower !== targetNamaLower) {
-        updates[`${id}/nama_lower`] = targetNamaLower;
-        updates[`${id}/nama`] = nama; // Also clean up whitespace in original name
-        count++;
-      }
-    }
-
-    if (count > 0) {
-      await db.ref('/peserta').update(updates);
-      hideLoading();
-      showCustomAlert('Pemeliharaan Selesai', `Berhasil memperbaiki ${count} data siswa.`, '✅');
-    } else {
-      hideLoading();
-      showCustomAlert('Data Sudah Benar', 'Seluruh data sudah benar. Tidak ada yang perlu diperbaiki.', '✅');
-    }
-  } catch (e) {
-    console.error(e);
-    hideLoading();
-    showCustomAlert('Gagal', 'Gagal melakukan pemeliharaan database.', '❌');
-  }
-}
-
-// --- SOAL EDITOR PAGE LAUNCHER ---
-function openBankSoalModal() {
-  openSoalEditorPage('');
-}
-
-window.openSoalEditorPage = function (bankId = '') {
-  // Editor kini punya login form sendiri — cukup buka URL-nya
-  const base = window.location.pathname.replace(/\/[^/]*$/, '/');
-  const editorUrl = window.location.origin + base + 'soal-editor.html';
-  const w = window.open(editorUrl, '_blank');
-  if (!w) {
-    showCustomAlert('Popup Diblokir', 'Izinkan popup untuk situs ini lalu coba lagi.', '⚠️');
-  }
-};
-
-window.deleteSiswa = async function (id) {
-  if (confirm('Hapus siswa ' + id + '?')) {
-    showLoading('Menghapus Siswa...');
-    try {
-      await db.ref('/peserta/' + id).remove();
-      loadAdminSiswa();
-    } catch (e) {
-      showCustomAlert('Gagal Menghapus', 'Gagal menghapus: ' + e.message, '❌');
-    } finally {
-      hideLoading();
-    }
-  }
-}
-window.deleteBankSoal = async function (id) {
-  if (confirm('Hapus bank soal ' + id + '? Ini juga akan menghapus kunci jawaban.')) {
-    showLoading('Menghapus Bank Soal...');
-    try {
-      await db.ref('/soal/' + id).remove();
-      await db.ref('/kunci/' + id).remove();
-      loadAdminSoal();
-    } catch (e) {
-      showCustomAlert('Gagal Menghapus', 'Gagal menghapus: ' + e.message, '❌');
-    } finally {
-      hideLoading();
-    }
-  }
-}
-window.previewSoal = async function (bankId) {
-  showLoading('Menarik Bank Soal...');
-  try {
-    const sSnap = await db.ref(`/soal/${bankId}`).once('value');
-    const kSnap = await db.ref(`/kunci/${bankId}`).once('value');
-    const sData = sSnap.val() || {};
-    const kData = kSnap.val() || {};
-    hideLoading();
-
-    const questions = [];
-    let idx = 0;
-    for (let qId in sData) {
-      let q = sData[qId];
-      q._index = idx++;
-      q.kunci = kData[qId] || '';
-      if (!q.opsi) q.opsi = [];
-      questions.push(q);
-    }
-
-    document.getElementById('preview-title').textContent = 'Bank Soal: ' + bankId;
-    const content = document.getElementById('preview-content-area');
-
-    PreviewState.questions = questions;
-    PreviewState.currentIndex = 0;
-    PreviewState.examId = bankId;
-
-    if (questions.length === 0) {
-      document.getElementById('prev-q-number').innerHTML = 'SOAL Kosong';
-      document.getElementById('prev-q-text').innerHTML = '<p class="text-muted text-center" style="margin-top:40px;">Soal belum diunggah.</p>';
-      document.getElementById('prev-q-options').innerHTML = '';
-      document.getElementById('prev-q-image-container').style.display = 'none';
-      document.getElementById('btnPrevPreview').parentElement.style.display = 'none';
-    } else {
-      document.getElementById('btnPrevPreview').parentElement.style.display = 'flex';
-      renderPreviewQuestion(0);
-    }
-
-    const overlay = document.getElementById('preview-overlay');
-    const modal = document.getElementById('admin-preview-modal');
-    if (overlay) overlay.classList.add('active');
-    if (modal) {
-      modal.style.display = 'flex';
-      setTimeout(() => {
-        modal.style.opacity = '1';
-        modal.style.transform = 'translate(-50%, -50%) scale(1)';
-      }, 10);
-    }
-  } catch (e) {
-    hideLoading();
-    showCustomAlert('Gagal', 'Gagal mengambil data Bank Soal.', '❌');
-    console.error(e);
-  }
-}
-
-async function loadAdminJadwal() {
-  const container = document.getElementById('admin-jadwal-list');
-  const tbody = document.getElementById('admin-jadwal-tbody');
-
-  if (container) container.innerHTML = '<p class="text-muted" style="text-align:center; padding: 20px;">Mengunduh jadwal dari server...</p>';
-  if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Memuat data dari Firebase...</td></tr>';
-
-  try {
-    const res = await gasRun('getAdminJadwalFull');
-    if (res.success) {
-      if (res.data.length === 0) {
-        if (container) container.innerHTML = '<p class="text-muted">Jadwal masih kosong.</p>';
-        if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Belum ada jadwal.</td></tr>';
-      } else {
-        // Render List (Live Control)
-        if (container) {
-          container.innerHTML = res.data.map(j => {
-            const mulaiStr = j.mulai ? new Date(j.mulai).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-';
-            const selesaiStr = j.selesai ? new Date(j.selesai).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-';
-            return `
-              <div class="admin-exam-card" style="margin-bottom:12px;">
-                <h4 style="margin-bottom:4px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
-                  <span>${j.id} - ${j.nama}</span>
-                  <div style="display:flex; gap:4px; flex-wrap:wrap;">
-                    <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem;" onclick="openPrintModal('${j.id}', '${j.nama}')">🖨️ Presensi</button>
-                    <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem;" onclick="showAdminPreview('${j.id}')">🔍 Preview</button>
-                  </div>
-                </h4>
-                <p style="font-size:0.78rem; color:var(--text-muted); margin:0 0 12px 0;">⏰ ${mulaiStr} → ${selesaiStr}</p>
-                <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
-                  <div style="flex:1; min-width:90px;">
-                    <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:4px;">Token</label>
-                    <input type="text" id="j-token-${j.id}" class="form-control" value="${j.token || ''}" style="padding:6px 12px; font-size:0.9rem;" />
-                  </div>
-                  <div style="flex:1; min-width:110px;">
-                    <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:4px;">Status</label>
-                    <select id="j-status-${j.id}" class="form-control" style="padding:6px 12px; font-size:0.9rem;">
-                      <option value="Aktif" ${j.aktif ? 'selected' : ''}>Aktif</option>
-                      <option value="Tidak" ${!j.aktif ? 'selected' : ''}>Tidak Aktif</option>
-                    </select>
-                  </div>
-                  <div style="flex:1; min-width:130px;">
-                    <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:4px;">Override Waktu</label>
-                    <select id="j-force-${j.id}" class="form-control" style="padding:6px 12px; font-size:0.9rem;">
-                      <option value="0" ${!j.force_aktif ? 'selected' : ''}>Ikuti Jadwal Waktu</option>
-                      <option value="1" ${j.force_aktif ? 'selected' : ''}>⚡ Paksa Aktif Sekarang</option>
-                    </select>
-                  </div>
-                  <div style="flex-shrink:0; display:flex; gap:4px;">
-                    <button class="btn btn-outline" style="padding:6px 12px; font-size:0.85rem;" onclick="openJadwalModal('${j.id}')">✏️ Edit</button>
-                    <button class="btn btn-warning" style="padding:6px 12px; font-size:0.85rem;" onclick="saveAdminJadwal('${j.id}')">💾 Simpan</button>
-                  </div>
-                </div>
-              </div>`;
-          }).join('');
-        }
-
-        // Render Table
-        if (tbody) {
-          tbody.innerHTML = res.data.map(j => {
-            const nowMs = Date.now();
-            let statusLabel = j.force_aktif ? '<span style="color:#D97706;font-size:0.75rem;">⚡ Force Aktif</span>' : (j.aktif ? (nowMs >= j.mulai && nowMs <= j.selesai ? '<span style="color:#059669;font-size:0.75rem;">● Aktif</span>' : '<span style="color:#6B7280;font-size:0.75rem;">○ Terjadwal</span>') : '<span style="color:#EF4444;font-size:0.75rem;">✕ Non-Aktif</span>');
-            return `
-              <tr>
-                <td><strong>${j.id}</strong></td>
-                <td>${j.nama}<br>${statusLabel}</td>
-                <td>${j.nama_soal || '-'}</td>
-                <td style="display:flex; gap:4px; flex-wrap:wrap;">
-                  <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem;" onclick="openJadwalModal('${j.id}')">✏️ Edit</button>
-                  <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem; color:#EF4444; border-color:#EF4444;" onclick="deleteJadwal('${j.id}')">🗑️ Hapus</button>
-                </td>
-              </tr>`;
-          }).join('');
-        }
-      }
-    } else {
-      if (container) container.innerHTML = '<p class="text-muted text-danger">Gagal memuat jadwal.</p>';
-      if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Gagal memuat.</td></tr>';
-    }
-  } catch (e) {
-    if (container) container.innerHTML = '<p class="text-muted text-danger">Koneksi terputus.</p>';
-    if (tbody) tbody.innerHTML = '<tr><td colspan="4" class="text-center text-danger">Koneksi terputus.</td></tr>';
-  }
-}
-
-window.deleteJadwal = async function (id) {
-  if (confirm('Hapus jadwal ujian ' + id + '?')) {
-    showLoading('Menghapus Jadwal...');
-    try {
-      await db.ref('/jadwal/' + id).remove();
-      loadAdminJadwal();
-    } catch (e) {
-      showCustomAlert('Gagal Menghapus', 'Gagal menghapus: ' + e.message, '❌');
-    } finally {
-      hideLoading();
-    }
-  }
-}
-
-async function saveAdminJadwal(id) {
-  const token = document.getElementById(`j-token-${id}`).value;
-  const status = document.getElementById(`j-status-${id}`).value;
-  const forceEl = document.getElementById(`j-force-${id}`);
-  const force_aktif = forceEl ? forceEl.value === '1' : false;
-  showLoading('Menyimpan ke server...');
-  try {
-    const res = await gasRun('updateJadwalSistem', id, token, status, force_aktif);
-    if (res.success) {
-      showCustomAlert('Berhasil', `Pembaruan jadwal berhasil! ${force_aktif ? '⚡ Paksa Aktif aktif.' : ''}`, '✅');
-      loadAdminJadwal();
-    } else {
-      showCustomAlert('Gagal Menyimpan', 'Gagal menyimpan: ' + res.message, '❌');
-    }
-  } catch (e) { showCustomAlert('Kesalahan Jaringan', 'Terjadi kesalahan jaringan. Periksa koneksi.', '🌐'); }
-}
-
-async function loadAdminHasil(resetPage = false) {
-  const tbHasil = document.getElementById('admin-hasil-tbody');
-  const tbRadar = document.getElementById('admin-radar-tbody');
-
-  if (resetPage) {
-    tbHasil.innerHTML = '<tr><td colspan="4" class="text-muted" style="text-align:center; padding:20px;">Menarik rekap laporan terbaru...</td></tr>';
-    tbRadar.innerHTML = '<tr><td colspan="4" class="text-muted" style="text-align:center; padding:20px;">Menganalisa log kecurangan...</td></tr>';
-    try {
-      const res = await gasRun('getAdminLaporanLengkap');
-      if (res.success) {
-        window.adminState.hasil = res.hasil;
-        window.adminState.radar = res.pelanggaran;
-      } else {
-        tbHasil.innerHTML = '<tr><td colspan="4" class="text-danger" style="text-align:center; padding:20px;">Gagal menarik data Server.</td></tr>';
-        tbRadar.innerHTML = '<tr><td colspan="4" class="text-danger" style="text-align:center; padding:20px;">Gagal memuat log The Radar.</td></tr>';
-        return;
-      }
-    } catch (e) {
-      tbHasil.innerHTML = '<tr><td colspan="4" class="text-danger" style="text-align:center; padding:20px;">Koneksi terputus.</td></tr>';
-      return;
-    }
-  }
-
-  renderAdminHasilPage(1);
-  renderAdminRadarPage(1);
-}
-
-function renderAdminHasilPage(page) {
-  const perPage = 20;
-  const tbHasil = document.getElementById('admin-hasil-tbody');
-  const data = window.adminState.hasil || [];
-  if (data.length === 0) {
-    tbHasil.innerHTML = '<tr><td colspan="4" class="text-muted text-center" style="padding:20px;">Belum ada jawaban masuk.</td></tr>';
-    document.getElementById('admin-hasil-pagination').innerHTML = ''; return;
-  }
-
-  const sliced = data.slice((page - 1) * perPage, page * perPage);
-  tbHasil.innerHTML = sliced.map(h => `
-     <tr>
-       <td style="white-space:nowrap; font-size:0.8rem; color:var(--text-muted);">${h.waktu}</td>
-       <td style="font-weight:600;">${h.nama} <span style="font-size:0.75rem; color:var(--text-muted); display:block;">${h.kelas}</span></td>
-       <td>${h.ujian}</td>
-       <td style="font-weight:700; color:#059669; font-size:1.1rem;">${h.skor}</td>
-     </tr>
-   `).join('');
-  renderPaginationControls('admin-hasil-pagination', data.length, perPage, page, 'renderAdminHasilPage');
-}
-
-function renderAdminRadarPage(page) {
-  const perPage = 20;
-  const tbRadar = document.getElementById('admin-radar-tbody');
-  const data = window.adminState.radar || [];
-  if (data.length === 0) {
-    tbRadar.innerHTML = '<tr><td colspan="4" class="text-muted text-center" style="padding:20px;">Sistem bersih & aman (Tidak ada log).</td></tr>';
-    document.getElementById('admin-radar-pagination').innerHTML = ''; return;
-  }
-
-  const sliced = data.slice((page - 1) * perPage, page * perPage);
-  tbRadar.innerHTML = sliced.map(r => `
-     <tr>
-       <td style="white-space:nowrap; font-size:0.8rem; color:var(--text-muted);">${r.waktu}</td>
-       <td style="font-weight:600; color:var(--text-main);">${r.nama}</td>
-       <td>${r.ujian}</td>
-       <td style="color:#DC2626; font-size:0.85rem; font-weight:500;">${r.tipe}</td>
-     </tr>
-   `).join('');
-  renderPaginationControls('admin-radar-pagination', data.length, perPage, page, 'renderAdminRadarPage');
-}
+// masukUjianHandler removed as per user request
 
 // --- PENGATURAN KEAMANAN ADMIN ---
 window.loadAdminSettings = async function () {
@@ -4011,8 +3371,6 @@ async function importSiswaExcel(jsonData) {
     showCustomAlert('Import Gagal', 'Tidak ada data valid di Excel. Pastikan ID ada di kolom A.', '❌');
   }
 }
-
-// (Duplicate importSoalExcel removed)
 
 async function importSiswaCSV(csvText) {
   const lines = csvText.split('\n');

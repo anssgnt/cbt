@@ -2821,6 +2821,7 @@ h4 {
   from {
     opacity: 0;
   }
+
   to {
     opacity: 1;
   }
@@ -2845,6 +2846,7 @@ h4 {
     transform: scale(0.9);
     opacity: 0;
   }
+
   to {
     transform: scale(1);
     opacity: 1;
@@ -2990,7 +2992,7 @@ h4 {
 
 .landing-btn-outline {
   width: 100%;
-   background: #1D4ED8;
+  background: #1D4ED8;
   color: #FFFFFF;
   border: none;
   border-radius: 12px;
@@ -3065,9 +3067,20 @@ h4 {
   flex-shrink: 0;
 }
 
-.landing-exam-icon.yellow { background: #FEF08A; color: #CA8A04; }
-.landing-exam-icon.blue { background: #DBEAFE; color: #2563EB; }
-.landing-exam-icon.green { background: #DCFCE7; color: #16A34A; }
+.landing-exam-icon.yellow {
+  background: #FEF08A;
+  color: #CA8A04;
+}
+
+.landing-exam-icon.blue {
+  background: #DBEAFE;
+  color: #2563EB;
+}
+
+.landing-exam-icon.green {
+  background: #DCFCE7;
+  color: #16A34A;
+}
 
 .landing-exam-info {
   flex: 1;
@@ -3096,9 +3109,20 @@ h4 {
   gap: 6px;
 }
 
-.landing-exam-badge.wait { background: #FEF08A; color: #CA8A04; }
-.landing-exam-badge.live { background: #DBEAFE; color: #2563EB; }
-.landing-exam-badge.done { background: #DCFCE7; color: #16A34A; }
+.landing-exam-badge.wait {
+  background: #FEF08A;
+  color: #CA8A04;
+}
+
+.landing-exam-badge.live {
+  background: #DBEAFE;
+  color: #2563EB;
+}
+
+.landing-exam-badge.done {
+  background: #DCFCE7;
+  color: #16A34A;
+}
 
 .landing-sys-grid {
   display: grid;
@@ -3115,7 +3139,7 @@ h4 {
   flex-direction: column;
   align-items: center;
   text-align: center;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.02);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.02);
 }
 
 .landing-sys-icon {
