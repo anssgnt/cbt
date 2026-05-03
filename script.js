@@ -524,8 +524,8 @@ async function getExamDataOptimized(examId, token, forceRefresh = false, skipTok
   if (!forceRefresh) {
     const cached = localStorage.getItem(CACHE_KEY);
     if (cached) {
-      try { 
-        const parsedData = JSON.parse(cached); 
+      try {
+        const parsedData = JSON.parse(cached);
         // Validasi ekstra: pastikan object punya array questions
         if (parsedData && parsedData.questions && parsedData.questions.length > 0) {
           return parsedData;
@@ -543,7 +543,7 @@ async function getExamDataOptimized(examId, token, forceRefresh = false, skipTok
   if (!skipTokenCheck && sch.token) {
     const inputToken = String(token).toUpperCase().trim();
     const serverToken = String(sch.token).toUpperCase().trim();
-    
+
     // Cek apakah token server cocok
     if (serverToken !== inputToken) {
       // Coba fallback offline token hash (jika internet mati dan token server tidak bisa diperbarui)
@@ -748,7 +748,7 @@ async function syncAllQuestions() {
     try {
       // SkipTokenCheck = true agar bisa download H-1 tanpa tahu token
       const data = await getExamDataOptimized(sch.id, '', true, true);
-      
+
       // 1. Validasi Integritas Data
       if (!validateDataIntegrity(data)) {
         throw new Error("Data korup atau tidak lengkap");
@@ -781,14 +781,14 @@ async function syncAllQuestions() {
   try {
     await dbConnectFast();
     if (State.schedules[0]) {
-       await db.ref(`/status_sync/${State.schedules[0].id}/${State.user.id}`).set({
-         nama: State.user.name,
-         kelas: State.user.kelas,
-         time: new Date().getTime(),
-         status: isFullySynced ? 'FULL' : 'PARTIAL'
-       });
+      await db.ref(`/status_sync/${State.schedules[0].id}/${State.user.id}`).set({
+        nama: State.user.name,
+        kelas: State.user.kelas,
+        time: new Date().getTime(),
+        status: isFullySynced ? 'FULL' : 'PARTIAL'
+      });
     }
-  } catch(e) { console.warn("Gagal lapor status sync", e); }
+  } catch (e) { console.warn("Gagal lapor status sync", e); }
   finally { dbDisconnect(); }
 
   if (isFullySynced) {
@@ -905,21 +905,21 @@ function updateInitStatusDisplay() {
     dot.style.animation = 'none';
     text.textContent = 'Sistem Siap. Ujian dapat dimulai!';
     text.style.color = '#10b981';
-    
+
     if (topSyncDot) topSyncDot.style.background = '#10B981';
     if (topSyncText) topSyncText.textContent = 'Sudah Sinkron';
   } else if (statuses.some(s => s === 'error')) {
     dot.classList.add('init-error');
     text.textContent = 'Gagal memuat data. Mohon muat ulang halaman.';
     text.style.color = '#ef4444';
-    
+
     if (topSyncDot) topSyncDot.style.background = '#EF4444';
     if (topSyncText) topSyncText.textContent = 'Gagal Sinkron';
   } else if (statuses.some(s => s === 'success')) {
     dot.classList.add('init-warning');
     text.textContent = 'Sedang menyiapkan data...';
     text.style.color = 'var(--text-muted)';
-    
+
     if (topSyncDot) topSyncDot.style.background = '#F59E0B';
     if (topSyncText) topSyncText.textContent = 'Menyinkronkan...';
   } else {
@@ -1101,9 +1101,9 @@ async function gasRun(funcName, ...args) {
         if (!matched) continue;
 
         let status = 'BELUM_MULAI';
-        if (completedSet.has(id))   status = 'SELESAI';
-        else if (!sch.aktif)        status = 'NONAKTIF';
-        else if (sch.force_aktif)   status = 'AKTIF';   // Admin override – ignores time window
+        if (completedSet.has(id)) status = 'SELESAI';
+        else if (!sch.aktif) status = 'NONAKTIF';
+        else if (sch.force_aktif) status = 'AKTIF';   // Admin override – ignores time window
         else if (nowMs < sch.mulai) status = 'BELUM_MULAI';
         else if (nowMs > sch.selesai) status = 'TUTUP';
         else status = 'AKTIF';
@@ -1439,50 +1439,50 @@ function updatePreSyncUI(list) {
   const preSyncContainer = document.getElementById('pre-sync-container');
   if (preSyncContainer && list.length > 0) {
     preSyncContainer.style.display = 'block';
-    
+
     let allCached = true;
     for (let sch of list) {
       const ver = sch.mulai || 0;
       const CACHE_KEY = `SOAL_${sch.id}_v${ver}`;
       if (!localStorage.getItem(CACHE_KEY)) {
-         allCached = false;
-         break;
+        allCached = false;
+        break;
       }
     }
-    
+
     const notSyncedDiv = document.getElementById('pre-sync-content-not-synced');
     const syncedDiv = document.getElementById('pre-sync-content-synced');
     const nameSpan = document.getElementById('sync-synced-name');
-    
+
     if (notSyncedDiv && syncedDiv) {
       if (allCached) {
-         notSyncedDiv.style.display = 'none';
-         syncedDiv.style.display = 'block';
-         if (nameSpan) nameSpan.textContent = State.user.name;
-         
-         // Tampilan minimalis hemat space
-         preSyncContainer.style.background = 'rgba(16, 185, 129, 0.05)';
-         preSyncContainer.style.border = '1px dashed #10B981';
-         preSyncContainer.style.padding = '10px 16px';
+        notSyncedDiv.style.display = 'none';
+        syncedDiv.style.display = 'block';
+        if (nameSpan) nameSpan.textContent = State.user.name;
+
+        // Tampilan minimalis hemat space
+        preSyncContainer.style.background = 'rgba(16, 185, 129, 0.05)';
+        preSyncContainer.style.border = '1px dashed #10B981';
+        preSyncContainer.style.padding = '10px 16px';
       } else {
-         notSyncedDiv.style.display = 'block';
-         syncedDiv.style.display = 'none';
-         
-         // Kembalikan ke tampilan default
-         preSyncContainer.style.background = '#EEF2FF';
-         preSyncContainer.style.border = '1px dashed #6366F1';
-         preSyncContainer.style.padding = '16px';
-         
-         const btnSync = document.getElementById('btnSyncAllSoal');
-         if (btnSync) {
-            btnSync.textContent = 'Mulai Sinkronisasi';
-            btnSync.style.background = '#4F46E5';
-            btnSync.disabled = false;
-            btnSync.style.opacity = '1';
-            // remove listener to avoid duplicates, then add
-            btnSync.removeEventListener('click', syncAllQuestions);
-            btnSync.addEventListener('click', syncAllQuestions);
-         }
+        notSyncedDiv.style.display = 'block';
+        syncedDiv.style.display = 'none';
+
+        // Kembalikan ke tampilan default
+        preSyncContainer.style.background = '#EEF2FF';
+        preSyncContainer.style.border = '1px dashed #6366F1';
+        preSyncContainer.style.padding = '16px';
+
+        const btnSync = document.getElementById('btnSyncAllSoal');
+        if (btnSync) {
+          btnSync.textContent = 'Mulai Sinkronisasi';
+          btnSync.style.background = '#4F46E5';
+          btnSync.disabled = false;
+          btnSync.style.opacity = '1';
+          // remove listener to avoid duplicates, then add
+          btnSync.removeEventListener('click', syncAllQuestions);
+          btnSync.addEventListener('click', syncAllQuestions);
+        }
       }
     }
   }
@@ -1510,7 +1510,7 @@ async function loadSchedules() {
       State.schedules.forEach(s => s._lastRenderedStatus = s.status);
       renderSchedules();
       updatePreSyncUI(list);
-      
+
       showView('schedule-view');
       hideLoading(); // Sembunyikan loading jika data cache sudah tampil
     }
@@ -2534,13 +2534,13 @@ async function fetchPortalExams() {
         container.innerHTML = res.activeSchedules.map((ex, index) => {
           // Determine status based on time (mock logic, ideally from server)
           // For display purposes based on mockup:
-          let statusText = "Sedang Berlangsung";
+          let statusText = "Aktif";
           let badgeClass = "live";
           let iconClass = "blue";
           let iconSvg = `<path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />`;
-          
+
           if (index % 3 === 0) {
-            statusText = "Belum Dimulai"; badgeClass = "wait"; iconClass = "yellow";
+            statusText = "Belum Mulai"; badgeClass = "wait"; iconClass = "yellow";
             iconSvg = `<path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />`;
           } else if (index % 3 === 2) {
             statusText = "Selesai"; badgeClass = "done"; iconClass = "green";
@@ -2672,35 +2672,35 @@ async function loadAdminDashboard() {
   }
 }
 
-window.loadAdminSyncStatus = async function() {
+window.loadAdminSyncStatus = async function () {
   const countEl = document.getElementById('admin-sync-count');
   if (!countEl) return;
-  
+
   try {
     countEl.textContent = 'Memuat data...';
     await dbConnectFast();
     const snap = await db.ref('/status_sync').once('value');
     const data = snap.val() || {};
-    
+
     // Hitung total unik peserta dari semua jadwal
     const uniqueStudents = new Set();
     for (let examId in data) {
-       for (let studentId in data[examId]) {
-          uniqueStudents.add(studentId);
-       }
+      for (let studentId in data[examId]) {
+        uniqueStudents.add(studentId);
+      }
     }
-    
+
     const syncCount = uniqueStudents.size;
     const totalSiswa = (window.adminState && window.adminState.peserta) ? window.adminState.peserta.length : 0;
-    
+
     if (totalSiswa > 0) {
       const pct = Math.min(100, Math.round((syncCount / totalSiswa) * 100));
       countEl.textContent = `${syncCount} / ${totalSiswa} Siswa Siap (${pct}%)`;
     } else {
       countEl.textContent = `${syncCount} Siswa Siap`;
     }
-    
-  } catch(e) {
+
+  } catch (e) {
     console.warn("Gagal muat status sync", e);
     if (e.message && e.message.toLowerCase().includes('permission')) {
       countEl.textContent = 'Akses Ditolak (Cek Rules Firebase)';
@@ -3118,8 +3118,8 @@ async function loadAdminJadwal() {
         // Render List (Live Control)
         if (container) {
           container.innerHTML = res.data.map(j => {
-            const mulaiStr = j.mulai ? new Date(j.mulai).toLocaleString('id-ID', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '-';
-            const selesaiStr = j.selesai ? new Date(j.selesai).toLocaleString('id-ID', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '-';
+            const mulaiStr = j.mulai ? new Date(j.mulai).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-';
+            const selesaiStr = j.selesai ? new Date(j.selesai).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-';
             return `
               <div class="admin-exam-card" style="margin-bottom:12px;">
                 <h4 style="margin-bottom:4px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
@@ -4127,14 +4127,14 @@ window.openJadwalModal = async function (editId = null) {
           if (!ms) return '';
           const d = new Date(ms);
           const pad = n => String(n).padStart(2, '0');
-          return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+          return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
         };
         document.getElementById('jMulai').value = toLocal(jData.mulai);
         document.getElementById('jSelesai').value = toLocal(jData.selesai);
         // Set soal select
         if (jData.nama_soal) select.value = jData.nama_soal;
       }
-    } catch(e) { showCustomAlert('Gagal', 'Gagal memuat data jadwal.', '❌'); }
+    } catch (e) { showCustomAlert('Gagal', 'Gagal memuat data jadwal.', '❌'); }
     hideLoading();
   } else {
     // CREATE MODE: Clear inputs
