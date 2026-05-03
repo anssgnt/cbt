@@ -2990,9 +2990,9 @@ h4 {
 
 .landing-btn-outline {
   width: 100%;
-  background: #FFFFFF;
-  color: #111827;
-  border: 1.5px solid #E5E7EB;
+   background: #1D4ED8;
+  color: #FFFFFF;
+  border: none;
   border-radius: 12px;
   padding: 12px;
   font-weight: 700;
