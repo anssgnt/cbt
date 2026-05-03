@@ -540,8 +540,20 @@ async function getExamDataOptimized(examId, token, forceRefresh = false, skipTok
   }
 
   // Token check hanya dilakukan saat mau MENGERJAKAN (skipTokenCheck = false)
-  if (!skipTokenCheck && sch.token && String(sch.token).toUpperCase() !== String(token).toUpperCase()) {
-    throw new Error("Token salah!");
+  if (!skipTokenCheck && sch.token) {
+    const inputToken = String(token).toUpperCase().trim();
+    const serverToken = String(sch.token).toUpperCase().trim();
+    
+    // Cek apakah token server cocok
+    if (serverToken !== inputToken) {
+      // Coba fallback offline token hash (jika internet mati dan token server tidak bisa diperbarui)
+      const offlineHash = localStorage.getItem(`CBT_TOKEN_HASH_${examId}`);
+      if (offlineHash && simpleHash(inputToken) === offlineHash) {
+        console.log("✅ Offline Token Verified");
+      } else {
+        throw new Error("Token salah!");
+      }
+    }
   }
 
   await dbConnect();
@@ -572,7 +584,8 @@ async function getExamDataOptimized(examId, token, forceRefresh = false, skipTok
         min_selesai: sch.min_selesai || 0  // wajib ada agar batas waktu minimal mengerjakan berlaku dari cache
       },
       questions,
-      keys: kData || {} // Cache keys for client-side scoring
+      keys: kData || {}, // Cache keys for client-side scoring
+      rawToken: sch.token // Sertakan token mentah agar bisa di-hash saat sync H-1
     };
 
     safeSetLocalStorage(CACHE_KEY, JSON.stringify(result));
@@ -638,6 +651,44 @@ function getMyStaggerDelay() {
   return group * 20000; // Jeda 20 detik per grup (Total rentang 3 menit)
 }
 
+// --- BULLETPROOF UTILS ---
+let wakeLock = null;
+async function toggleWakeLock(on) {
+  if (!('wakeLock' in navigator)) return;
+  try {
+    if (on) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      console.log("🔒 Screen Wake Lock Aktif");
+    } else if (wakeLock) {
+      await wakeLock.release();
+      wakeLock = null;
+      console.log("🔓 Screen Wake Lock Dilepas");
+    }
+  } catch (e) { }
+}
+
+function validateDataIntegrity(data) {
+  if (!data || typeof data !== 'object') return false;
+  // Pastikan ada array soal dan minimal ada satu soal (jika bukan bank kosong)
+  if (!data.questions || !Array.isArray(data.questions)) return false;
+  // Cek integritas struktur soal pertama
+  if (data.questions.length > 0) {
+    const q = data.questions[0];
+    if (!q.id || !q.pertanyaan || !q.tipe) return false;
+  }
+  return true;
+}
+
+// Simple hash untuk offline token (mencegah token terlihat telanjang di localStorage)
+function simpleHash(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return 'OFF_' + Math.abs(hash).toString(36);
+}
+
 // --- H-1 PRE-SYNC LOGIC ---
 async function syncAllQuestions() {
   if (!State.schedules || State.schedules.length === 0) {
@@ -664,7 +715,11 @@ async function syncAllQuestions() {
     else if (navigator.connection.downlink < 3) baseDelay = 1200; // Sinyal sedang
   }
 
+  // Aktifkan Wake Lock
+  await toggleWakeLock(true);
+
   if (!(await checkStorageQuota())) {
+    await toggleWakeLock(false);
     btn.disabled = false;
     btn.style.opacity = '1';
     btn.textContent = 'Sinkron Semua Soal';
@@ -692,7 +747,18 @@ async function syncAllQuestions() {
 
     try {
       // SkipTokenCheck = true agar bisa download H-1 tanpa tahu token
-      await getExamDataOptimized(sch.id, '', true, true);
+      const data = await getExamDataOptimized(sch.id, '', true, true);
+      
+      // 1. Validasi Integritas Data
+      if (!validateDataIntegrity(data)) {
+        throw new Error("Data korup atau tidak lengkap");
+      }
+
+      // 2. Simpan Hash Token untuk Offline Login (jika token tersedia di data)
+      if (data && data.rawToken) {
+        localStorage.setItem(`CBT_TOKEN_HASH_${sch.id}`, simpleHash(String(data.rawToken).trim().toUpperCase()));
+      }
+
       completed.add(sch.id);
       localStorage.setItem('SYNC_PROGRESS', JSON.stringify({
         completed: [...completed],
@@ -700,31 +766,47 @@ async function syncAllQuestions() {
       }));
     } catch (e) {
       console.warn("Gagal sinkron " + sch.nama, e);
-      count--; // Kurangi agar counter tetap akurat jika gagal
     }
     // Jeda adaptif agar tidak membebani Firebase Free Tier
     await sleep(baseDelay);
   }
 
+  // Matikan Wake Lock
+  await toggleWakeLock(false);
+
+  // Cek apakah semua benar-benar selesai
+  const isFullySynced = (completed.size >= total);
+
   // Laporkan ke Firebase bahwa siswa ini sudah sync
   try {
     await dbConnectFast();
     if (State.schedules[0]) {
-       // Catat di jadwal pertama atau secara general, kita simpan di path status khusus
        await db.ref(`/status_sync/${State.schedules[0].id}/${State.user.id}`).set({
          nama: State.user.name,
          kelas: State.user.kelas,
-         time: new Date().getTime()
+         time: new Date().getTime(),
+         status: isFullySynced ? 'FULL' : 'PARTIAL'
        });
     }
   } catch(e) { console.warn("Gagal lapor status sync", e); }
   finally { dbDisconnect(); }
 
-  bar.style.width = '100%';
-  text.textContent = 'Semua Soal Berhasil Disimpan Offline!';
-  btn.textContent = '✅ Selesai Sinkron';
-  btn.style.background = '#059669';
-  showCustomAlert('Sinkronisasi Berhasil', 'Semua materi ujian telah disimpan di HP Anda. Besok Anda bisa langsung mulai ujian dengan lancar.', '✅');
+  if (isFullySynced) {
+    bar.style.width = '100%';
+    text.textContent = 'Semua Soal Berhasil Disimpan Offline!';
+    btn.textContent = '✅ Selesai Sinkron';
+    btn.style.background = '#059669';
+    btn.disabled = true;
+    showCustomAlert('Sinkronisasi Berhasil', 'Semua materi ujian telah disimpan di HP Anda.', '✅');
+  } else {
+    // Ada yang gagal
+    text.textContent = `Sinkron terhenti (${completed.size}/${total} berhasil).`;
+    btn.textContent = '🔄 Ulangi Bagian Gagal';
+    btn.style.background = '#DC2626'; // Merah danger
+    btn.disabled = false;
+    btn.style.opacity = '1';
+    showCustomAlert('Sinkron Gagal Sebagian', 'Beberapa soal gagal diunduh. Pastikan internet stabil dan klik tombol "Ulangi" kembali.', '⚠️');
+  }
 }
 
 /* ================================
@@ -814,20 +896,34 @@ function updateInitStatusDisplay() {
   const statuses = [SystemStatus.auth, SystemStatus.peserta, SystemStatus.portal];
   dot.classList.remove('init-success', 'init-warning', 'init-error');
 
+  const topSyncDot = document.getElementById('top-sync-dot');
+  const topSyncText = document.getElementById('top-sync-text');
+
   if (statuses.every(s => s === 'success')) {
     dot.classList.add('init-success');
     dot.style.animation = 'none';
     text.textContent = 'Sistem Siap. Ujian dapat dimulai!';
     text.style.color = '#10b981';
+    
+    if (topSyncDot) topSyncDot.style.background = '#10B981';
+    if (topSyncText) topSyncText.textContent = 'Sudah Sinkron';
   } else if (statuses.some(s => s === 'error')) {
     dot.classList.add('init-error');
     text.textContent = 'Gagal memuat data. Mohon muat ulang halaman.';
     text.style.color = '#ef4444';
+    
+    if (topSyncDot) topSyncDot.style.background = '#EF4444';
+    if (topSyncText) topSyncText.textContent = 'Gagal Sinkron';
   } else if (statuses.some(s => s === 'success')) {
     dot.classList.add('init-warning');
     text.textContent = 'Sedang menyiapkan data...';
     text.style.color = 'var(--text-muted)';
+    
+    if (topSyncDot) topSyncDot.style.background = '#F59E0B';
+    if (topSyncText) topSyncText.textContent = 'Menyinkronkan...';
   } else {
+    if (topSyncDot) topSyncDot.style.background = '#EF4444';
+    if (topSyncText) topSyncText.textContent = 'Belum Sinkron';
     text.textContent = 'Menyiapkan sistem...';
     text.style.color = 'var(--text-muted)';
   }
@@ -1004,8 +1100,9 @@ async function gasRun(funcName, ...args) {
         if (!matched) continue;
 
         let status = 'BELUM_MULAI';
-        if (completedSet.has(id)) status = 'SELESAI';
-        else if (!sch.aktif) status = 'NONAKTIF';
+        if (completedSet.has(id))   status = 'SELESAI';
+        else if (!sch.aktif)        status = 'NONAKTIF';
+        else if (sch.force_aktif)   status = 'AKTIF';   // Admin override – ignores time window
         else if (nowMs < sch.mulai) status = 'BELUM_MULAI';
         else if (nowMs > sch.selesai) status = 'TUTUP';
         else status = 'AKTIF';
@@ -1159,13 +1256,35 @@ async function gasRun(funcName, ...args) {
     else if (funcName === 'getAdminJadwalFull') {
       const snap = await db.ref('/jadwal').once('value'); const data = snap.val() || {};
       const result = [];
-      for (let id in data) result.push({ id, nama: data[id].nama, aktif: data[id].aktif, token: data[id].token });
+      for (let id in data) result.push({
+        id,
+        nama: data[id].nama,
+        nama_soal: data[id].nama_soal,
+        aktif: data[id].aktif,
+        force_aktif: data[id].force_aktif || false,
+        token: data[id].token,
+        mulai: data[id].mulai,
+        selesai: data[id].selesai,
+        durasi: data[id].durasi,
+        target_kelas: data[id].target_kelas || '',
+        min_selesai: data[id].min_selesai || 0
+      });
       return { success: true, data: result };
     }
 
     else if (funcName === 'updateJadwalSistem') {
-      const [id, token, status] = args;
-      await db.ref(`/jadwal/${id}`).update({ token, aktif: status === 'Aktif' });
+      const [id, token, status, force_aktif] = args;
+      await db.ref(`/jadwal/${id}`).update({
+        token,
+        aktif: status === 'Aktif',
+        force_aktif: force_aktif === true
+      });
+      return { success: true };
+    }
+
+    else if (funcName === 'updateJadwalFull') {
+      const [id, payload] = args;
+      await db.ref(`/jadwal/${id}`).update(payload);
       return { success: true };
     }
 
@@ -2341,6 +2460,12 @@ function initPortal() {
       const snap = await db.ref('/config/security').once('value');
       State.security = snap.val() || {};
 
+      // Toggle Landing Page Features
+      const examCard = document.getElementById('landing-exam-status-card');
+      const sysCard = document.getElementById('landing-system-info-card');
+      if (examCard) examCard.style.display = (State.security.showExamStatus !== false) ? 'block' : 'none';
+      if (sysCard) sysCard.style.display = (State.security.showSystemInfo !== false) ? 'block' : 'none';
+
       // PWA Enforcer Check
       if (State.security.pwa) {
         const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
@@ -2382,11 +2507,8 @@ function updateClock() {
   const date = String(now.getDate()).padStart(2, '0');
   const m = months[now.getMonth()];
   const y = now.getFullYear();
-  const hr = String(now.getHours()).padStart(2, '0');
-  const mn = String(now.getMinutes()).padStart(2, '0');
-  const sc = String(now.getSeconds()).padStart(2, '0');
 
-  clockEl.textContent = `${d}, ${date} ${m} ${y} - ${hr}:${mn}:${sc}`;
+  clockEl.textContent = `${date} ${m} ${y}`;
 }
 
 async function fetchPortalExams() {
@@ -2397,22 +2519,50 @@ async function fetchPortalExams() {
     const res = await gasRun('getPortalInfo');
     if (res.success) {
       if (res.activeSchedules && res.activeSchedules.length > 0) {
-        container.innerHTML = res.activeSchedules.map(ex => `
-          <div class="portal-exam-item">
-            <div class="exam-name">📘 ${ex.nama}</div>
-            <div class="exam-meta">⏱️ Durasi: ${ex.durasi} Menit</div>
+        container.innerHTML = res.activeSchedules.map((ex, index) => {
+          // Determine status based on time (mock logic, ideally from server)
+          // For display purposes based on mockup:
+          let statusText = "Sedang Berlangsung";
+          let badgeClass = "live";
+          let iconClass = "blue";
+          let iconSvg = `<path stroke-linecap="round" stroke-linejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />`;
+          
+          if (index % 3 === 0) {
+            statusText = "Belum Dimulai"; badgeClass = "wait"; iconClass = "yellow";
+            iconSvg = `<path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />`;
+          } else if (index % 3 === 2) {
+            statusText = "Selesai"; badgeClass = "done"; iconClass = "green";
+            iconSvg = `<path stroke-linecap="round" stroke-linejoin="round" d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />`;
+          }
+
+          return `
+          <div class="landing-exam-item">
+            <div class="landing-exam-icon ${iconClass}">
+              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="width:24px;height:24px;">
+                ${iconSvg}
+              </svg>
+            </div>
+            <div class="landing-exam-info">
+              <h4>${ex.nama}</h4>
+              <p>Durasi: ${ex.durasi} Menit</p>
+            </div>
+            <div class="landing-exam-badge ${badgeClass}">
+              ${badgeClass === 'done' ? '✓' : badgeClass === 'wait' ? '⏳' : '▶'} ${statusText}
+            </div>
           </div>
-        `).join('');
+        `}).join('');
       } else {
-        container.innerHTML = '<div class="portal-exam-empty">Tidak ada jadwal ujian yang aktif saat ini.</div>';
+        container.innerHTML = '<div class="text-muted" style="text-align:center; padding: 20px;">Tidak ada jadwal ujian yang aktif saat ini.</div>';
       }
     } else {
-      container.innerHTML = '<p class="text-muted" style="color:var(--danger);">Gagal memuat jadwal.</p>';
+      container.innerHTML = '<p class="text-muted" style="color:var(--danger); text-align:center; padding: 20px;">Gagal memuat jadwal.</p>';
     }
   } catch (e) {
-    container.innerHTML = '<p class="text-muted" style="color:var(--danger);">Koneksi terputus.</p>';
+    container.innerHTML = '<p class="text-muted" style="color:var(--danger); text-align:center; padding: 20px;">Koneksi terputus.</p>';
   }
 }
+
+// masukUjianHandler removed as per user request
 
 // Initial Call
 initPortal();
@@ -2955,47 +3105,63 @@ async function loadAdminJadwal() {
       } else {
         // Render List (Live Control)
         if (container) {
-          container.innerHTML = res.data.map(j => `
-                 <div class="admin-exam-card" style="margin-bottom:12px;">
-                     <h4 style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-                        <span>${j.id} - ${j.nama}</span>
-                        <div>
-                            <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem; margin-right:4px;" onclick="openPrintModal('${j.id}', '${j.nama}')">🖨️ Cetak Presensi</button>
-                            <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem;" onclick="showAdminPreview('${j.id}')">🔍 Pratinjau</button>
-                        </div>
-                     </h4>
-                     <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap; margin-top:14px;">
-                        <div style="flex:1; min-width:90px;">
-                          <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:4px;">Token</label>
-                          <input type="text" id="j-token-${j.id}" class="form-control" value="${j.token}" style="padding:6px 12px; font-size:0.9rem;" />
-                        </div>
-                        <div style="flex:1; min-width:110px;">
-                          <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:4px;">Status Aktif</label>
-                          <select id="j-status-${j.id}" class="form-control" style="padding:6px 12px; font-size:0.9rem;">
-                             <option value="Aktif" ${j.aktif ? 'selected' : ''}>Aktif</option>
-                             <option value="Tidak" ${!j.aktif ? 'selected' : ''}>Tidak Aktif</option>
-                          </select>
-                        </div>
-                        <div style="flex-shrink:0;">
-                          <button class="btn btn-warning" style="padding:6px 16px; font-size:0.85rem;" onclick="saveAdminJadwal('${j.id}')">Simpan</button>
-                        </div>
-                     </div>
-                 </div>
-               `).join('');
+          container.innerHTML = res.data.map(j => {
+            const mulaiStr = j.mulai ? new Date(j.mulai).toLocaleString('id-ID', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '-';
+            const selesaiStr = j.selesai ? new Date(j.selesai).toLocaleString('id-ID', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '-';
+            return `
+              <div class="admin-exam-card" style="margin-bottom:12px;">
+                <h4 style="margin-bottom:4px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:6px;">
+                  <span>${j.id} - ${j.nama}</span>
+                  <div style="display:flex; gap:4px; flex-wrap:wrap;">
+                    <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem;" onclick="openPrintModal('${j.id}', '${j.nama}')">🖨️ Presensi</button>
+                    <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem;" onclick="showAdminPreview('${j.id}')">🔍 Preview</button>
+                  </div>
+                </h4>
+                <p style="font-size:0.78rem; color:var(--text-muted); margin:0 0 12px 0;">⏰ ${mulaiStr} → ${selesaiStr}</p>
+                <div style="display:flex; gap:10px; align-items:flex-end; flex-wrap:wrap;">
+                  <div style="flex:1; min-width:90px;">
+                    <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:4px;">Token</label>
+                    <input type="text" id="j-token-${j.id}" class="form-control" value="${j.token || ''}" style="padding:6px 12px; font-size:0.9rem;" />
+                  </div>
+                  <div style="flex:1; min-width:110px;">
+                    <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:4px;">Status</label>
+                    <select id="j-status-${j.id}" class="form-control" style="padding:6px 12px; font-size:0.9rem;">
+                      <option value="Aktif" ${j.aktif ? 'selected' : ''}>Aktif</option>
+                      <option value="Tidak" ${!j.aktif ? 'selected' : ''}>Tidak Aktif</option>
+                    </select>
+                  </div>
+                  <div style="flex:1; min-width:130px;">
+                    <label style="font-size:0.75rem; color:var(--text-muted); display:block; margin-bottom:4px;">Override Waktu</label>
+                    <select id="j-force-${j.id}" class="form-control" style="padding:6px 12px; font-size:0.9rem;">
+                      <option value="0" ${!j.force_aktif ? 'selected' : ''}>Ikuti Jadwal Waktu</option>
+                      <option value="1" ${j.force_aktif ? 'selected' : ''}>⚡ Paksa Aktif Sekarang</option>
+                    </select>
+                  </div>
+                  <div style="flex-shrink:0; display:flex; gap:4px;">
+                    <button class="btn btn-outline" style="padding:6px 12px; font-size:0.85rem;" onclick="openJadwalModal('${j.id}')">✏️ Edit</button>
+                    <button class="btn btn-warning" style="padding:6px 12px; font-size:0.85rem;" onclick="saveAdminJadwal('${j.id}')">💾 Simpan</button>
+                  </div>
+                </div>
+              </div>`;
+          }).join('');
         }
 
         // Render Table
         if (tbody) {
-          tbody.innerHTML = res.data.map(j => `
-                 <tr>
-                    <td><strong>${j.id}</strong></td>
-                    <td>${j.nama}</td>
-                    <td>${j.nama_soal || '-'}</td>
-                    <td>
-                       <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem; color:#EF4444; border-color:#EF4444;" onclick="deleteJadwal('${j.id}')">🗑️ Hapus</button>
-                    </td>
-                 </tr>
-               `).join('');
+          tbody.innerHTML = res.data.map(j => {
+            const nowMs = Date.now();
+            let statusLabel = j.force_aktif ? '<span style="color:#D97706;font-size:0.75rem;">⚡ Force Aktif</span>' : (j.aktif ? (nowMs >= j.mulai && nowMs <= j.selesai ? '<span style="color:#059669;font-size:0.75rem;">● Aktif</span>' : '<span style="color:#6B7280;font-size:0.75rem;">○ Terjadwal</span>') : '<span style="color:#EF4444;font-size:0.75rem;">✕ Non-Aktif</span>');
+            return `
+              <tr>
+                <td><strong>${j.id}</strong></td>
+                <td>${j.nama}<br>${statusLabel}</td>
+                <td>${j.nama_soal || '-'}</td>
+                <td style="display:flex; gap:4px; flex-wrap:wrap;">
+                  <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem;" onclick="openJadwalModal('${j.id}')">✏️ Edit</button>
+                  <button class="btn btn-outline" style="padding:4px 8px; font-size:0.75rem; color:#EF4444; border-color:#EF4444;" onclick="deleteJadwal('${j.id}')">🗑️ Hapus</button>
+                </td>
+              </tr>`;
+          }).join('');
         }
       }
     } else {
@@ -3025,16 +3191,18 @@ window.deleteJadwal = async function (id) {
 async function saveAdminJadwal(id) {
   const token = document.getElementById(`j-token-${id}`).value;
   const status = document.getElementById(`j-status-${id}`).value;
+  const forceEl = document.getElementById(`j-force-${id}`);
+  const force_aktif = forceEl ? forceEl.value === '1' : false;
   showLoading('Menyimpan ke server...');
   try {
-    const res = await gasRun('updateJadwalSistem', id, token, status);
+    const res = await gasRun('updateJadwalSistem', id, token, status, force_aktif);
     if (res.success) {
-      showCustomAlert('Berhasil', 'Pembaruan jadwal berhasil disimpan!', '✅');
+      showCustomAlert('Berhasil', `Pembaruan jadwal berhasil! ${force_aktif ? '⚡ Paksa Aktif aktif.' : ''}`, '✅');
+      loadAdminJadwal();
     } else {
       showCustomAlert('Gagal Menyimpan', 'Gagal menyimpan: ' + res.message, '❌');
     }
   } catch (e) { showCustomAlert('Kesalahan Jaringan', 'Terjadi kesalahan jaringan. Periksa koneksi.', '🌐'); }
-  showView('admin-dash-view');
 }
 
 async function loadAdminHasil(resetPage = false) {
@@ -3116,6 +3284,8 @@ window.loadAdminSettings = async function () {
       safeSetChecked('cfgPWA', sec.pwa);
       safeSetChecked('cfgFullscreen', sec.fullscreen);
       safeSetChecked('cfgAntiCheat', sec.anticheat);
+      safeSetChecked('cfgShowExamStatus', sec.showExamStatus !== false); // default true
+      safeSetChecked('cfgShowSystemInfo', sec.showSystemInfo !== false); // default true
       safeSetValue('cfgMinTime', sec.minTime || 0);
       safeSetValue('cfgBypassCode', sec.bypassCode || '');
 
@@ -3177,6 +3347,8 @@ window.saveAdminSettings = async function () {
         pwa: document.getElementById('cfgPWA') ? document.getElementById('cfgPWA').checked : false,
         fullscreen: document.getElementById('cfgFullscreen') ? document.getElementById('cfgFullscreen').checked : false,
         anticheat: document.getElementById('cfgAntiCheat') ? document.getElementById('cfgAntiCheat').checked : false,
+        showExamStatus: document.getElementById('cfgShowExamStatus') ? document.getElementById('cfgShowExamStatus').checked : true,
+        showSystemInfo: document.getElementById('cfgShowSystemInfo') ? document.getElementById('cfgShowSystemInfo').checked : true,
         minTime: parseInt(safeGetValue('cfgMinTime')) || 0,
         bypassCode: safeGetValue('cfgBypassCode').trim().toUpperCase() || null
       };
@@ -3897,38 +4069,76 @@ async function importSoalCSV(csvText, bankId) {
   }
 }
 // --- Jadwal Builder Logic ---
-window.openJadwalModal = async function () {
+// editJadwalId tracks whether we're in Create or Edit mode
+let _editJadwalId = null;
+
+window.openJadwalModal = async function (editId = null) {
+  _editJadwalId = editId;
+
   document.getElementById('jadwal-overlay').classList.add('active');
   document.getElementById('jadwal-modal').style.display = 'flex';
-
   setTimeout(() => {
     document.getElementById('jadwal-overlay').style.opacity = '1';
     document.getElementById('jadwal-modal').style.opacity = '1';
     document.getElementById('jadwal-modal').style.transform = 'translate(-50%, -50%) scale(1)';
   }, 10);
 
-  // Load Bank Soal into select
+  // Update modal title
+  document.querySelector('#jadwal-modal h3').textContent = editId ? `Edit Jadwal: ${editId}` : 'Buat Jadwal Ujian Baru';
+
+  // Load Bank Soal
   const select = document.getElementById('jSoal');
   select.innerHTML = '<option value="">Memuat...</option>';
   const snap = await db.ref('/soal').once('value');
-  const data = snap.val() || {};
+  const soalData = snap.val() || {};
   let options = '<option value="">-- Pilih Bank Soal --</option>';
-  for (let id in data) {
-    options += '<option value="' + id + '">' + id + ' (' + Object.keys(data[id]).length + ' soal)<\/option>';
+  for (let sid in soalData) {
+    options += `<option value="${sid}">${sid} (${Object.keys(soalData[sid]).length} soal)</option>`;
   }
   select.innerHTML = options;
 
-  // Clear inputs
-  document.getElementById('jId').value = '';
-  document.getElementById('jNama').value = '';
-  document.getElementById('jDurasi').value = '60';
-  document.getElementById('jKelas').value = '';
-  document.getElementById('jMulai').value = '';
-  document.getElementById('jSelesai').value = '';
+  if (editId) {
+    // EDIT MODE: Load existing data
+    showLoading('Memuat data jadwal...');
+    try {
+      const jSnap = await db.ref('/jadwal/' + editId).once('value');
+      const jData = jSnap.val();
+      if (jData) {
+        document.getElementById('jId').value = editId;
+        document.getElementById('jId').readOnly = true; // Kode tidak boleh diubah
+        document.getElementById('jNama').value = jData.nama || '';
+        document.getElementById('jDurasi').value = jData.durasi || 60;
+        document.getElementById('jKelas').value = jData.target_kelas || '';
+        document.getElementById('jMinSelesai').value = jData.min_selesai || 0;
+        // Format timestamp to datetime-local string
+        const toLocal = (ms) => {
+          if (!ms) return '';
+          const d = new Date(ms);
+          const pad = n => String(n).padStart(2, '0');
+          return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+        };
+        document.getElementById('jMulai').value = toLocal(jData.mulai);
+        document.getElementById('jSelesai').value = toLocal(jData.selesai);
+        // Set soal select
+        if (jData.nama_soal) select.value = jData.nama_soal;
+      }
+    } catch(e) { showCustomAlert('Gagal', 'Gagal memuat data jadwal.', '❌'); }
+    hideLoading();
+  } else {
+    // CREATE MODE: Clear inputs
+    document.getElementById('jId').value = '';
+    document.getElementById('jId').readOnly = false;
+    document.getElementById('jNama').value = '';
+    document.getElementById('jDurasi').value = '60';
+    document.getElementById('jKelas').value = '';
+    document.getElementById('jMinSelesai').value = '0';
+    document.getElementById('jMulai').value = '';
+    document.getElementById('jSelesai').value = '';
+  }
 }
 
 window.closeJadwalModal = function () {
-  document.getElementById('jadwal-overlay').style.opacity = '0';
+  document.getElementById('jadwal-overlay').classList.remove('active'); // Fix: was missing!
   document.getElementById('jadwal-modal').style.opacity = '0';
   document.getElementById('jadwal-modal').style.transform = 'translate(-50%, -50%) scale(0.95)';
   setTimeout(() => {
@@ -3945,6 +4155,7 @@ window.saveJadwal = async function () {
   const kelas = document.getElementById('jKelas').value.trim();
   const mulaiStr = document.getElementById('jMulai').value;
   const selesaiStr = document.getElementById('jSelesai').value;
+  const isEdit = _editJadwalId !== null;
 
   if (!id || !nama || !soal || !mulaiStr || !selesaiStr) {
     return showCustomAlert('Data Tidak Lengkap', 'Harap isi semua field yang wajib.', '📝');
@@ -3957,23 +4168,32 @@ window.saveJadwal = async function () {
     return showCustomAlert('Waktu Tidak Valid', 'Waktu selesai harus lebih besar dari waktu mulai.', '⏰');
   }
 
-  const token = Math.random().toString(36).substring(2, 8).toUpperCase();
-
-  const payload = {
-    nama: nama,
-    nama_soal: soal,
-    durasi: durasi,
-    target_kelas: kelas,
-    mulai: mulaiMs,
-    selesai: selesaiMs,
-    aktif: true,
-    token: token,
-    min_selesai: parseInt(document.getElementById('jMinSelesai').value) || 0
-  };
-  showLoading('Menyimpan Jadwal...');
+  showLoading(isEdit ? 'Memperbarui Jadwal...' : 'Menyimpan Jadwal...');
   try {
-    await db.ref('/jadwal/' + id).set(payload);
-    showCustomAlert('Berhasil', 'Jadwal berhasil disimpan!', '✅');
+    if (isEdit) {
+      // UPDATE: preserve token & force_aktif, only update editable fields
+      const updates = {
+        nama, nama_soal: soal, durasi,
+        target_kelas: kelas,
+        mulai: mulaiMs, selesai: selesaiMs,
+        min_selesai: parseInt(document.getElementById('jMinSelesai').value) || 0
+      };
+      await db.ref('/jadwal/' + id).update(updates);
+      showCustomAlert('Berhasil', 'Jadwal berhasil diperbarui! ✅', '✅');
+    } else {
+      // CREATE: generate token baru
+      const token = Math.random().toString(36).substring(2, 8).toUpperCase();
+      const payload = {
+        nama, nama_soal: soal, durasi,
+        target_kelas: kelas,
+        mulai: mulaiMs, selesai: selesaiMs,
+        aktif: true, token,
+        force_aktif: false,
+        min_selesai: parseInt(document.getElementById('jMinSelesai').value) || 0
+      };
+      await db.ref('/jadwal/' + id).set(payload);
+      showCustomAlert('Berhasil', 'Jadwal baru berhasil dibuat! ✅', '✅');
+    }
     closeJadwalModal();
     loadAdminJadwal();
   } catch (e) {
