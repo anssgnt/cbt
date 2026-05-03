@@ -798,6 +798,7 @@ async function syncAllQuestions() {
     btn.style.background = '#059669';
     btn.disabled = true;
     showCustomAlert('Sinkronisasi Berhasil', 'Semua materi ujian telah disimpan di HP Anda.', '✅');
+    renderSchedules(); // Update tombol ujian di daftar jadwal
   } else {
     // Ada yang gagal
     text.textContent = `Sinkron terhenti (${completed.size}/${total} berhasil).`;
@@ -1611,9 +1612,20 @@ function renderSchedules() {
       badge = `<span class="badge badge-closed">Ditutup</span>`;
       btnText = `Waktu Ujian Habis`;
     } else if (curStatus === 'AKTIF') {
-      badge = `<span class="badge badge-active">Sedang Aktif</span>`;
-      btnDisabled = ``;
-      btnText = `Mulai Ujian`;
+      // Cek apakah soal sudah tersinkronisasi
+      const ver = sch.mulai || 0;
+      const CACHE_KEY = `SOAL_${sch.id}_v${ver}`;
+      const isSynced = localStorage.getItem(CACHE_KEY) !== null;
+
+      if (!isSynced) {
+        badge = `<span class="badge badge-wait" style="background:#FDE68A;color:#92400E">Belum Sinkron</span>`;
+        btnDisabled = `disabled`;
+        btnText = `Sinkronisasi Dulu`;
+      } else {
+        badge = `<span class="badge badge-active">Sedang Aktif</span>`;
+        btnDisabled = ``;
+        btnText = `Mulai Ujian`;
+      }
     } else if (curStatus === 'NONAKTIF') {
       badge = `<span class="badge badge-closed">Non-Aktif</span>`;
       btnText = `Belum Dibuka`;
