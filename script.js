@@ -3545,6 +3545,15 @@ window.executePrint = async function () {
     // Sort alphabetically
     targetStudents.sort((a, b) => a.nama.localeCompare(b.nama));
 
+    const judulCustom = document.getElementById('printJudul').value.trim().toUpperCase();
+    if (judulCustom) {
+      safeSetText('pb-judul', `BERITA ACARA ${judulCustom}`);
+      safeSetText('pd-judul', `DAFTAR HADIR ${judulCustom}`);
+    } else {
+      safeSetText('pb-judul', `BERITA ACARA PELAKSANAAN UJIAN`);
+      safeSetText('pd-judul', `DAFTAR HADIR PESERTA UJIAN`);
+    }
+
     // Fill Berita Acara
     const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
     const today = new Date();
