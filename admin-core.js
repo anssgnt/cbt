@@ -267,24 +267,24 @@ function renderAdminHasilPage(page) {
 window.loadAdminSettings = async function () {
   showLoading('Memuat Pengaturan...');
   try {
-    // 1. Pastikan Auth Siap
+    // 1. Pastikan Auth Siap sebelum query Firebase
     if (window.authPromise) {
       console.log("Admin: Menunggu Auth...");
       await window.authPromise;
     }
 
+    // 2. Diagnosa Koneksi (Gunakan dbConnectFast agar admin tidak kena jitter 1.5 detik)
+    console.log("Admin: Memulai koneksi database...");
     if (window.dbConnectFast) await window.dbConnectFast();
     
-    // 2. Diagnosa Koneksi
-    if (window.db) console.log("Admin: Terhubung ke ->", db.app.options.databaseURL);
-    
+    console.log("Admin: Mengambil data security...");
     const snap = await db.ref('/config/security').once('value');
     if (!snap.exists()) {
-      console.warn("Admin: Node /config/security tidak ditemukan di database ini!");
+      console.warn("Admin: Node /config/security tidak ditemukan di database!");
     }
-    
+
     const sec = snap.val() || {};
-    console.log("Admin: Data Security murni dari FB:", sec);
+    console.log("Admin: Data Security diterima:", sec);
 
     // Fungsi pembantu untuk mengambil nilai tanpa peduli huruf besar/kecil
     const getVal = (obj, key, fallback) => {
@@ -314,7 +314,7 @@ window.loadAdminSettings = async function () {
     // 3. Load Identity
     const idenSnap = await db.ref('/config/identity').once('value');
     const iden = idenSnap.val() || {};
-    console.log("Admin: Data Identity murni dari FB:", iden);
+    console.log("Admin: Data Identity dari Firebase:", iden);
     
     safeSetValue('cfgSchoolName', getVal(iden, 'name', 'SMP Negeri 1 Dander'));
     safeSetValue('cfgSchoolSub', getVal(iden, 'sub', 'MGMP INF/KKA BJN'));
@@ -326,8 +326,8 @@ window.loadAdminSettings = async function () {
       window.adminState.tempLogoBase64 = logo;
     }
 
-    // 4. Firebase Config
-    if (window.firebaseConfig) {
+    // 4. Firebase Config (dari global firebaseConfig di script.js)
+    if (typeof firebaseConfig !== 'undefined') {
       safeSetValue('fbApiKey', firebaseConfig.apiKey || '');
       safeSetValue('fbAuthDomain', firebaseConfig.authDomain || '');
       safeSetValue('fbDbUrl', firebaseConfig.databaseURL || '');
@@ -336,15 +336,16 @@ window.loadAdminSettings = async function () {
       safeSetValue('fbMessagingId', firebaseConfig.messagingSenderId || '');
       safeSetValue('fbAppId', firebaseConfig.appId || '');
     }
+
+    console.log("Admin: Pengaturan berhasil dimuat dari Firebase ✅");
   } catch (e) {
     console.error("Admin Load Error:", e);
     if (e.message && e.message.includes('permission_denied')) {
       showCustomAlert('Akses Ditolak', 'Firebase menolak akses. Pastikan Rules Database sudah benar.', '❌');
     } else {
-      showCustomAlert('Gagal Memuat', 'Gagal memuat pengaturan. Periksa koneksi internet.', '❌');
+      showCustomAlert('Gagal Memuat', 'Gagal memuat pengaturan: ' + e.message, '❌');
     }
   } finally {
-    if (window.dbDisconnect) window.dbDisconnect();
     hideLoading();
   }
 };
