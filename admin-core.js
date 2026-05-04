@@ -1,39 +1,3 @@
-// ============================================
-// PATCH: Clear Firebase cache saat load admin
-// ============================================
-if ('serviceWorker' in navigator && 'caches' in window) {
-  caches.open('cbt-cache-v1').then(cache => {
-    cache.keys().then(keys => {
-      keys.forEach(request => {
-        if (request.url.includes('firebase') || request.url.includes('googleapis')) {
-          cache.delete(request);
-          console.log('🗑️ Cleared Firebase cache:', request.url);
-        }
-      });
-    });
-  });
-}
-
-// ============================================
-// HELPER: Ensure Firebase Ready
-// ============================================
-async function ensureFirebaseReady(maxWait = 5000) {
-  const startTime = Date.now();
-  
-  while (!window.db || typeof window.db.ref !== 'function') {
-    if (Date.now() - startTime > maxWait) {
-      throw new Error('Firebase tidak siap setelah ' + maxWait + 'ms');
-    }
-    await new Promise(resolve => setTimeout(resolve, 100));
-  }
-  
-  return true;
-}
-
-// ============================================
-// FUNGSI ASLI (TIDAK BERUBAH)
-// ============================================
-
 window.showAdminAuthModal = function() {
   const overlay = document.getElementById('admin-overlay');
   if (overlay) overlay.classList.add('active');
@@ -114,6 +78,7 @@ window.loadAdminSyncStatus = async function () {
   if (!countEl) return;
   try {
     countEl.textContent = 'Memuat data...';
+    // Gunakan db.ref directly karena sudah dipatch secara otomatis
     const snap = await db.ref('/status_sync').once('value');
     const data = snap.val() || {};
     const uniqueStudents = new Set();
@@ -134,233 +99,317 @@ window.loadAdminSyncStatus = async function () {
 
 window.adminState = { hasil: [], radar: [], monitor: null, monitorPage: {}, peserta: [], tempLogoBase64: null };
 
-// [FUNGSI renderPaginationControls, renderAdminDashboard, dll tetap sama...]
-// Untuk singkatnya, saya hanya show fungsi yang diubah
+function renderPaginationControls(containerId, total, perPage, current, callbackName, idParam) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const totalPages = Math.ceil(total / perPage);
+  if (totalPages <= 1) { container.innerHTML = ''; return; }
+  let html = `<button class="page-btn" onclick="${callbackName}(${current - 1}${idParam ? ',\'' + idParam + '\'' : ''})" ${current === 1 ? 'disabled' : ''}>&laquo;</button>`;
+  let start = Math.max(1, current - 2);
+  let end = Math.min(totalPages, current + 2);
+  if (start > 1) html += `<button class="page-btn" onclick="${callbackName}(1${idParam ? ',\'' + idParam + '\'' : ''})">1</button>${start > 2 ? '<span style="color:var(--text-muted)">...</span>' : ''}`;
+  for (let i = start; i <= end; i++) {
+    html += `<button class="page-btn ${i === current ? 'active' : ''}" onclick="${callbackName}(${i}${idParam ? ',\'' + idParam + '\'' : ''})">${i}</button>`;
+  }
+  if (end < totalPages) html += `${end < totalPages - 1 ? '<span style="color:var(--text-muted)">...</span>' : ''}<button class="page-btn" onclick="${callbackName}(${totalPages}${idParam ? ',\'' + idParam + '\'' : ''})">${totalPages}</button>`;
+  html += `<button class="page-btn" onclick="${callbackName}(${current + 1}${idParam ? ',\'' + idParam + '\'' : ''})" ${current === totalPages ? 'disabled' : ''}>&raquo;</button>`;
+  container.innerHTML = html;
+}
 
-// ============================================
-// FUNGSI UTAMA YANG DIPERBAIKI
-// ============================================
+function renderAdminDashboard(data = window.adminState.monitor) {
+  window.adminState.monitor = data;
+  if (!data) return;
+  const tl = document.getElementById('admin-token-list');
+  if (data.activeExams.length > 0) {
+    tl.innerHTML = data.activeExams.map(x => `
+       <div style="border-bottom:1px solid var(--border); padding-bottom:8px;">
+         <div style="font-weight:600;">${x.nama}</div>
+         <div style="color:var(--danger); font-family:var(--mono); font-size:1.2rem; font-weight:700; letter-spacing:2px;">${x.token || '---'}</div>
+       </div>
+     `).join('');
+  } else { tl.innerHTML = '<p class="text-muted">Tidak ada ujian aktif.</p>'; }
+  const ml = document.getElementById('admin-monitoring-list');
+  if (data.activeExams.length === 0) {
+    ml.innerHTML = '<p class="text-muted">Tidak ada evaluasi kepesertaan.</p>';
+    return;
+  }
+  ml.innerHTML = data.activeExams.map(ex => {
+    let selesai = 0, mengerjakan = 0, blmSelesai = 0;
+    const completedSet = new Set(data.completions[ex.id] || []);
+    const rRaw = data.peserta.map(p => {
+      let d = 'BELUM';
+      let badgeClass = 'status-belum';
+      const isOnline = (data.onlines && data.onlines[ex.id] && (p.id in data.onlines[ex.id]));
+      if (completedSet.has(p.id)) { d = 'SELESAI'; badgeClass = 'status-selesai'; selesai++; }
+      else if (isOnline) { d = 'MENGERJAKAN'; badgeClass = 'status-online'; mengerjakan++; }
+      else { blmSelesai++; }
+      return { html: `<tr><td>${p.nama}</td><td>${p.kelas}</td><td><span class="status-badge ${badgeClass}">${d}</span></td></tr>`, stat: d };
+    });
+    const absenMode = document.getElementById('chkAbsenMode') ? document.getElementById('chkAbsenMode').checked : false;
+    const filterRows = rRaw.filter(x => !absenMode || x.stat === 'BELUM');
+    const page = window.adminState.monitorPage[ex.id] || 1;
+    const perPage = 20;
+    const slicedRows = filterRows.slice((page - 1) * perPage, page * perPage).map(x => x.html).join('');
+    return `
+       <div class="admin-exam-card">
+         <h4 style="display:flex; justify-content:space-between; align-items:center;">
+           <span>${ex.nama}</span>
+           <button class="btn btn-outline" style="border-color:#38BDF8; color:#0284C7; padding:4px 10px; font-size:0.75rem;" onclick="promptBroadcast('${ex.id}')">📢 Kirim Pesan</button>
+         </h4>
+         <div class="admin-table-wrap">
+           <table class="admin-table">
+             <thead><tr><th>Nama</th><th>Kelas</th><th>Status</th></tr></thead>
+             <tbody>${slicedRows || '<tr><td colspan="3" class="text-muted text-center" style="padding:16px;">(Semua siswa sudah masuk)</td></tr>'}</tbody>
+           </table>
+         </div>
+         <div id="admin-monitor-pg-${ex.id}" class="pagination-controls"></div>
+         <div class="admin-stats" style="margin-top:12px;">
+           <span>Total: <b>${data.peserta.length}</b></span>
+           <span class="stat-done">Selesai: <b>${selesai}</b></span>
+           <span style="color:var(--primary);">Aktif: <b>${mengerjakan}</b></span>
+           <span class="stat-pending">Kosong: <b>${blmSelesai}</b></span>
+         </div>
+       </div>
+     `;
+  }).join('');
+  data.activeExams.forEach(ex => {
+    const absenMode = document.getElementById('chkAbsenMode') ? document.getElementById('chkAbsenMode').checked : false;
+    const completedSet = new Set(data.completions[ex.id] || []);
+    let rawTotal = 0;
+    data.peserta.forEach(p => {
+      const hasSelesai = completedSet.has(p.id);
+      const hasMengerjakan = (data.onlines && data.onlines[ex.id] && (p.id in data.onlines[ex.id]));
+      const stat = hasSelesai ? 'SELESAI' : (hasMengerjakan ? 'MENGERJAKAN' : 'BELUM');
+      if (!absenMode || stat === 'BELUM') rawTotal++;
+    });
+    renderPaginationControls(`admin-monitor-pg-\${ex.id}`, rawTotal, 20, window.adminState.monitorPage[ex.id] || 1, 'changeMonitorPage', ex.id);
+  });
+}
+
+function changeMonitorPage(page, examId) {
+  window.adminState.monitorPage[examId] = page;
+  renderAdminDashboard(window.adminState.monitor);
+}
+
+document.querySelectorAll('.admin-sidebar-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (!btn.dataset.tab) return;
+    document.querySelectorAll('.admin-sidebar-btn').forEach(b => b.classList.remove('active'));
+    document.querySelectorAll('.admin-tab-content').forEach(c => c.style.display = 'none');
+    btn.classList.add('active');
+    document.getElementById(btn.dataset.tab).style.display = 'flex';
+    const title = document.getElementById('admin-page-title');
+    if (title) title.innerText = btn.innerText;
+    if (btn.dataset.tab === 'tab-jadwal') loadAdminJadwal();
+    else if (btn.dataset.tab === 'tab-siswa') loadAdminSiswa();
+    else if (btn.dataset.tab === 'tab-soal') loadAdminSoal();
+    else if (btn.dataset.tab === 'tab-settings') loadAdminSettings();
+    else if (btn.dataset.tab === 'tab-laporan') loadAdminHasil(true);
+  });
+});
+
+async function loadAdminSiswa() {
+  const tbody = document.getElementById('admin-siswa-tbody');
+  tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Memuat...</td></tr>';
+  const snap = await db.ref('/peserta').once('value');
+  const data = snap.val() || {};
+  let html = '';
+  for (let id in data) {
+    html += `<tr><td><strong>${id}</strong></td><td>${data[id].nama}</td><td>${data[id].kelas}</td><td><button class="btn btn-outline" onclick="editSiswa('${id}')">📝</button> <button class="btn btn-outline" style="color:var(--danger)" onclick="deleteSiswa('${id}')">🗑️</button></td></tr>`;
+  }
+  tbody.innerHTML = html;
+}
+
+async function loadAdminSoal() {
+  const tbody = document.getElementById('admin-soal-tbody');
+  tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Memuat...</td></tr>';
+  const snap = await db.ref('/soal').once('value');
+  const data = snap.val() || {};
+  let html = '';
+  for (let bankId in data) {
+    html += `<tr><td><strong>${bankId}</strong> <br><small>${Object.keys(data[bankId]).length} soal</small></td><td><button class="btn btn-outline" onclick="previewSoal('${bankId}')">👁️</button> <button class="btn btn-primary" onclick="openSoalEditorPage('${bankId}')">📝</button></td></tr>`;
+  }
+  tbody.innerHTML = html;
+}
+
+async function loadAdminJadwal() {
+  const tbody = document.getElementById('admin-jadwal-tbody');
+  try {
+    const res = await gasRun('getAdminJadwalFull');
+    if (res.success) {
+      if (tbody) tbody.innerHTML = res.data.map(j => {
+        const badgeClass = j.aktif ? 'badge-live' : 'badge-wait';
+        const statusText = j.aktif ? 'AKTIF' : 'NONAKTIF';
+        return `
+          <tr>
+            <td><strong>${j.id}</strong></td>
+            <td>${j.nama}</td>
+            <td>${j.nama_soal}</td>
+            <td>
+              <span class="badge ${badgeClass}">${statusText}</span>
+              <code style="display:block; margin-top:4px; font-weight:bold; color:var(--danger);">${j.token || '-'}</code>
+            </td>
+            <td><button class="btn btn-outline" onclick="openJadwalModal('${j.id}')">📝 Edit</button></td>
+          </tr>`;
+      }).join('');
+    }
+  } catch (e) { console.error(e); }
+}
+
+async function loadAdminHasil(resetPage = false) {
+  const tbHasil = document.getElementById('admin-hasil-tbody');
+  const tbRadar = document.getElementById('admin-radar-tbody');
+  
+  if (resetPage) {
+    if (tbHasil) tbHasil.innerHTML = '<tr><td colspan="4" class="text-center">Memuat...</td></tr>';
+    if (tbRadar) tbRadar.innerHTML = '<tr><td colspan="4" class="text-center">Memuat...</td></tr>';
+    
+    const res = await gasRun('getAdminLaporanLengkap');
+    if (res.success) {
+      window.adminState.hasil = res.hasil || [];
+      window.adminState.radar = res.pelanggaran || [];
+    }
+  }
+  renderAdminHasilPage(1);
+  renderAdminRadarPage(1);
+}
+
+function renderAdminRadarPage(page) {
+  const perPage = 20;
+  const tbRadar = document.getElementById('admin-radar-tbody');
+  if (!tbRadar) return;
+  
+  const data = window.adminState.radar || [];
+  const sliced = data.slice((page - 1) * perPage, page * perPage);
+  
+  if (sliced.length === 0) {
+    tbRadar.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Tidak ada log pelanggaran.</td></tr>';
+  } else {
+    tbRadar.innerHTML = sliced.map(p => `
+      <tr>
+        <td>${p.waktu}</td>
+        <td><strong>${p.nama}</strong></td>
+        <td>${p.ujian}</td>
+        <td><span class="badge" style="background:#FEE2E2; color:#B91C1C; border:1px solid #FECACA;">${p.tipe}</span></td>
+      </tr>
+    `).join('');
+  }
+  renderPaginationControls('admin-radar-pagination', data.length, perPage, page, 'renderAdminRadarPage');
+}
+
+function renderAdminHasilPage(page) {
+  const perPage = 20;
+  const tbHasil = document.getElementById('admin-hasil-tbody');
+  const data = window.adminState.hasil || [];
+  const search = document.getElementById('admin-hasil-search')?.value?.toLowerCase() || '';
+  const filtered = data.filter(h => h.nama.toLowerCase().includes(search) || h.ujian.toLowerCase().includes(search));
+  const sliced = filtered.slice((page - 1) * perPage, page * perPage);
+  tbHasil.innerHTML = sliced.map(h => `<tr><td>${h.waktu}</td><td>${h.nama}</td><td>${h.ujian}</td><td>${h.skor}</td></tr>`).join('');
+  renderPaginationControls('admin-hasil-pagination', filtered.length, perPage, page, 'renderAdminHasilPage');
+}
 
 window.loadAdminSettings = async function () {
   showLoading('Memuat Pengaturan...');
   try {
-    // ✅ 1. Pastikan Firebase ready dulu
-    console.log("Admin: Memastikan Firebase siap...");
-    await ensureFirebaseReady();
-    console.log("Admin: Firebase ready ✅");
+    // 1. Pastikan Auth Siap sebelum query Firebase
+    if (window.authPromise) {
+      console.log("Admin: Menunggu Auth...");
+      await window.authPromise;
+    }
+
+    // Cek status auth secara eksplisit
+    const currentUser = firebase.auth().currentUser;
+    if (!currentUser) {
+      console.error("Admin: User belum terautentikasi! Pastikan 'Anonymous Auth' aktif di Firebase Console.");
+      showCustomAlert('Auth Gagal', 'Sesi Firebase belum siap. Silakan refresh halaman.', '🔐');
+      return;
+    }
+    console.log("Admin: Auth OK (UID:", currentUser.uid, ")");
+
+    // 2. Diagnosa Koneksi (Gunakan dbConnectFast agar admin tidak kena jitter 1.5 detik)
+    console.log("Admin: Memulai koneksi database...");
+    if (window.dbConnectFast) await window.dbConnectFast();
     
-    // ✅ 2. Connect dengan timeout protection
-    if (window.dbConnectFast) {
-      console.log("Admin: Connecting to Firebase...");
-      const connectPromise = window.dbConnectFast();
-      const timeoutPromise = new Promise((_, reject) => 
-        setTimeout(() => reject(new Error('Koneksi Firebase timeout setelah 10 detik')), 10000)
-      );
+    try {
+      console.log("Admin: Mengambil data security...");
+      const snap = await db.ref('/config/security').once('value');
       
-      try {
-        await Promise.race([connectPromise, timeoutPromise]);
-        console.log("Admin: Firebase connected ✅");
-      } catch (timeoutErr) {
-        console.error("Admin: Connection timeout:", timeoutErr);
-        throw new Error('Koneksi Firebase timeout. Periksa internet Anda.');
+      const sec = snap.val() || {};
+      console.log("Admin: Data Security diterima:", sec);
+
+      // Fungsi pembantu untuk mengambil nilai tanpa peduli huruf besar/kecil
+      const getVal = (obj, key, fallback) => {
+        if (!obj) return fallback;
+        if (obj[key] !== undefined) return obj[key];
+        const foundKey = Object.keys(obj).find(k => k.toLowerCase() === key.toLowerCase());
+        return foundKey ? obj[foundKey] : fallback;
+      };
+
+      const isTrue = (v) => v === true || v === "true" || v === 1 || v === "1";
+
+      // Bind ke UI dengan proteksi case-insensitive
+      safeSetChecked('cfgPWA', isTrue(getVal(sec, 'pwa', false)));
+      safeSetChecked('cfgFullscreen', isTrue(getVal(sec, 'fullscreen', false)));
+      safeSetChecked('cfgAntiCheat', isTrue(getVal(sec, 'anticheat', false)));
+      
+      // Default TRUE jika tidak ada data (undefined)
+      const showExam = getVal(sec, 'showExamStatus', undefined);
+      safeSetChecked('cfgShowExamStatus', showExam !== false && showExam !== "false" && showExam !== 0 && showExam !== "0");
+      
+      const showSys = getVal(sec, 'showSystemInfo', undefined);
+      safeSetChecked('cfgShowSystemInfo', showSys !== false && showSys !== "false" && showSys !== 0 && showSys !== "0");
+      
+      safeSetValue('cfgMinTime', getVal(sec, 'minTime', 0));
+      safeSetValue('cfgBypassCode', getVal(sec, 'bypassCode', ''));
+
+      // 3. Load Identity
+      console.log("Admin: Mengambil data identity...");
+      const idenSnap = await db.ref('/config/identity').once('value');
+      const iden = idenSnap.val() || {};
+      console.log("Admin: Data Identity diterima:", iden);
+      
+      safeSetValue('cfgSchoolName', getVal(iden, 'name', 'SMP Negeri 1 Dander'));
+      safeSetValue('cfgSchoolSub', getVal(iden, 'sub', 'MGMP INF/KKA BJN'));
+
+      const preview = document.getElementById('cfgLogoPreview');
+      if (preview) {
+        const logo = getVal(iden, 'logo', null);
+        preview.innerHTML = logo ? `<img src="${logo}" style="max-width:100%; max-height:100%; object-fit:contain;">` : '<span class="text-muted" style="font-size:0.7rem;">No Logo</span>';
+        window.adminState.tempLogoBase64 = logo;
+      }
+
+      // 4. Firebase Config (dari global fbConfig di script.js)
+      if (typeof fbConfig !== 'undefined') {
+        safeSetValue('fbApiKey', fbConfig.apiKey || '');
+        safeSetValue('fbAuthDomain', fbConfig.authDomain || '');
+        safeSetValue('fbDbUrl', fbConfig.databaseURL || '');
+        safeSetValue('fbProjectId', fbConfig.projectId || '');
+        safeSetValue('fbStorageBucket', fbConfig.storageBucket || '');
+        safeSetValue('fbMessagingId', fbConfig.messagingSenderId || '');
+        safeSetValue('fbAppId', fbConfig.appId || '');
+      }
+
+      console.log("Admin: Pengaturan berhasil dimuat dari Firebase ✅");
+      
+      // Force UI alert for diagnostic purposes (User cannot see console)
+      showCustomAlert('Diagnostic Info', `Data Security: ${JSON.stringify(sec).substring(0, 50)}...`, '✅');
+      
+    } catch (dbErr) {
+      console.error("Admin DB Query Error:", dbErr);
+      if (dbErr.message.toLowerCase().includes('permission_denied') || dbErr.message.toLowerCase().includes('permission denied')) {
+        showCustomAlert('Akses Ditolak', 'Firebase menolak akses (Permission Denied). Cek Rules di Firebase Console.', '🚫');
+      } else {
+        throw dbErr;
       }
     }
-    
-    // ✅ 3. Query Security dengan retry mechanism
-    console.log("Admin: Mengambil data security dari Firebase...");
-    const maxRetries = 3;
-    let securityData = null;
-    let lastError = null;
-    
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        console.log(`Admin: Attempt ${attempt}/${maxRetries} - Query /config/security`);
-        
-        // Query dengan timeout 8 detik
-        const snap = await Promise.race([
-          db.ref('/config/security').once('value'),
-          new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Query timeout')), 8000)
-          )
-        ]);
-        
-        securityData = snap.val() || {};
-        console.log("Admin: ✅ Data Security diterima:", securityData);
-        break; // Berhasil, keluar dari loop
-        
-      } catch (queryErr) {
-        lastError = queryErr;
-        console.error(`Admin: ❌ Attempt ${attempt} failed:`, queryErr.message);
-        
-        if (attempt < maxRetries) {
-          console.log(`Admin: Retry dalam 1 detik...`);
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        }
-      }
-    }
-    
-    // Jika semua retry gagal
-    if (!securityData) {
-      throw lastError || new Error('Gagal mengambil data security setelah 3 percobaan');
-    }
-
-    // Fungsi pembantu untuk mengambil nilai tanpa peduli huruf besar/kecil
-    const getVal = (obj, key, fallback) => {
-      if (!obj) return fallback;
-      if (obj[key] !== undefined) return obj[key];
-      const foundKey = Object.keys(obj).find(k => k.toLowerCase() === key.toLowerCase());
-      return foundKey ? obj[foundKey] : fallback;
-    };
-
-    const isTrue = (v) => v === true || v === "true" || v === 1 || v === "1";
-
-    // Bind ke UI dengan proteksi case-insensitive
-    safeSetChecked('cfgPWA', isTrue(getVal(securityData, 'pwa', false)));
-    safeSetChecked('cfgFullscreen', isTrue(getVal(securityData, 'fullscreen', false)));
-    safeSetChecked('cfgAntiCheat', isTrue(getVal(securityData, 'anticheat', false)));
-    
-    // Default TRUE jika tidak ada data (undefined)
-    const showExam = getVal(securityData, 'showExamStatus', undefined);
-    safeSetChecked('cfgShowExamStatus', showExam !== false && showExam !== "false" && showExam !== 0 && showExam !== "0");
-    
-    const showSys = getVal(securityData, 'showSystemInfo', undefined);
-    safeSetChecked('cfgShowSystemInfo', showSys !== false && showSys !== "false" && showSys !== 0 && showSys !== "0");
-    
-    safeSetValue('cfgMinTime', getVal(securityData, 'minTime', 0));
-    safeSetValue('cfgBypassCode', getVal(securityData, 'bypassCode', ''));
-
-    // ✅ 4. Load Identity dengan retry
-    console.log("Admin: Mengambil data identity...");
-    let identityData = null;
-    
-    for (let attempt = 1; attempt <= maxRetries; attempt++) {
-      try {
-        const idenSnap = await Promise.race([
-          db.ref('/config/identity').once('value'),
-          new Promise((_, reject) => 
-            setTimeout(() => reject(new Error('Query timeout')), 8000)
-          )
-        ]);
-        
-        identityData = idenSnap.val() || {};
-        console.log("Admin: ✅ Data Identity diterima:", identityData);
-        break;
-        
-      } catch (queryErr) {
-        console.error(`Admin: ❌ Identity query attempt ${attempt} failed:`, queryErr.message);
-        
-        if (attempt < maxRetries) {
-          await new Promise(resolve => setTimeout(resolve, 1000));
-        } else {
-          // Jika identity gagal, tidak critical - use default
-          console.warn("Admin: ⚠️ Menggunakan data identity default");
-          identityData = {};
-        }
-      }
-    }
-    
-    safeSetValue('cfgSchoolName', getVal(identityData, 'name', 'SMP Negeri 1 Dander'));
-    safeSetValue('cfgSchoolSub', getVal(identityData, 'sub', 'MGMP INF/KKA BJN'));
-
-    const preview = document.getElementById('cfgLogoPreview');
-    if (preview) {
-      const logo = getVal(identityData, 'logo', null);
-      preview.innerHTML = logo ? `<img src="${logo}" style="max-width:100%; max-height:100%; object-fit:contain;">` : '<span class="text-muted" style="font-size:0.7rem;">No Logo</span>';
-      window.adminState.tempLogoBase64 = logo;
-    }
-
-    // ✅ 5. Firebase Config (dari global fbConfig di script.js)
-    if (typeof fbConfig !== 'undefined') {
-      safeSetValue('fbApiKey', fbConfig.apiKey || '');
-      safeSetValue('fbAuthDomain', fbConfig.authDomain || '');
-      safeSetValue('fbDbUrl', fbConfig.databaseURL || '');
-      safeSetValue('fbProjectId', fbConfig.projectId || '');
-      safeSetValue('fbStorageBucket', fbConfig.storageBucket || '');
-      safeSetValue('fbMessagingId', fbConfig.messagingSenderId || '');
-      safeSetValue('fbAppId', fbConfig.appId || '');
-    }
-
-    console.log("Admin: 🎉 Pengaturan berhasil dimuat dari Firebase!");
-    hideLoading();
-    
-  } catch (dbErr) {
-    console.error("❌ Admin Load Error:", dbErr);
-    hideLoading();
-    
-    // Better error messages
-    if (dbErr.message.toLowerCase().includes('permission_denied') || 
-        dbErr.message.toLowerCase().includes('permission denied')) {
-      showCustomAlert(
-        'Akses Ditolak', 
-        'Firebase menolak akses. Cek Firebase Rules di Console.\n\nDetail: ' + dbErr.message, 
-        '🚫'
-      );
-    } else if (dbErr.message.toLowerCase().includes('timeout')) {
-      showCustomAlert(
-        'Koneksi Lambat', 
-        'Firebase tidak merespons. Periksa koneksi internet Anda.\n\nCoba reload halaman.', 
-        '⏱️'
-      );
-    } else if (dbErr.message.toLowerCase().includes('tidak siap')) {
-      showCustomAlert(
-        'Firebase Belum Siap', 
-        'Firebase belum ter-inisialisasi. Reload halaman.\n\nJika masalah berlanjut, cek konfigurasi Firebase.', 
-        '⚙️'
-      );
-    } else {
-      showCustomAlert(
-        'Gagal Memuat', 
-        'Error: ' + dbErr.message + '\n\nCoba reload halaman atau hubungi administrator.', 
-        '❌'
-      );
-    }
+  } catch (e) {
+    console.error("Admin Load General Error:", e);
+    showCustomAlert('Gagal Memuat', 'Kesalahan sistem: ' + e.message, '❌');
   } finally {
     if (window.dbDisconnect) window.dbDisconnect();
-  }
-};
-
-// ============================================
-// BONUS: Force Reload Settings Function
-// ============================================
-window.forceReloadSettings = async function() {
-  console.log("🔄 Force reloading settings...");
-  showLoading('Memuat ulang data...');
-  
-  try {
-    // Clear Firebase cache
-    if ('caches' in window) {
-      const cache = await caches.open('cbt-cache-v1');
-      const keys = await cache.keys();
-      for (let request of keys) {
-        const url = request.url;
-        if (url.includes('firebase') || url.includes('googleapis') || url.includes('config')) {
-          await cache.delete(request);
-          console.log('🗑️ Cleared cache:', url);
-        }
-      }
-    }
-    
-    // Force disconnect & reconnect
-    if (window.dbDisconnect) {
-      await window.dbDisconnect();
-      console.log('📡 Disconnected from Firebase');
-    }
-    
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    // Reload settings
-    await loadAdminSettings();
-    
-    showCustomAlert('Berhasil', 'Data berhasil dimuat ulang dari Firebase!', '✅');
-    
-  } catch (err) {
-    console.error('❌ Force reload error:', err);
     hideLoading();
-    showCustomAlert('Gagal', 'Gagal memuat ulang: ' + err.message, '❌');
   }
 };
-
-// [Fungsi lainnya tetap sama seperti aslinya...]
 
 safeAddListener('cfgLogoInput', 'change', (e) => {
   const file = e.target.files[0];
