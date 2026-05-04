@@ -267,38 +267,57 @@ function renderAdminHasilPage(page) {
 window.loadAdminSettings = async function () {
   showLoading('Memuat Pengaturan...');
   try {
+    // Gunakan dbConnectFast agar tidak terkena jitter 1.5 detik
+    if (window.dbConnectFast) await window.dbConnectFast();
+    
+    console.log("Fetching config from: /config/security");
     const snap = await db.ref('/config/security').once('value');
     const sec = snap.val() || {};
-    safeSetChecked('cfgPWA', sec.pwa);
-    safeSetChecked('cfgFullscreen', sec.fullscreen);
-    safeSetChecked('cfgAntiCheat', sec.anticheat);
-    safeSetChecked('cfgShowExamStatus', sec.showExamStatus !== false);
-    safeSetChecked('cfgShowSystemInfo', sec.showSystemInfo !== false);
+    console.log("Security Config Received:", sec);
+
+    // Bind ke UI dengan penanganan tipe data (string/number/boolean)
+    safeSetChecked('cfgPWA', sec.pwa === true || sec.pwa === "true" || sec.pwa === 1 || sec.pwa === "1");
+    safeSetChecked('cfgFullscreen', sec.fullscreen === true || sec.fullscreen === "true" || sec.fullscreen === 1 || sec.fullscreen === "1");
+    safeSetChecked('cfgAntiCheat', sec.anticheat === true || sec.anticheat === "true" || sec.anticheat === 1 || sec.anticheat === "1");
+    
+    // Default TRUE jika tidak ada data (mencegah mati semua saat database baru/kosong)
+    safeSetChecked('cfgShowExamStatus', sec.showExamStatus !== false && sec.showExamStatus !== "false" && sec.showExamStatus !== 0 && sec.showExamStatus !== "0");
+    safeSetChecked('cfgShowSystemInfo', sec.showSystemInfo !== false && sec.showSystemInfo !== "false" && sec.showSystemInfo !== 0 && sec.showSystemInfo !== "0");
+    
     safeSetValue('cfgMinTime', sec.minTime || 0);
     safeSetValue('cfgBypassCode', sec.bypassCode || '');
 
+    // Load Identity
     const idenSnap = await db.ref('/config/identity').once('value');
     const iden = idenSnap.val() || {};
+    console.log("Identity Config Received:", iden);
+    
     if (iden.name) safeSetValue('cfgSchoolName', iden.name);
     if (iden.sub) safeSetValue('cfgSchoolSub', iden.sub);
 
     const preview = document.getElementById('cfgLogoPreview');
     if (preview) {
-      preview.innerHTML = iden.logo ? `<img src="\${iden.logo}">` : '<span class="text-muted" style="font-size:0.8rem;">No Logo</span>';
+      preview.innerHTML = iden.logo ? `<img src="${iden.logo}" style="max-width:100%; max-height:100%; object-fit:contain;">` : '<span class="text-muted" style="font-size:0.7rem;">No Logo</span>';
       window.adminState.tempLogoBase64 = iden.logo || null;
     }
 
-    safeSetValue('fbApiKey', firebaseConfig.apiKey || '');
-    safeSetValue('fbAuthDomain', firebaseConfig.authDomain || '');
-    safeSetValue('fbDbUrl', firebaseConfig.databaseURL || '');
-    safeSetValue('fbProjectId', firebaseConfig.projectId || '');
-    safeSetValue('fbStorageBucket', firebaseConfig.storageBucket || '');
-    safeSetValue('fbMessagingId', firebaseConfig.messagingSenderId || '');
-    safeSetValue('fbAppId', firebaseConfig.appId || '');
+    // Firebase Config
+    if (window.firebaseConfig) {
+      safeSetValue('fbApiKey', firebaseConfig.apiKey || '');
+      safeSetValue('fbAuthDomain', firebaseConfig.authDomain || '');
+      safeSetValue('fbDbUrl', firebaseConfig.databaseURL || '');
+      safeSetValue('fbProjectId', firebaseConfig.projectId || '');
+      safeSetValue('fbStorageBucket', firebaseConfig.storageBucket || '');
+      safeSetValue('fbMessagingId', firebaseConfig.messagingSenderId || '');
+      safeSetValue('fbAppId', firebaseConfig.appId || '');
+    }
   } catch (e) {
-    console.error(e);
+    console.error("Admin Load Error:", e);
+    showCustomAlert('Gagal Memuat', 'Gagal memuat pengaturan. Periksa koneksi internet.', '❌');
+  } finally {
+    if (window.dbDisconnect) window.dbDisconnect();
+    hideLoading();
   }
-  hideLoading();
 };
 
 safeAddListener('cfgLogoInput', 'change', (e) => {
@@ -314,7 +333,7 @@ safeAddListener('cfgLogoInput', 'change', (e) => {
     const base64 = event.target.result;
     window.adminState.tempLogoBase64 = base64;
     const preview = document.getElementById('cfgLogoPreview');
-    if (preview) preview.innerHTML = `<img src="\${base64}">`;
+    if (preview) preview.innerHTML = `<img src="${base64}" style="max-width:100%; max-height:100%; object-fit:contain;">`;
   };
   reader.readAsDataURL(file);
 });
@@ -322,6 +341,8 @@ safeAddListener('cfgLogoInput', 'change', (e) => {
 window.saveAdminSettings = async function () {
   showLoading('Menyimpan...');
   try {
+    if (window.dbConnectFast) await window.dbConnectFast();
+
     const sec = {
       pwa: document.getElementById('cfgPWA') ? document.getElementById('cfgPWA').checked : false,
       fullscreen: document.getElementById('cfgFullscreen') ? document.getElementById('cfgFullscreen').checked : false,
@@ -366,6 +387,8 @@ window.saveAdminSettings = async function () {
     console.error(e);
     hideLoading();
     showCustomAlert('Gagal Menyimpan', 'Gagal: ' + e.message, '❌');
+  } finally {
+    if (window.dbDisconnect) window.dbDisconnect();
   }
 };
 
