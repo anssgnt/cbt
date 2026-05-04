@@ -699,7 +699,7 @@ function simpleHash(str) {
 async function cacheAllImages(questions) {
   if (!('caches' in window)) return;
   try {
-    const cache = await caches.open('cbt-cache-v1');
+    const cache = await caches.open('cbt-cache-v5');
     const imageUrls = [];
 
     questions.forEach(q => {
@@ -786,6 +786,17 @@ async function syncAllQuestions() {
 
     try {
       // SkipTokenCheck = true agar bisa download H-1 tanpa tahu token
+      const examData = await getExamDataOptimized(sch.id, null, true, true);
+
+      // Pre-cache images if any
+      if (examData && examData.questions) {
+        await cacheAllImages(examData.questions);
+      }
+
+      // Hash token for offline verification
+      if (examData && examData.rawToken) {
+        localStorage.setItem(`CBT_TOKEN_HASH_${sch.id}`, simpleHash(String(examData.rawToken).toUpperCase().trim()));
+      }
 
       completed.add(sch.id);
       localStorage.setItem('SYNC_PROGRESS', JSON.stringify({ completed: [...completed] }));
