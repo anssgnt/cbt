@@ -3009,8 +3009,9 @@ h4 {
 
 .landing-btn-outline:hover {
   background: #F9FAFB;
+  color: #1D4ED8;
   transform: translateY(-2px);
-  border-color: #D1D5DB;
+  box-shadow: inset 0 0 0 1px #D1D5DB;
 }
 
 .landing-card {
