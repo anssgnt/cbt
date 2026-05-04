@@ -225,39 +225,64 @@ window.forceRefreshAdminTab = function () {
 
 async function loadAdminSiswa() {
   const tbody = document.getElementById('admin-siswa-tbody');
+  if (!tbody) return;
   tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Memuat...</td></tr>';
-  const snap = await db.ref('/peserta').once('value');
-  const data = snap.val() || {};
-  let html = '';
-  for (let id in data) {
-    html += `<tr><td><strong>${id}</strong></td><td>${data[id].nama}</td><td>${data[id].kelas}</td><td><button class="btn btn-outline" onclick="editSiswa('${id}')">📝</button> <button class="btn btn-outline" style="color:var(--danger)" onclick="deleteSiswa('${id}')">🗑️</button></td></tr>`;
+  
+  try {
+    if (window.dbConnectFast) await window.dbConnectFast();
+    const snap = await db.ref('/peserta').once('value');
+    const data = snap.val() || {};
+    let html = '';
+    for (let id in data) {
+      html += `<tr><td><strong>${id}</strong></td><td>${data[id].nama}</td><td>${data[id].kelas}</td><td><button class="btn btn-outline" onclick="editSiswa('${id}')">📝</button> <button class="btn btn-outline" style="color:var(--danger)" onclick="deleteSiswa('${id}')">🗑️</button></td></tr>`;
+    }
+    tbody.innerHTML = html || '<tr><td colspan="4" class="text-center">Belum ada data siswa.</td></tr>';
+  } catch (e) {
+    console.error(e);
+  } finally {
+    if (window.dbDisconnect) window.dbDisconnect();
   }
-  tbody.innerHTML = html;
 }
 
 async function loadAdminSoal() {
   const tbody = document.getElementById('admin-soal-tbody');
+  if (!tbody) return;
   tbody.innerHTML = '<tr><td colspan="2" class="text-center text-muted">Memuat...</td></tr>';
-  const snap = await db.ref('/soal').once('value');
-  const data = snap.val() || {};
-  let html = '';
-  for (let bankId in data) {
-    html += `<tr><td><strong>${bankId}</strong> <br><small>${Object.keys(data[bankId]).length} soal</small></td><td><button class="btn btn-outline" onclick="previewSoal('${bankId}')">👁️</button> <button class="btn btn-primary" onclick="openSoalEditorPage('${bankId}')">📝</button> <button class="btn btn-outline" style="color:var(--danger)" onclick="deleteBankSoal('${bankId}')">🗑️</button></td></tr>`;
+  
+  try {
+    if (window.dbConnectFast) await window.dbConnectFast();
+    const snap = await db.ref('/soal').once('value');
+    const data = snap.val() || {};
+    let html = '';
+    for (let bankId in data) {
+      html += `<tr><td><strong>${bankId}</strong> <br><small>${Object.keys(data[bankId]).length} soal</small></td><td><button class="btn btn-outline" onclick="previewSoal('${bankId}')">👁️</button> <button class="btn btn-primary" onclick="openSoalEditorPage('${bankId}')">📝</button> <button class="btn btn-outline" style="color:var(--danger)" onclick="deleteBankSoal('${bankId}')">🗑️</button></td></tr>`;
+    }
+    tbody.innerHTML = html || '<tr><td colspan="2" class="text-center">Belum ada bank soal.</td></tr>';
+  } catch (e) {
+    console.error(e);
+  } finally {
+    if (window.dbDisconnect) window.dbDisconnect();
   }
-  tbody.innerHTML = html;
 }
 
 async function loadAdminJadwal() {
   const tbody = document.getElementById('admin-jadwal-tbody');
+  if (!tbody) return;
+  
+  showLoading('Memuat Jadwal...');
   try {
-    const res = await gasRun('getAdminJadwalFull');
-    if (res.success) {
-      if (tbody) tbody.innerHTML = res.data.map(j => {
-        const badgeClass = j.aktif ? 'badge-live' : 'badge-wait';
-        const statusText = j.aktif ? 'AKTIF' : 'NONAKTIF';
-        return `
+    if (window.dbConnectFast) await window.dbConnectFast();
+    const snap = await db.ref('/jadwal').once('value');
+    const data = snap.val() || {};
+    
+    let html = '';
+    for (let id in data) {
+      const j = data[id];
+      const badgeClass = j.aktif ? 'badge-live' : 'badge-wait';
+      const statusText = j.aktif ? 'AKTIF' : 'NONAKTIF';
+      html += `
           <tr>
-            <td><strong>${j.id}</strong></td>
+            <td><strong>${id}</strong></td>
             <td>${j.nama}</td>
             <td>${j.nama_soal}</td>
             <td>
@@ -265,13 +290,19 @@ async function loadAdminJadwal() {
               <code style="display:block; margin-top:4px; font-weight:bold; color:var(--danger);">${j.token || '-'}</code>
             </td>
             <td>
-              <button class="btn btn-outline" onclick="openJadwalModal('${j.id}')">📝 Edit</button>
-              <button class="btn btn-outline" style="color:var(--danger)" onclick="deleteJadwal('${j.id}')">🗑️</button>
+              <button class="btn btn-outline" onclick="openJadwalModal('${id}')">📝 Edit</button>
+              <button class="btn btn-outline" style="color:var(--danger)" onclick="deleteJadwal('${id}')">🗑️</button>
             </td>
           </tr>`;
-      }).join('');
     }
-  } catch (e) { console.error(e); }
+    tbody.innerHTML = html || '<tr><td colspan="5" class="text-center">Belum ada jadwal.</td></tr>';
+  } catch (e) { 
+    console.error(e); 
+    showCustomAlert('Gagal', 'Gagal memuat jadwal dari Firebase.', '❌');
+  } finally {
+    if (window.dbDisconnect) window.dbDisconnect();
+    hideLoading();
+  }
 }
 
 async function loadAdminHasil(resetPage = false) {
