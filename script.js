@@ -1,23 +1,26 @@
-// --- Dynamic PWA Manifest for Google Apps Script ---
-(function () {
+// --- Dynamic PWA Manifest Logic ---
+window.updatePWAManifest = function (schoolName = "CBT Online MGMP", logoUrl = null) {
+  const defaultIcon = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzFEMEVEOCI+PHBhdGggZD0iTTEyIDJMMiA3TDEyIDEyTDIyIDdMMTIgMloiLz48cGF0aCBkPSJNMkEgOVYxNEMyIDE0IDcuNSAxNy41IDEyIDE5LjVDMTYuNSAxNy41IDIyIDE0IDIyIDE0VjlMMTIgMTRMMiA5WiIgb3BhY2l0eT0iMC43NSIvPjwvc3ZnPg==";
+  const iconSrc = logoUrl || defaultIcon;
+
   const manifestData = {
-    "name": "CBT Online MGMP",
+    "name": schoolName,
     "short_name": "CBT",
-    "start_url": window.location.href, // Mengunci URL GAS yang panjang
+    "start_url": window.location.href,
     "display": "standalone",
     "background_color": "#F5F7FF",
     "theme_color": "#1D4ED8",
     "icons": [
       {
-        "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzFEMEVEOCI+PHBhdGggZD0iTTEyIDJMMiA3TDEyIDEyTDIyIDdMMTIgMloiLz48cGF0aCBkPSJNMkEgOVYxNEMyIDE0IDcuNSAxNy41IDEyIDE5LjVDMTYuNSAxNy41IDIyIDE0IDIyIDE0VjlMMTIgMTRMMiA5WiIgb3BhY2l0eT0iMC43NSIvPjwvc3ZnPg==",
+        "src": iconSrc,
         "sizes": "192x192",
-        "type": "image/svg+xml",
+        "type": logoUrl ? "image/png" : "image/svg+xml",
         "purpose": "any maskable"
       },
       {
-        "src": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iIzFEMEVEOCI+PHBhdGggZD0iTTEyIDJMMiA3TDEyIDEyTDIyIDdMMTIgMloiLz48cGF0aCBkPSJNMkEgOVYxNEMyIDE0IDcuNSAxNy41IDEyIDE5LjVDMTYuNSAxNy41IDIyIDE0IDIyIDE0VjlMMTIgMTRMMiA5WiIgb3BhY2l0eT0iMC43NSIvPjwvc3ZnPg==",
+        "src": iconSrc,
         "sizes": "512x512",
-        "type": "image/svg+xml",
+        "type": logoUrl ? "image/png" : "image/svg+xml",
         "purpose": "any maskable"
       }
     ]
@@ -26,7 +29,10 @@
   const encodedManifest = encodeURIComponent(stringManifest);
   const manifestURL = 'data:application/manifest+json;charset=utf-8,' + encodedManifest;
   document.getElementById('pwa-manifest').setAttribute('href', manifestURL);
-})();
+};
+
+// Initial call
+window.updatePWAManifest();
 
 // --- MODAL PANDUAN ---
 window.openGuideModal = function () {
@@ -95,6 +101,9 @@ function applySchoolIdentity(iden) {
       defaultLogo.style.display = 'none';
     }
   }
+
+  // Update PWA Manifest dynamically (Armor 1000)
+  updatePWAManifest(iden.name || "CBT Online", iden.logo);
 }
 
 // Global initialization for School Identity
@@ -3601,26 +3610,36 @@ let deferredPrompt;
 window.addEventListener('beforeinstallprompt', (e) => {
   e.preventDefault();
   deferredPrompt = e;
-  // Tampilkan tombol install di PWA blocker overlay jika sedang tampil
-  const btnInstall = document.getElementById('btnTriggerInstall');
-  if (btnInstall) {
-    btnInstall.style.display = 'block';
-    // Pastikan listener tidak duplikat
-    btnInstall.onclick = async function () {
-      if (!deferredPrompt) return;
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      if (outcome === 'accepted') {
-        deferredPrompt = null;
-        btnInstall.style.display = 'none';
-      }
-    };
+  // Tampilkan banner install
+  const banner = document.getElementById('pwa-install-banner');
+  const btnInstall = document.getElementById('btn-pwa-install');
+  const btnTrigger = document.getElementById('btnTriggerInstall');
+
+  if (banner) banner.style.display = 'flex';
+
+  const handleInstall = async (btn) => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      deferredPrompt = null;
+      if (banner) banner.style.display = 'none';
+      if (btnTrigger) btnTrigger.style.display = 'none';
+    }
+  };
+
+  if (btnInstall) btnInstall.onclick = () => handleInstall(btnInstall);
+  if (btnTrigger) {
+    btnTrigger.style.display = 'block';
+    btnTrigger.onclick = () => handleInstall(btnTrigger);
   }
 });
 
-// Jika sudah installed, sembunyikan blocker (event appinstalled)
+// Jika sudah installed, sembunyikan banner & blocker
 window.addEventListener('appinstalled', () => {
+  const banner = document.getElementById('pwa-install-banner');
   const overlay = document.getElementById('pwa-blocker-overlay');
+  if (banner) banner.style.display = 'none';
   if (overlay) overlay.classList.remove('active');
 });
 
