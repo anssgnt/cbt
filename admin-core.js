@@ -260,57 +260,45 @@ function renderAdminHasilPage(page) {
   const search = document.getElementById('admin-hasil-search')?.value?.toLowerCase() || '';
   const filtered = data.filter(h => h.nama.toLowerCase().includes(search) || h.ujian.toLowerCase().includes(search));
   const sliced = filtered.slice((page - 1) * perPage, page * perPage);
-  tbHasil.innerHTML = sliced.map(h => `<tr><td>\${h.waktu}</td><td>\${h.nama}</td><td>\${h.ujian}</td><td>\${h.skor}</td></tr>`).join('');
+  tbHasil.innerHTML = sliced.map(h => `<tr><td>${h.waktu}</td><td>${h.nama}</td><td>${h.ujian}</td><td>${h.skor}</td></tr>`).join('');
   renderPaginationControls('admin-hasil-pagination', filtered.length, perPage, page, 'renderAdminHasilPage');
 }
 
 window.loadAdminSettings = async function () {
-  const settingsTab = document.getElementById('tab-settings');
-  if (!settingsTab) return;
-
-  showLoading('Sinkronisasi Firebase...');
+  showLoading('Memuat Pengaturan...');
   try {
-    // 1. Cek & Tunggu Auth (Hanya menunggu jika belum ready)
+    // KRITIKAL: Tunggu hingga login Firebase selesai agar tidak Permission Denied
     if (window.authPromise) {
-      console.log("Auth Status: Waiting for session...");
+      console.log("Menunggu autentikasi Firebase...");
       await window.authPromise;
-      console.log("Auth Status: Ready!");
     }
 
-    // 2. Paksa Online
     if (window.dbConnectFast) await window.dbConnectFast();
     
-    const dbUrl = (db && db.app && db.app.options) ? db.app.options.databaseURL : 'Unknown';
-    console.log("Firebase Connected to:", dbUrl);
+    // Log untuk memastikan kita terhubung ke DB yang benar
+    if (window.db) console.log("Database URL:", db.app.options.databaseURL);
     
-    // 3. Ambil data Security
-    console.log("Requesting path: /config/security");
+    console.log("Fetching config from: /config/security");
     const snap = await db.ref('/config/security').once('value');
-    const sec = snap.val();
-    
-    if (sec === null) {
-      console.warn("Data /config/security tidak ditemukan (null). Menggunakan default UI.");
-    } else {
-      console.log("Data Security Received:", sec);
-    }
+    const sec = snap.val() || {};
+    console.log("Security Config Received:", sec);
 
-    const s = sec || {};
-    safeSetChecked('cfgPWA', s.pwa === true || s.pwa === "true" || s.pwa === 1 || s.pwa === "1");
-    safeSetChecked('cfgFullscreen', s.fullscreen === true || s.fullscreen === "true" || s.fullscreen === 1 || s.fullscreen === "1");
-    safeSetChecked('cfgAntiCheat', s.anticheat === true || s.anticheat === "true" || s.anticheat === 1 || s.anticheat === "1");
+    // Bind ke UI dengan penanganan tipe data (string/number/boolean)
+    safeSetChecked('cfgPWA', sec.pwa === true || sec.pwa === "true" || sec.pwa === 1 || sec.pwa === "1");
+    safeSetChecked('cfgFullscreen', sec.fullscreen === true || sec.fullscreen === "true" || sec.fullscreen === 1 || sec.fullscreen === "1");
+    safeSetChecked('cfgAntiCheat', sec.anticheat === true || sec.anticheat === "true" || sec.anticheat === 1 || sec.anticheat === "1");
     
-    // Default TRUE jika data tidak ada
-    safeSetChecked('cfgShowExamStatus', s.showExamStatus !== false && s.showExamStatus !== "false" && s.showExamStatus !== 0);
-    safeSetChecked('cfgShowSystemInfo', s.showSystemInfo !== false && s.showSystemInfo !== "false" && s.showSystemInfo !== 0);
+    // Default TRUE jika tidak ada data (mencegah mati semua saat database baru/kosong)
+    safeSetChecked('cfgShowExamStatus', sec.showExamStatus !== false && sec.showExamStatus !== "false" && sec.showExamStatus !== 0 && sec.showExamStatus !== "0");
+    safeSetChecked('cfgShowSystemInfo', sec.showSystemInfo !== false && sec.showSystemInfo !== "false" && sec.showSystemInfo !== 0 && sec.showSystemInfo !== "0");
     
-    safeSetValue('cfgMinTime', s.minTime || 0);
-    safeSetValue('cfgBypassCode', s.bypassCode || '');
+    safeSetValue('cfgMinTime', sec.minTime || 0);
+    safeSetValue('cfgBypassCode', sec.bypassCode || '');
 
-    // 4. Ambil data Identitas
-    console.log("Requesting path: /config/identity");
+    // Load Identity
     const idenSnap = await db.ref('/config/identity').once('value');
     const iden = idenSnap.val() || {};
-    console.log("Data Identity Received:", iden);
+    console.log("Identity Config Received:", iden);
     
     if (iden.name) safeSetValue('cfgSchoolName', iden.name);
     if (iden.sub) safeSetValue('cfgSchoolSub', iden.sub);
@@ -321,22 +309,22 @@ window.loadAdminSettings = async function () {
       window.adminState.tempLogoBase64 = iden.logo || null;
     }
 
-    // 5. Update Firebase Config Fields (Untuk diedit)
-    const cfg = window.firebaseConfig || {};
-    safeSetValue('fbApiKey', cfg.apiKey || '');
-    safeSetValue('fbAuthDomain', cfg.authDomain || '');
-    safeSetValue('fbDbUrl', cfg.databaseURL || '');
-    safeSetValue('fbProjectId', cfg.projectId || '');
-    safeSetValue('fbStorageBucket', cfg.storageBucket || '');
-    safeSetValue('fbMessagingId', cfg.messagingSenderId || '');
-    safeSetValue('fbAppId', cfg.appId || '');
-
+    // Firebase Config
+    if (window.firebaseConfig) {
+      safeSetValue('fbApiKey', firebaseConfig.apiKey || '');
+      safeSetValue('fbAuthDomain', firebaseConfig.authDomain || '');
+      safeSetValue('fbDbUrl', firebaseConfig.databaseURL || '');
+      safeSetValue('fbProjectId', firebaseConfig.projectId || '');
+      safeSetValue('fbStorageBucket', firebaseConfig.storageBucket || '');
+      safeSetValue('fbMessagingId', firebaseConfig.messagingSenderId || '');
+      safeSetValue('fbAppId', firebaseConfig.appId || '');
+    }
   } catch (e) {
-    console.error("Firebase Sync Error:", e);
-    if (e.message && e.message.toLowerCase().includes('permission_denied')) {
-      showCustomAlert('Izin Ditolak', 'Database menolak akses. Cek Rules Firebase Anda.', '🔐');
+    console.error("Admin Load Error:", e);
+    if (e.message && e.message.includes('permission_denied')) {
+      showCustomAlert('Akses Ditolak', 'Firebase menolak akses. Pastikan Rules Database sudah benar.', '❌');
     } else {
-      showCustomAlert('Gagal Sinkron', 'Gagal: ' + e.message, '❌');
+      showCustomAlert('Gagal Memuat', 'Gagal memuat pengaturan. Periksa koneksi internet.', '❌');
     }
   } finally {
     if (window.dbDisconnect) window.dbDisconnect();
