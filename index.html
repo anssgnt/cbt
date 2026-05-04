@@ -29,7 +29,13 @@
   <script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 
-<body>
+<body oncontextmenu="return false;">
+  <!-- PWA Install Banner (Armor 1000) -->
+  <div id="pwa-install-banner" style="display:none; background:var(--primary); color:white; padding:12px 16px; align-items:center; gap:12px; position:sticky; top:0; z-index:9999; box-shadow:0 4px 12px rgba(0,0,0,0.1);">
+    <div style="flex:1; font-size:0.85rem; font-weight:600;">Install Aplikasi CBT di Layar Utama HP Anda</div>
+    <button id="btn-pwa-install" class="btn" style="background:white; color:var(--primary); padding:6px 12px; font-size:0.75rem; border-radius:4px; border:none; cursor:pointer; font-weight:bold;">Install Now</button>
+    <button onclick="this.parentElement.style.display='none'" style="background:none; border:none; color:white; opacity:0.7; cursor:pointer; font-size:1.2rem; padding:0 8px;">✕</button>
+  </div>
 
   <div class="app-container">
 
@@ -580,7 +586,7 @@
               </svg>
             </div>
             <div>
-              <h2>Admin Panel v.1</h2>
+              <h2>Admin Panel</h2>
               <p>CBT Online Manajemen</p>
             </div>
           </div>
@@ -657,26 +663,28 @@
             <h2 id="admin-page-title">Monitor Ujian</h2>
             <p id="admin-page-subtitle">Pantau status ujian secara real-time</p>
           </div>
-          <div style="display:flex; align-items:center; gap: 16px;">
-            <button class="btn btn-outline" onclick="forceRefreshAdminTab()" title="Muat Ulang Data dari Firebase" style="padding: 6px 12px; font-size: 0.85rem; display:flex; align-items:center; gap:6px;">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path><path d="M16 21v-5h5"></path></svg>
-              Refresh
+          <div style="display:flex; align-items:center; gap: 20px;">
+            <button class="btn btn-outline" onclick="forceRefreshAdminTab()" title="Muat Ulang Data dari Firebase"
+              style="padding: 10px 16px; font-size: 0.85rem; display:flex; align-items:center; gap:8px; border-radius: 12px; font-weight: 600;">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path>
+                <path d="M3 3v5h5"></path>
+                <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"></path>
+                <path d="M16 21v-5h5"></path>
+              </svg>
+              Refresh Data
             </button>
             <div class="admin-profile">
-            <div class="admin-avatar">
-              <svg fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round"
-                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"></path>
+              <div class="admin-avatar">A</div>
+              <div class="admin-profile-text">
+                <strong>Administrator</strong>
+                <span>System Controller</span>
+              </div>
+              <svg class="chevron-down" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path>
               </svg>
             </div>
-            <div class="admin-profile-text">
-              <strong>Admin</strong>
-              <span>Super Admin</span>
-            </div>
-            <svg class="chevron-down" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-              <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"></path>
-            </svg>
-          </div>
           </div>
         </div>
 
@@ -786,351 +794,305 @@
 
           <!-- TAB 2: SISWA -->
           <div id="tab-siswa" class="admin-tab-content" style="display:none;flex-direction:column;gap:18px;">
-            <div
-              style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
-              <h3 style="font-size:1.1rem;margin:0;">Manajemen Data Siswa</h3>
-              <div style="display:flex; gap:8px;">
-                <button class="btn btn-outline" onclick="openImportModal('siswa')"
-                  style="padding:8px 12px; font-size:0.8rem;">📥 Import CSV</button>
-                <button class="btn btn-primary" onclick="openSiswaModal()" style="padding:8px 12px; font-size:0.8rem;">➕
-                  Tambah</button>
+            <div class="admin-card">
+              <div
+                style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; flex-wrap:wrap; gap:8px;">
+                <h3 style="font-size:1.1rem;margin:0; font-weight: 800;">Manajemen Data Siswa</h3>
+                <div style="display:flex; gap:8px;">
+                  <button class="btn btn-outline" onclick="openImportModal('siswa')"
+                    style="padding:10px 16px; font-size:0.8rem; border-radius: 10px;">📥 Import CSV</button>
+                  <button class="btn btn-primary" onclick="openSiswaModal()"
+                    style="padding:10px 16px; font-size:0.8rem; border-radius: 10px;">➕ Tambah Siswa</button>
+                </div>
               </div>
-            </div>
-            <div class="table-responsive">
-              <table class="data-table" id="admin-siswa-table">
-                <thead>
-                  <tr>
-                    <th>ID/NIS</th>
-                    <th>Nama Siswa</th>
-                    <th>Kelas</th>
-                    <th>Aksi</th>
-                  </tr>
-                </thead>
-                <tbody id="admin-siswa-tbody">
-                  <tr>
-                    <td colspan="4" class="text-center text-muted">Memuat data...</td>
-                  </tr>
-                </tbody>
-              </table>
+              <div class="table-responsive">
+                <table class="admin-table" id="admin-siswa-table">
+                  <thead>
+                    <tr>
+                      <th>ID/NIS</th>
+                      <th>Nama Siswa</th>
+                      <th>Kelas</th>
+                      <th style="text-align: right;">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-siswa-tbody">
+                    <tr>
+                      <td colspan="4" class="text-center text-muted">Memuat data...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
 
           <!-- TAB 3: SOAL -->
           <div id="tab-soal" class="admin-tab-content" style="display:none;flex-direction:column;gap:18px;">
-            <div
-              style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
-              <h3 style="font-size:1.1rem;margin:0;">Bank Soal</h3>
-              <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                <button class="btn btn-outline" onclick="openImportModal('soal')"
-                  style="padding:8px 12px; font-size:0.8rem;">📥 Import CSV</button>
-                <button class="btn btn-outline" onclick="openSoalEditorPage('')"
-                  style="padding:8px 12px; font-size:0.8rem; color:#4F46E5; border-color:#4F46E5;">✏️ Editor
-                  Soal</button>
-                <button class="btn btn-primary" onclick="openBankSoalModal()"
-                  style="padding:8px 12px; font-size:0.8rem;">➕ Bank Baru</button>
-              </div>
-            </div>
-            <div class="table-responsive">
-              <table class="data-table" id="admin-soal-table">
-                <thead>
-                  <tr>
-                    <th>Kode Bank Soal</th>
-                    <th>Aksi</th>
-                  </tr>
-                </thead>
-                <tbody id="admin-soal-tbody">
-                  <tr>
-                    <td colspan="2" class="text-center text-muted">Memuat data...</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- TAB 4: JADWAL -->
-          <div id="tab-jadwal" class="admin-tab-content" style="display:none;flex-direction:column;gap:18px;">
-            <div
-              style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:8px;">
-              <h3 style="font-size:1.1rem;margin:0;">Jadwal Ujian</h3>
-              <button class="btn btn-primary" onclick="openJadwalModal()" style="padding:8px 12px; font-size:0.8rem;">➕
-                Jadwal Baru</button>
-            </div>
-            <div>
-              <h3 style="font-size:0.9rem;margin-bottom:12px;display:flex;align-items:center;gap:8px;">
-                <span class="badge badge-wait">📅 Live</span>
-                Kontrol Cepat Ujian
-              </h3>
-              <div id="admin-jadwal-list" style="display:flex;flex-direction:column;gap:10px;margin-bottom:20px;">
-                <p class="text-muted" style="font-size:0.875rem;">Memuat konfigurasi jadwal...</p>
-              </div>
-            </div>
-
-            <div class="table-responsive">
-              <table class="data-table" id="admin-jadwal-table">
-                <thead>
-                  <tr>
-                    <th>Kode Ujian</th>
-                    <th>Nama Ujian</th>
-                    <th>Bank Soal</th>
-                    <th>Status & Token</th>
-                    <th>Aksi</th>
-                  </tr>
-                </thead>
-                <tbody id="admin-jadwal-tbody">
-                  <tr>
-                    <td colspan="4" class="text-center text-muted">Memuat data...</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          <!-- TAB 5: HASIL & RADAR -->
-          <div id="tab-hasil" class="admin-tab-content" style="display:none;flex-direction:column;gap:24px;">
-
-            <!-- Hasil -->
-            <div>
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                <h3 style="font-size:0.9rem;margin:0;display:flex;align-items:center;gap:8px;">
-                  <span class="badge badge-done">🏆 Nilai</span> 150 Record Terbaru
-                </h3>
-                <div style="display:flex; gap:6px;">
-                  <button class="btn btn-outline" style="padding:4px 10px;font-size:0.75rem;"
-                    onclick="loadAdminHasil()">↻ Refresh</button>
-                  <button class="btn btn-outline"
-                    style="padding:4px 10px;font-size:0.75rem; color:#059669; border-color:#10B981;"
-                    onclick="exportTableToCSV('admin-hasil-table', 'Rekap_Nilai.csv')">↓ CSV</button>
+            <div class="admin-card">
+              <div
+                style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; flex-wrap:wrap; gap:8px;">
+                <h3 style="font-size:1.1rem;margin:0; font-weight: 800;">Manajemen Bank Soal</h3>
+                <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                  <button class="btn btn-outline" onclick="openImportModal('soal')"
+                    style="padding:10px 16px; font-size:0.8rem; border-radius: 10px;">📥 Import CSV</button>
+                  <button class="btn btn-outline" onclick="openSoalEditorPage('')"
+                    style="padding:10px 16px; font-size:0.8rem; color:#4F46E5; border-color:#4F46E5; border-radius: 10px;">✏️
+                    Editor
+                    Soal</button>
+                  <button class="btn btn-primary" onclick="openBankSoalModal()"
+                    style="padding:10px 16px; font-size:0.8rem; border-radius: 10px;">➕ Bank Baru</button>
                 </div>
               </div>
               <div class="table-responsive">
-                <table class="data-table" id="admin-hasil-table">
+                <table class="admin-table" id="admin-soal-table">
                   <thead>
                     <tr>
-                      <th>Waktu</th>
-                      <th>Nama Peserta</th>
-                      <th>Ujian</th>
-                      <th>Skor</th>
+                      <th>Kode Bank Soal</th>
+                      <th style="text-align: right;">Aksi</th>
                     </tr>
                   </thead>
-                  <tbody id="admin-hasil-tbody">
+                  <tbody id="admin-soal-tbody">
                     <tr>
-                      <td colspan="4" class="text-muted" style="text-align:center;">Data nilai...</td>
+                      <td colspan="2" class="text-center text-muted">Memuat data...</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
-              <div id="admin-hasil-pagination" class="pagination-controls"></div>
             </div>
+          </div>
 
-            <!-- Radar -->
-            <div>
-              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                <h3 style="font-size:0.9rem;margin:0;display:flex;align-items:center;gap:8px;">
-                  <span class="badge" style="background:#EF4444;color:#FFF;">🚨 Radar</span> 100 Log Pelanggaran
-                </h3>
-                <button class="btn btn-outline"
-                  style="padding:4px 10px;font-size:0.75rem; color:#059669; border-color:#10B981;"
-                  onclick="exportTableToCSV('admin-radar-table', 'Log_Pelanggaran.csv')">↓ CSV</button>
+          <div id="tab-jadwal" class="admin-tab-content" style="display:none;flex-direction:column;gap:18px;">
+            <div class="admin-card">
+              <div
+                style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px; flex-wrap:wrap; gap:8px;">
+                <h3 style="font-size:1.1rem;margin:0; font-weight: 800;">Jadwal Pelaksanaan Ujian</h3>
+                <button class="btn btn-primary" onclick="openJadwalModal()"
+                  style="padding:10px 16px; font-size:0.8rem; border-radius: 10px;">➕ Buat Jadwal Baru</button>
               </div>
               <div class="table-responsive">
-                <table class="data-table" id="admin-radar-table">
+                <table class="admin-table" id="admin-jadwal-table">
+                  <thead>
+                    <tr>
+                      <th>Kode Ujian</th>
+                      <th>Nama Ujian</th>
+                      <th>Bank Soal</th>
+                      <th>Status & Token</th>
+                      <th style="text-align: right;">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-jadwal-tbody">
+                    <tr>
+                      <td colspan="5" class="text-center text-muted">Memuat data...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- TAB 5: HASIL & RADAR -->
+          <div id="tab-hasil" class="admin-tab-content" style="display:none;flex-direction:column;gap:32px;">
+            <div class="admin-card">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+                <h3 style="font-size:1.1rem;margin:0; font-weight: 800; display:flex; align-items:center; gap:12px;">
+                  🏆 Hasil Pengerjaan Siswa
+                </h3>
+                <div style="display:flex; gap:8px;">
+                  <button class="btn btn-outline" style="padding:10px 16px; font-size:0.8rem; border-radius: 10px;"
+                    onclick="loadAdminHasil()">↻ Refresh</button>
+                  <button class="btn btn-outline"
+                    style="padding:10px 16px; font-size:0.8rem; color:#059669; border-color:#10B981; border-radius: 10px;"
+                    onclick="exportTableToCSV('admin-hasil-table', 'Rekap_Nilai.csv')">↓ Export CSV</button>
+                </div>
+              </div>
+              <div class="table-responsive">
+                <table class="admin-table" id="admin-hasil-table">
+                  <thead>
+                    <tr>
+                      <th>Waktu Selesai</th>
+                      <th>Nama Peserta</th>
+                      <th>Mata Pelajaran</th>
+                      <th style="text-align: right;">Skor</th>
+                    </tr>
+                  </thead>
+                  <tbody id="admin-hasil-tbody">
+                    <tr>
+                      <td colspan="4" class="text-muted" style="text-align:center;">Data sedang dimuat...</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div id="admin-hasil-pagination" class="pagination-controls" style="margin-top: 16px;"></div>
+            </div>
+
+            <!-- Radar Log Pelanggaran -->
+            <div class="admin-card" style="border-color: #FECACA;">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+                <h3
+                  style="font-size:1.1rem;margin:0; font-weight: 800; color: #DC2626; display:flex; align-items:center; gap:12px;">
+                  🚨 Radar Log Pelanggaran
+                </h3>
+                <button class="btn btn-outline"
+                  style="padding:10px 16px; font-size:0.8rem; color:#DC2626; border-color:#FECACA; border-radius: 10px;"
+                  onclick="exportTableToCSV('admin-radar-table', 'Log_Pelanggaran.csv')">↓ Export CSV</button>
+              </div>
+              <div class="table-responsive">
+                <table class="admin-table" id="admin-radar-table">
                   <thead>
                     <tr>
                       <th>Waktu</th>
-                      <th>Peserta</th>
+                      <th>Nama Peserta</th>
                       <th>Ujian</th>
                       <th>Tipe Pelanggaran</th>
                     </tr>
                   </thead>
                   <tbody id="admin-radar-tbody">
                     <tr>
-                      <td colspan="4" class="text-muted" style="text-align:center;">Data radar...</td>
+                      <td colspan="4" class="text-muted" style="text-align:center;">Data sedang dimuat...</td>
                     </tr>
                   </tbody>
                 </table>
               </div>
-              <div id="admin-radar-pagination" class="pagination-controls"></div>
+              <div id="admin-radar-pagination" class="pagination-controls" style="margin-top: 16px;"></div>
             </div>
-
           </div>
 
           <!-- TAB 6: PENGATURAN -->
-          <div id="tab-settings" class="admin-tab-content" style="display:none;flex-direction:column;gap:18px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-              <h3 style="font-size:1.1rem;margin:0;">Identitas Sekolah & Sistem</h3>
-            </div>
+          <div id="tab-settings" class="admin-tab-content" style="display:none;flex-direction:column;gap:24px;">
+            <div class="admin-card">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:24px;">
+                <h3 style="font-size:1.1rem;margin:0; font-weight: 800;">Identitas Sekolah & Sistem</h3>
+                <button class="btn btn-primary" onclick="saveAdminSettings()"
+                  style="padding:10px 16px; font-size:0.85rem; border-radius: 10px;">💾 Simpan Perubahan</button>
+              </div>
 
-            <div class="card" style="display:flex; flex-direction:column; gap:16px; margin-bottom:16px;">
-              <div class="form-group">
-                <label>Nama Sekolah (Digunakan di Kop Berita Acara & Judul Browser)</label>
-                <input type="text" id="cfgSchoolName" class="form-control" placeholder="Contoh: SMP Negeri 1 Dander"
-                  value="SMP Negeri 1 Dander">
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 24px;">
+                <div class="form-group">
+                  <label style="font-weight: 600; color: var(--adm-text-main);">Nama Sekolah</label>
+                  <input type="text" id="cfgSchoolName" class="form-control" placeholder="Contoh: SMP Negeri 1 Dander"
+                    style="margin-top: 8px; border-radius: 10px;">
+                  <small style="color: var(--adm-text-muted); font-size: 0.75rem;">Digunakan di Berita Acara & Judul
+                    Browser</small>
+                </div>
+                <div class="form-group">
+                  <label style="font-weight: 600; color: var(--adm-text-main);">Sub-Judul / Instansi</label>
+                  <input type="text" id="cfgSchoolSub" class="form-control" placeholder="Contoh: MGMP INF/KKA BJN"
+                    style="margin-top: 8px; border-radius: 10px;">
+                  <small style="color: var(--adm-text-muted); font-size: 0.75rem;">Ditampilkan pada halaman
+                    Login</small>
+                </div>
               </div>
-              <div class="form-group">
-                <label>Sub-Judul / Nama Instansi (Digunakan di Layar Utama / Login)</label>
-                <input type="text" id="cfgSchoolSub" class="form-control" placeholder="Contoh: MGMP INF/KKA BJN"
-                  value="MGMP INF/KKA BJN">
-              </div>
-              <div class="form-group">
-                <label>Logo Sekolah (Format Gambar, ukuran ideal persegi)</label>
-                <div style="display:flex; gap:16px; align-items:center; margin-top:8px;">
+
+              <div class="form-group" style="margin-top: 24px;">
+                <label style="font-weight: 600; color: var(--adm-text-main);">Logo Sekolah</label>
+                <div style="display:flex; gap:20px; align-items:center; margin-top:12px;">
                   <div id="cfgLogoPreview"
-                    style="width:80px; height:80px; border:2px dashed var(--border); border-radius:12px; display:flex; align-items:center; justify-content:center; overflow:hidden; background:#f8fafc;">
-                    <span style="font-size:0.7rem; color:var(--text-muted);">No Logo</span>
+                    style="width:100px; height:100px; border:2px dashed #CBD5E1; border-radius:16px; display:flex; align-items:center; justify-content:center; overflow:hidden; background:#F8FAFC;">
+                    <span style="font-size:0.75rem; color:#94A3B8;">No Logo</span>
                   </div>
                   <div style="flex:1;">
                     <input type="file" id="cfgLogoInput" accept="image/*" class="form-control"
-                      style="font-size:0.8rem; padding:8px;">
-                    <p style="font-size:0.75rem; color:var(--text-muted); margin-top:4px;">File akan dikonversi ke
-                      Base64 (Maks 1MB disarankan)</p>
+                      style="font-size:0.85rem; padding:10px; border-radius: 10px;">
+                    <p style="font-size:0.75rem; color:var(--adm-text-muted); margin-top:8px;">Format gambar (PNG/JPG).
+                      Ukuran file maks 1MB.</p>
                   </div>
                 </div>
               </div>
             </div>
 
-            <div class="card"
-              style="display:flex; flex-direction:column; gap:16px; margin-bottom:16px; border: 1px dashed var(--accent);">
-              <div style="font-weight:600; color:var(--accent);">Pemeliharaan Sistem</div>
-              <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div style="font-size:0.8rem; color:var(--text-muted);">Nama siswa tidak muncul saat login? Klik ini
-                  untuk memperbaiki database.</div>
-                <button class="btn btn-outline" onclick="fixPesertaIndex()"
-                  style="padding:8px 12px; font-size:0.75rem; border-color:var(--accent); color:var(--accent);">🔧 Fix
-                  Search Index</button>
-              </div>
-            </div>
+            <div class="admin-card">
+              <h3 style="font-size:1.1rem; margin:0 0 24px 0; font-weight: 800;">Konfigurasi Keamanan & Fitur</h3>
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 24px;">
 
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-              <h3 style="font-size:1.1rem;margin:0;">Pengaturan Keamanan CBT</h3>
-              <button class="btn btn-primary" onclick="saveAdminSettings()"
-                style="padding:8px 12px; font-size:0.8rem;">💾 Simpan Pengaturan</button>
-            </div>
-
-            <div class="card" style="display:flex; flex-direction:column; gap:16px;">
-              <!-- PWA Enforcer -->
-              <div
-                style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
-                <div>
-                  <div style="font-weight:600; color:var(--text-main);">Paksa Mode PWA</div>
-                  <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">Siswa wajib "Add to Home
-                    Screen" / Install aplikasi sebelum ujian. Tidak bisa dikerjakan via tab browser biasa.</div>
-                </div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="cfgPWA">
-                  <span class="slider round"></span>
-                </label>
-              </div>
-
-              <!-- Ujian Fullscreen -->
-              <div
-                style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
-                <div>
-                  <div style="font-weight:600; color:var(--text-main);">Ujian Fullscreen</div>
-                  <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">Layar ujian otomatis
-                    fullscreen. UI browser (address bar) akan disembunyikan.</div>
-                </div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="cfgFullscreen">
-                  <span class="slider round"></span>
-                </label>
-              </div>
-
-              <!-- Status Ujian Beranda -->
-              <div
-                style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
-                <div>
-                  <div style="font-weight:600; color:var(--text-main);">Tampilkan Status Ujian di Beranda</div>
-                  <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">Menampilkan daftar ujian hari
-                    ini pada halaman login.</div>
-                </div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="cfgShowExamStatus">
-                  <span class="slider round"></span>
-                </label>
-              </div>
-
-              <!-- Informasi Sistem Beranda -->
-              <div
-                style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
-                <div>
-                  <div style="font-weight:600; color:var(--text-main);">Tampilkan Info Sistem di Beranda</div>
-                  <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">Menampilkan status koneksi,
-                    server, dan sinkronisasi pada halaman login.</div>
-                </div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="cfgShowSystemInfo">
-                  <span class="slider round"></span>
-                </label>
-              </div>
-
-              <!-- Anti-Cheat (Blur) -->
-              <div
-                style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
-                <div>
-                  <div style="font-weight:600; color:var(--text-main);">Deteksi Anti-Cheat (Ganti Tab)</div>
-                  <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">Membunyikan peringatan keras
-                    dan membekukan layar selama 5 detik jika siswa ketahuan pindah aplikasi/tab.</div>
-                </div>
-                <label class="toggle-switch">
-                  <input type="checkbox" id="cfgAntiCheat">
-                  <span class="slider round"></span>
-                </label>
-              </div>
-
-              <!-- Minimal Mengerjakan -->
-              <div
-                style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid var(--border); padding-bottom:12px;">
-                <div>
-                  <div style="font-weight:600; color:var(--text-main);">Waktu Minimal Ujian (Menit)</div>
-                  <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">Siswa tidak bisa mengumpulkan
-                    jawaban jika durasi pengerjaan belum mencapai angka ini.</div>
-                </div>
-                <input type="number" id="cfgMinTime" class="form-control" style="width:80px; text-align:center;" min="0"
-                  placeholder="0">
-              </div>
-
-              <!-- Bypass Code -->
-              <div style="display:flex; justify-content:space-between; align-items:center;">
-                <div style="flex:1; margin-right:16px;">
-                  <div style="font-weight:600; color:var(--text-main);">Kode Bypass PWA</div>
-                  <div style="font-size:0.8rem; color:var(--text-muted); margin-top:4px;">Kode darurat untuk siswa yang
-                    <b>tidak bisa install PWA</b>. Bagikan hanya ke siswa bermasalah. Kosongkan untuk menonaktifkan.
+                <div class="setting-item"
+                  style="display:flex; justify-content:space-between; align-items:center; padding: 12px 0; border-bottom: 1px solid #F1F5F9;">
+                  <div style="flex:1; padding-right: 16px;">
+                    <div style="font-weight:600; color:var(--adm-text-main);">Paksa Mode PWA</div>
+                    <div style="font-size:0.75rem; color:var(--adm-text-muted); margin-top:4px;">Siswa wajib install
+                      aplikasi (Add to Home Screen).</div>
                   </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="cfgPWA">
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+
+                <div class="setting-item"
+                  style="display:flex; justify-content:space-between; align-items:center; padding: 12px 0; border-bottom: 1px solid #F1F5F9;">
+                  <div style="flex:1; padding-right: 16px;">
+                    <div style="font-weight:600; color:var(--adm-text-main);">Ujian Fullscreen</div>
+                    <div style="font-size:0.75rem; color:var(--adm-text-muted); margin-top:4px;">Menyembunyikan address
+                      bar browser secara otomatis.</div>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="cfgFullscreen">
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+
+                <div class="setting-item"
+                  style="display:flex; justify-content:space-between; align-items:center; padding: 12px 0; border-bottom: 1px solid #F1F5F9;">
+                  <div style="flex:1; padding-right: 16px;">
+                    <div style="font-weight:600; color:var(--adm-text-main);">Anti-Cheat (Blur)</div>
+                    <div style="font-size:0.75rem; color:var(--adm-text-muted); margin-top:4px;">Bekukan layar 5 detik
+                      jika ganti tab/aplikasi.</div>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="cfgAntiCheat">
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+
+                <div class="setting-item"
+                  style="display:flex; justify-content:space-between; align-items:center; padding: 12px 0; border-bottom: 1px solid #F1F5F9;">
+                  <div style="flex:1; padding-right: 16px;">
+                    <div style="font-weight:600; color:var(--adm-text-main);">Waktu Minimal (Menit)</div>
+                    <div style="font-size:0.75rem; color:var(--adm-text-muted); margin-top:4px;">Durasi minimum sebelum
+                      bisa mengumpulkan jawaban.</div>
+                  </div>
+                  <input type="number" id="cfgMinTime" class="form-control"
+                    style="width:70px; text-align:center; border-radius: 8px;" min="0">
+                </div>
+
+              </div>
+
+              <div
+                style="margin-top: 24px; padding: 16px; background: #F8FAFC; border-radius: 12px; display: flex; align-items: center; justify-content: space-between;">
+                <div style="flex:1; padding-right: 20px;">
+                  <div style="font-weight:600; color:var(--adm-text-main);">Kode Bypass PWA</div>
+                  <div style="font-size:0.75rem; color:var(--adm-text-muted); margin-top:4px;">Kode darurat untuk siswa
+                    yang bermasalah dengan instalasi PWA.</div>
                 </div>
                 <input type="text" id="cfgBypassCode" class="form-control"
-                  style="width:130px; text-align:center; font-family:monospace; letter-spacing:2px; text-transform:uppercase; font-size:1rem;"
-                  placeholder="Contoh: CBT2026" maxlength="12" oninput="this.value=this.value.toUpperCase()">
+                  style="width:140px; text-align:center; font-family:monospace; letter-spacing:1px; text-transform:uppercase; border-radius: 8px;"
+                  placeholder="CBT2026">
               </div>
             </div>
 
-            <!-- Firebase Config (Advanced) -->
-            <div
-              style="display:flex; justify-content:space-between; align-items:center; margin-top:12px; margin-bottom:12px;">
-              <h3 style="font-size:1.1rem;margin:0; color:var(--danger);">Koneksi & Database (Advanced)</h3>
-            </div>
-            <div class="card"
-              style="display:flex; flex-direction:column; gap:12px; border: 1px solid var(--danger-soft); margin-bottom: 20px;">
-              <p style="font-size:0.8rem; color:var(--danger); font-weight:600;">⚠️ Peringatan: Jangan ubah data di
-                bawah ini kecuali Anda memindahkan server database ke Firebase lain.</p>
-              <div class="grid-2" style="gap:12px;">
-                <div class="form-group"><label style="font-size:0.8rem;">API Key</label><input type="password"
-                    id="fbApiKey" class="form-control" style="font-size:0.85rem;"></div>
-                <div class="form-group"><label style="font-size:0.8rem;">Auth Domain</label><input type="text"
-                    id="fbAuthDomain" class="form-control" style="font-size:0.85rem;"></div>
-                <div class="form-group"><label style="font-size:0.8rem;">Database URL</label><input type="text"
-                    id="fbDbUrl" class="form-control" style="font-size:0.85rem;"></div>
-                <div class="form-group"><label style="font-size:0.8rem;">Project ID</label><input type="text"
-                    id="fbProjectId" class="form-control" style="font-size:0.85rem;"></div>
-                <div class="form-group"><label style="font-size:0.8rem;">Storage Bucket</label><input type="text"
-                    id="fbStorageBucket" class="form-control" style="font-size:0.85rem;"></div>
-                <div class="form-group"><label style="font-size:0.8rem;">Messaging ID</label><input type="text"
-                    id="fbMessagingId" class="form-control" style="font-size:0.85rem;"></div>
-                <div class="form-group" style="grid-column: span 2;"><label style="font-size:0.8rem;">App
-                    ID</label><input type="text" id="fbAppId" class="form-control" style="font-size:0.85rem;"></div>
+            <div class="admin-card" style="border-color: #FECACA; background: #FFF1F2;">
+              <h3 style="font-size:1.1rem; margin:0 0 16px 0; font-weight: 800; color: #E11D48;">⚠️ Database & Koneksi
+                (Advanced)</h3>
+              <p style="font-size:0.8rem; color:#991B1B; margin-bottom: 20px;">Jangan ubah data di bawah ini kecuali
+                Anda bermaksud memindahkan server database.</p>
+
+              <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group"><label style="font-size:0.75rem; font-weight: 600;">API Key</label><input
+                    type="password" id="fbApiKey" class="form-control" style="border-radius: 8px;"></div>
+                <div class="form-group"><label style="font-size:0.75rem; font-weight: 600;">Auth Domain</label><input
+                    type="text" id="fbAuthDomain" class="form-control" style="border-radius: 8px;"></div>
+                <div class="form-group"><label style="font-size:0.75rem; font-weight: 600;">Database URL</label><input
+                    type="text" id="fbDbUrl" class="form-control" style="border-radius: 8px;"></div>
+                <div class="form-group"><label style="font-size:0.75rem; font-weight: 600;">Project ID</label><input
+                    type="text" id="fbProjectId" class="form-control" style="border-radius: 8px;"></div>
               </div>
-              <button class="btn btn-outline" onclick="resetFirebaseConfig()"
-                style="color:var(--danger); border-color:var(--danger); margin-top:8px; font-size:0.8rem;">🔄 Reset ke
-                Bawaan Sistem</button>
+
+              <div style="margin-top: 16px; display: flex; gap: 12px;">
+                <button class="btn btn-outline" onclick="resetFirebaseConfig()"
+                  style="color:#E11D48; border-color:#FDA4AF; background: white; border-radius: 8px; font-size: 0.8rem; padding: 8px 16px;">🔄
+                  Reset ke Bawaan</button>
+                <button class="btn btn-outline" onclick="fixPesertaIndex()"
+                  style="color:#6366F1; border-color:#C7D2FE; background: white; border-radius: 8px; font-size: 0.8rem; padding: 8px 16px;">🔧
+                  Fix Search Index</button>
+              </div>
             </div>
           </div>
 
@@ -1774,12 +1736,14 @@
 
   <script defer src="script.js"></script>
   <script>
-    if ('serviceWorker' in navigator) {
+    if ('serviceWorker' in navigator && (window.location.protocol === 'http:' || window.location.protocol === 'https:')) {
       window.addEventListener('load', () => {
         navigator.serviceWorker.register('./sw.js')
           .then(reg => console.log('ServiceWorker registered:', reg.scope))
           .catch(err => console.error('ServiceWorker registration failed:', err));
       });
+    } else if (window.location.protocol === 'file:') {
+      console.warn('Service Worker registration skipped: Running via file:// protocol. Use a local server (e.g. Laragon/http-server) for PWA features.');
     }
   </script>
 </body>
