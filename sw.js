@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cbt-cache-v4';
+const CACHE_NAME = 'cbt-cache-v5';
 const urlsToCache = [
   '/',
   '/index.html',
@@ -10,7 +10,6 @@ const urlsToCache = [
 ];
 
 self.addEventListener('install', event => {
-  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => cache.addAll(urlsToCache))
@@ -18,6 +17,23 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('fetch', event => {
+  const url = event.request.url;
+  
+  // 🔥 JANGAN CACHE REQUEST FIREBASE!
+  // Ini adalah fix utama untuk masalah data tidak update
+  if (
+    url.includes('firebaseio.com') ||
+    url.includes('googleapis.com') ||
+    url.includes('firestore.googleapis.com') ||
+    url.includes('google.com/identitytoolkit') ||
+    url.includes('cloudfunctions.net')
+  ) {
+    // Langsung fetch tanpa cache untuk Firebase
+    event.respondWith(fetch(event.request));
+    return;
+  }
+  
+  // Untuk request lain (static files), gunakan Network First strategy
   event.respondWith(
     fetch(event.request)
       .then(response => {
@@ -43,6 +59,6 @@ self.addEventListener('activate', event => {
         cacheNames.filter(name => name !== CACHE_NAME)
           .map(name => caches.delete(name))
       );
-    }).then(() => self.clients.claim())
+    })
   );
 });
