@@ -3557,6 +3557,38 @@ window.executePrint = async function () {
     // Fill Berita Acara
     const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
     const today = new Date();
+    // Handle Logo
+    const idenSnap = await db.ref('/config/identity').once('value');
+    const iden = idenSnap.val() || {};
+    const logoImg1 = document.getElementById('print-logo-1');
+    const logoImg2 = document.getElementById('print-logo-2');
+    const spacer1 = document.getElementById('print-logo-1-spacer');
+    const spacer2 = document.getElementById('print-logo-2-spacer');
+
+    if (iden.logo) {
+      if (logoImg1) { logoImg1.src = iden.logo; logoImg1.style.display = 'block'; }
+      if (logoImg2) { logoImg2.src = iden.logo; logoImg2.style.display = 'block'; }
+      if (spacer1) spacer1.style.display = 'block';
+      if (spacer2) spacer2.style.display = 'block';
+    } else {
+      if (logoImg1) logoImg1.style.display = 'none';
+      if (logoImg2) logoImg2.style.display = 'none';
+      if (spacer1) spacer1.style.display = 'none';
+      if (spacer2) spacer2.style.display = 'none';
+    }
+
+    // Handle Time
+    const jSnap = await db.ref('/jadwal/' + examId).once('value');
+    const jData = jSnap.val() || {};
+    let jamStr = '-';
+    if (jData.mulai && jData.selesai) {
+      const ms = new Date(jData.mulai);
+      const me = new Date(jData.selesai);
+      const pad = (n) => n.toString().padStart(2, '0');
+      jamStr = `${pad(ms.getHours())}:${pad(ms.getMinutes())} s.d ${pad(me.getHours())}:${pad(me.getMinutes())}`;
+    }
+    safeSetText('pb-jam', jamStr);
+
     safeSetText('pb-hari', days[today.getDay()]);
     safeSetText('pb-tanggal', tanggal);
     safeSetText('pb-mapel', examName);
