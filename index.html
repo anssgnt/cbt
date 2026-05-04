@@ -1538,8 +1538,12 @@
         <input type="date" id="printTanggal" class="form-control">
       </div>
       <div class="form-group" style="flex:1;">
-        <label>Jam Pelaksanaan</label>
-        <input type="text" id="printJam" class="form-control" placeholder="Contoh: 07:30 - 09:00">
+        <label>Jam Mulai - Selesai</label>
+        <div style="display:flex; align-items:center; gap:5px;">
+          <input type="time" id="printJamStart" class="form-control" style="padding:4px 8px;">
+          <span>-</span>
+          <input type="time" id="printJamEnd" class="form-control" style="padding:4px 8px;">
+        </div>
       </div>
     </div>
     <div class="form-group">
