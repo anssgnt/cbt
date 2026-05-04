@@ -267,49 +267,66 @@ function renderAdminHasilPage(page) {
 window.loadAdminSettings = async function () {
   showLoading('Memuat Pengaturan...');
   try {
-    // KRITIKAL: Tunggu hingga login Firebase selesai agar tidak Permission Denied
+    // 1. Pastikan Auth Siap
     if (window.authPromise) {
-      console.log("Menunggu autentikasi Firebase...");
+      console.log("Admin: Menunggu Auth...");
       await window.authPromise;
     }
 
     if (window.dbConnectFast) await window.dbConnectFast();
     
-    // Log untuk memastikan kita terhubung ke DB yang benar
-    if (window.db) console.log("Database URL:", db.app.options.databaseURL);
+    // 2. Diagnosa Koneksi
+    if (window.db) console.log("Admin: Terhubung ke ->", db.app.options.databaseURL);
     
-    console.log("Fetching config from: /config/security");
     const snap = await db.ref('/config/security').once('value');
+    if (!snap.exists()) {
+      console.warn("Admin: Node /config/security tidak ditemukan di database ini!");
+    }
+    
     const sec = snap.val() || {};
-    console.log("Security Config Received:", sec);
+    console.log("Admin: Data Security murni dari FB:", sec);
 
-    // Bind ke UI dengan penanganan tipe data (string/number/boolean)
-    safeSetChecked('cfgPWA', sec.pwa === true || sec.pwa === "true" || sec.pwa === 1 || sec.pwa === "1");
-    safeSetChecked('cfgFullscreen', sec.fullscreen === true || sec.fullscreen === "true" || sec.fullscreen === 1 || sec.fullscreen === "1");
-    safeSetChecked('cfgAntiCheat', sec.anticheat === true || sec.anticheat === "true" || sec.anticheat === 1 || sec.anticheat === "1");
-    
-    // Default TRUE jika tidak ada data (mencegah mati semua saat database baru/kosong)
-    safeSetChecked('cfgShowExamStatus', sec.showExamStatus !== false && sec.showExamStatus !== "false" && sec.showExamStatus !== 0 && sec.showExamStatus !== "0");
-    safeSetChecked('cfgShowSystemInfo', sec.showSystemInfo !== false && sec.showSystemInfo !== "false" && sec.showSystemInfo !== 0 && sec.showSystemInfo !== "0");
-    
-    safeSetValue('cfgMinTime', sec.minTime || 0);
-    safeSetValue('cfgBypassCode', sec.bypassCode || '');
+    // Fungsi pembantu untuk mengambil nilai tanpa peduli huruf besar/kecil
+    const getVal = (obj, key, fallback) => {
+      if (!obj) return fallback;
+      if (obj[key] !== undefined) return obj[key];
+      const foundKey = Object.keys(obj).find(k => k.toLowerCase() === key.toLowerCase());
+      return foundKey ? obj[foundKey] : fallback;
+    };
 
-    // Load Identity
+    const isTrue = (v) => v === true || v === "true" || v === 1 || v === "1";
+
+    // Bind ke UI dengan proteksi case-insensitive
+    safeSetChecked('cfgPWA', isTrue(getVal(sec, 'pwa', false)));
+    safeSetChecked('cfgFullscreen', isTrue(getVal(sec, 'fullscreen', false)));
+    safeSetChecked('cfgAntiCheat', isTrue(getVal(sec, 'anticheat', false)));
+    
+    // Default TRUE jika tidak ada data (undefined)
+    const showExam = getVal(sec, 'showExamStatus', undefined);
+    safeSetChecked('cfgShowExamStatus', showExam !== false && showExam !== "false" && showExam !== 0 && showExam !== "0");
+    
+    const showSys = getVal(sec, 'showSystemInfo', undefined);
+    safeSetChecked('cfgShowSystemInfo', showSys !== false && showSys !== "false" && showSys !== 0 && showSys !== "0");
+    
+    safeSetValue('cfgMinTime', getVal(sec, 'minTime', 0));
+    safeSetValue('cfgBypassCode', getVal(sec, 'bypassCode', ''));
+
+    // 3. Load Identity
     const idenSnap = await db.ref('/config/identity').once('value');
     const iden = idenSnap.val() || {};
-    console.log("Identity Config Received:", iden);
+    console.log("Admin: Data Identity murni dari FB:", iden);
     
-    if (iden.name) safeSetValue('cfgSchoolName', iden.name);
-    if (iden.sub) safeSetValue('cfgSchoolSub', iden.sub);
+    safeSetValue('cfgSchoolName', getVal(iden, 'name', 'SMP Negeri 1 Dander'));
+    safeSetValue('cfgSchoolSub', getVal(iden, 'sub', 'MGMP INF/KKA BJN'));
 
     const preview = document.getElementById('cfgLogoPreview');
     if (preview) {
-      preview.innerHTML = iden.logo ? `<img src="${iden.logo}" style="max-width:100%; max-height:100%; object-fit:contain;">` : '<span class="text-muted" style="font-size:0.7rem;">No Logo</span>';
-      window.adminState.tempLogoBase64 = iden.logo || null;
+      const logo = getVal(iden, 'logo', null);
+      preview.innerHTML = logo ? `<img src="${logo}" style="max-width:100%; max-height:100%; object-fit:contain;">` : '<span class="text-muted" style="font-size:0.7rem;">No Logo</span>';
+      window.adminState.tempLogoBase64 = logo;
     }
 
-    // Firebase Config
+    // 4. Firebase Config
     if (window.firebaseConfig) {
       safeSetValue('fbApiKey', firebaseConfig.apiKey || '');
       safeSetValue('fbAuthDomain', firebaseConfig.authDomain || '');
