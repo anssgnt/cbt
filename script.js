@@ -3578,14 +3578,19 @@ window.executePrint = async function () {
     }
 
     // Handle Time
-    const jSnap = await db.ref('/jadwal/' + examId).once('value');
-    const jData = jSnap.val() || {};
-    let jamStr = '-';
-    if (jData.mulai && jData.selesai) {
-      const ms = new Date(jData.mulai);
-      const me = new Date(jData.selesai);
-      const pad = (n) => n.toString().padStart(2, '0');
-      jamStr = `${pad(ms.getHours())}:${pad(ms.getMinutes())} s.d ${pad(me.getHours())}:${pad(me.getMinutes())}`;
+    const manualJam = document.getElementById('printJam').value.trim();
+    let jamStr = manualJam || '-';
+    
+    // Fallback ke jadwal jika kosong
+    if (!manualJam) {
+      const jSnap = await db.ref('/jadwal/' + examId).once('value');
+      const jData = jSnap.val() || {};
+      if (jData.mulai && jData.selesai) {
+        const ms = new Date(jData.mulai);
+        const me = new Date(jData.selesai);
+        const pad = (n) => n.toString().padStart(2, '0');
+        jamStr = `${pad(ms.getHours())}:${pad(ms.getMinutes())} s.d ${pad(me.getHours())}:${pad(me.getMinutes())}`;
+      }
     }
     safeSetText('pb-jam', jamStr);
 
