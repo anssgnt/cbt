@@ -121,8 +121,8 @@ function renderAdminDashboard(data = window.adminState.monitor) {
   if (data.activeExams.length > 0) {
     tl.innerHTML = data.activeExams.map(x => `
        <div style="border-bottom:1px solid var(--border); padding-bottom:8px;">
-         <div style="font-weight:600;">${x.nama}</div>
-         <div style="color:var(--danger); font-family:var(--mono); font-size:1.2rem; font-weight:700; letter-spacing:2px;">${x.token}</div>
+         <div style="font-weight:600;">\${x.nama}</div>
+         <div style="color:var(--danger); font-family:var(--mono); font-size:1.2rem; font-weight:700; letter-spacing:2px;">\${x.token}</div>
        </div>
      `).join('');
   } else { tl.innerHTML = '<p class="text-muted">Tidak ada ujian aktif.</p>'; }
@@ -141,7 +141,7 @@ function renderAdminDashboard(data = window.adminState.monitor) {
       if (completedSet.has(p.id)) { d = 'SELESAI'; badgeClass = 'status-selesai'; selesai++; }
       else if (isOnline) { d = 'MENGERJAKAN'; badgeClass = 'status-online'; mengerjakan++; }
       else { blmSelesai++; }
-      return { html: `<tr><td>${p.nama}</td><td>${p.kelas}</td><td><span class="status-badge ${badgeClass}">${d}</span></td></tr>`, stat: d };
+      return { html: \`<tr><td>\${p.nama}</td><td>\${p.kelas}</td><td><span class="status-badge \${badgeClass}">\${d}</span></td></tr>\`, stat: d };
     });
     const absenMode = document.getElementById('chkAbsenMode') ? document.getElementById('chkAbsenMode').checked : false;
     const filterRows = rRaw.filter(x => !absenMode || x.stat === 'BELUM');
@@ -151,21 +151,21 @@ function renderAdminDashboard(data = window.adminState.monitor) {
     return `
        <div class="admin-exam-card">
          <h4 style="align-items:center;">
-           <span>${ex.nama}</span>
-           <button class="btn btn-outline" style="border-color:#38BDF8; color:#0284C7; padding:4px 10px; font-size:0.75rem;" onclick="promptBroadcast('${ex.id}')">📢 Kirim Pesan</button>
+           <span>\${ex.nama}</span>
+           <button class="btn btn-outline" style="border-color:#38BDF8; color:#0284C7; padding:4px 10px; font-size:0.75rem;" onclick="promptBroadcast('\${ex.id}')">📢 Kirim Pesan</button>
          </h4>
          <div class="admin-table-wrap">
            <table class="admin-table">
              <thead><tr><th>Nama</th><th>Kelas</th><th>Status</th></tr></thead>
-             <tbody>${slicedRows || '<tr><td colspan="3" class="text-muted text-center" style="padding:16px;">(Semua siswa sudah masuk)</td></tr>'}</tbody>
+             <tbody>\${slicedRows || '<tr><td colspan="3" class="text-muted text-center" style="padding:16px;">(Semua siswa sudah masuk)</td></tr>'}</tbody>
            </table>
          </div>
-         <div id="admin-monitor-pg-${ex.id}" class="pagination-controls"></div>
+         <div id="admin-monitor-pg-\${ex.id}" class="pagination-controls"></div>
          <div class="admin-stats" style="margin-top:12px;">
-           <span>Total: <b>${data.peserta.length}</b></span>
-           <span class="stat-done">Selesai: <b>${selesai}</b></span>
-           <span style="color:var(--primary);">Aktif: <b>${mengerjakan}</b></span>
-           <span class="stat-pending">Kosong: <b>${blmSelesai}</b></span>
+           <span>Total: <b>\${data.peserta.length}</b></span>
+           <span class="stat-done">Selesai: <b>\${selesai}</b></span>
+           <span style="color:var(--primary);">Aktif: <b>\${mengerjakan}</b></span>
+           <span class="stat-pending">Kosong: <b>\${blmSelesai}</b></span>
          </div>
        </div>
      `;
@@ -180,7 +180,7 @@ function renderAdminDashboard(data = window.adminState.monitor) {
       const stat = hasSelesai ? 'SELESAI' : (hasMengerjakan ? 'MENGERJAKAN' : 'BELUM');
       if (!absenMode || stat === 'BELUM') rawTotal++;
     });
-    renderPaginationControls(`admin-monitor-pg-${ex.id}`, rawTotal, 20, window.adminState.monitorPage[ex.id] || 1, 'changeMonitorPage', ex.id);
+    renderPaginationControls(`admin-monitor-pg-\${ex.id}`, rawTotal, 20, window.adminState.monitorPage[ex.id] || 1, 'changeMonitorPage', ex.id);
   });
 }
 
@@ -213,7 +213,7 @@ async function loadAdminSiswa() {
   const data = snap.val() || {};
   let html = '';
   for (let id in data) {
-    html += `<tr><td><strong>${id}</strong></td><td>${data[id].nama}</td><td>${data[id].kelas}</td><td><button class="btn btn-outline" onclick="editSiswa('${id}')">📝</button> <button class="btn btn-outline" style="color:var(--danger)" onclick="deleteSiswa('${id}')">🗑️</button></td></tr>`;
+    html += `<tr><td><strong>\${id}</strong></td><td>\${data[id].nama}</td><td>\${data[id].kelas}</td><td><button class="btn btn-outline" onclick="editSiswa('\${id}')">📝</button> <button class="btn btn-outline" style="color:var(--danger)" onclick="deleteSiswa('\${id}')">🗑️</button></td></tr>`;
   }
   tbody.innerHTML = html;
 }
@@ -225,7 +225,7 @@ async function loadAdminSoal() {
   const data = snap.val() || {};
   let html = '';
   for (let bankId in data) {
-    html += `<tr><td><strong>${bankId}</strong> <br><small>${Object.keys(data[bankId]).length} soal</small></td><td><button class="btn btn-outline" onclick="previewSoal('${bankId}')">👁️</button> <button class="btn btn-primary" onclick="openSoalEditorPage('${bankId}')">📝</button></td></tr>`;
+    html += `<tr><td><strong>\${bankId}</strong> <br><small>\${Object.keys(data[bankId]).length} soal</small></td><td><button class="btn btn-outline" onclick="previewSoal('\${bankId}')">👁️</button> <button class="btn btn-primary" onclick="openSoalEditorPage('\${bankId}')">📝</button></td></tr>`;
   }
   tbody.innerHTML = html;
 }
@@ -235,7 +235,7 @@ async function loadAdminJadwal() {
   try {
     const res = await gasRun('getAdminJadwalFull');
     if (res.success) {
-      if (tbody) tbody.innerHTML = res.data.map(j => `<tr><td>${j.id}</td><td>${j.nama}</td><td>${j.nama_soal}</td><td><button class="btn btn-outline" onclick="openJadwalModal('${j.id}')">📝</button></td></tr>`).join('');
+      if (tbody) tbody.innerHTML = res.data.map(j => `<tr><td>\${j.id}</td><td>\${j.nama}</td><td>\${j.nama_soal}</td><td><button class="btn btn-outline" onclick="openJadwalModal('\${j.id}')">📝</button></td></tr>`).join('');
     }
   } catch (e) { console.error(e); }
 }
@@ -260,7 +260,7 @@ function renderAdminHasilPage(page) {
   const search = document.getElementById('admin-hasil-search')?.value?.toLowerCase() || '';
   const filtered = data.filter(h => h.nama.toLowerCase().includes(search) || h.ujian.toLowerCase().includes(search));
   const sliced = filtered.slice((page - 1) * perPage, page * perPage);
-  tbHasil.innerHTML = sliced.map(h => `<tr><td>${h.waktu}</td><td>${h.nama}</td><td>${h.ujian}</td><td>${h.skor}</td></tr>`).join('');
+  tbHasil.innerHTML = sliced.map(h => `<tr><td>\${h.waktu}</td><td>\${h.nama}</td><td>\${h.ujian}</td><td>\${h.skor}</td></tr>`).join('');
   renderPaginationControls('admin-hasil-pagination', filtered.length, perPage, page, 'renderAdminHasilPage');
 }
 
