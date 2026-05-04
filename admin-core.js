@@ -1,4 +1,4 @@
-window.showAdminAuthModal = function() {
+window.showAdminAuthModal = function () {
   const overlay = document.getElementById('admin-overlay');
   if (overlay) overlay.classList.add('active');
   const modal = document.getElementById('admin-login-modal');
@@ -91,9 +91,9 @@ window.loadAdminSyncStatus = async function () {
       const pct = Math.min(100, Math.round((syncCount / totalSiswa) * 100));
       countEl.textContent = `${syncCount} / ${totalSiswa} Siswa Siap (${pct}%)`;
     } else { countEl.textContent = `${syncCount} Siswa Siap`; }
-  } catch (e) { 
+  } catch (e) {
     console.error("Sync Status Error:", e);
-    countEl.textContent = 'Gagal memuat.'; 
+    countEl.textContent = 'Gagal memuat.';
   }
 };
 
@@ -204,11 +204,11 @@ document.querySelectorAll('.admin-sidebar-btn').forEach(btn => {
     else if (btn.dataset.tab === 'tab-siswa') loadAdminSiswa();
     else if (btn.dataset.tab === 'tab-soal') loadAdminSoal();
     else if (btn.dataset.tab === 'tab-settings') loadAdminSettings();
-    else if (btn.dataset.tab === 'tab-laporan') loadAdminHasil(true);
+    else if (btn.dataset.tab === 'tab-hasil') loadAdminHasil(true);
   });
 });
 
-window.forceRefreshAdminTab = function() {
+window.forceRefreshAdminTab = function () {
   const activeTabBtn = document.querySelector('.admin-sidebar-btn.active');
   if (!activeTabBtn || !activeTabBtn.dataset.tab) {
     loadAdminDashboard();
@@ -242,7 +242,7 @@ async function loadAdminSoal() {
   const data = snap.val() || {};
   let html = '';
   for (let bankId in data) {
-    html += `<tr><td><strong>${bankId}</strong> <br><small>${Object.keys(data[bankId]).length} soal</small></td><td><button class="btn btn-outline" onclick="previewSoal('${bankId}')">👁️</button> <button class="btn btn-primary" onclick="openSoalEditorPage('${bankId}')">📝</button></td></tr>`;
+    html += `<tr><td><strong>${bankId}</strong> <br><small>${Object.keys(data[bankId]).length} soal</small></td><td><button class="btn btn-outline" onclick="previewSoal('${bankId}')">👁️</button> <button class="btn btn-primary" onclick="openSoalEditorPage('${bankId}')">📝</button> <button class="btn btn-outline" style="color:var(--danger)" onclick="deleteBankSoal('${bankId}')">🗑️</button></td></tr>`;
   }
   tbody.innerHTML = html;
 }
@@ -264,7 +264,10 @@ async function loadAdminJadwal() {
               <span class="badge ${badgeClass}">${statusText}</span>
               <code style="display:block; margin-top:4px; font-weight:bold; color:var(--danger);">${j.token || '-'}</code>
             </td>
-            <td><button class="btn btn-outline" onclick="openJadwalModal('${j.id}')">📝 Edit</button></td>
+            <td>
+              <button class="btn btn-outline" onclick="openJadwalModal('${j.id}')">📝 Edit</button>
+              <button class="btn btn-outline" style="color:var(--danger)" onclick="deleteJadwal('${j.id}')">🗑️</button>
+            </td>
           </tr>`;
       }).join('');
     }
@@ -274,11 +277,11 @@ async function loadAdminJadwal() {
 async function loadAdminHasil(resetPage = false) {
   const tbHasil = document.getElementById('admin-hasil-tbody');
   const tbRadar = document.getElementById('admin-radar-tbody');
-  
+
   if (resetPage) {
     if (tbHasil) tbHasil.innerHTML = '<tr><td colspan="4" class="text-center">Memuat...</td></tr>';
     if (tbRadar) tbRadar.innerHTML = '<tr><td colspan="4" class="text-center">Memuat...</td></tr>';
-    
+
     const res = await gasRun('getAdminLaporanLengkap');
     if (res.success) {
       window.adminState.hasil = res.hasil || [];
@@ -293,10 +296,10 @@ function renderAdminRadarPage(page) {
   const perPage = 20;
   const tbRadar = document.getElementById('admin-radar-tbody');
   if (!tbRadar) return;
-  
+
   const data = window.adminState.radar || [];
   const sliced = data.slice((page - 1) * perPage, page * perPage);
-  
+
   if (sliced.length === 0) {
     tbRadar.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Tidak ada log pelanggaran.</td></tr>';
   } else {
@@ -344,11 +347,11 @@ window.loadAdminSettings = async function () {
     // 2. Diagnosa Koneksi (Gunakan dbConnectFast agar admin tidak kena jitter 1.5 detik)
     console.log("Admin: Memulai koneksi database...");
     if (window.dbConnectFast) await window.dbConnectFast();
-    
+
     try {
       console.log("Admin: Mengambil data security...");
       const snap = await db.ref('/config/security').once('value');
-      
+
       const sec = snap.val() || {};
       console.log("Admin: Data Security diterima:", sec);
 
@@ -366,14 +369,14 @@ window.loadAdminSettings = async function () {
       safeSetChecked('cfgPWA', isTrue(getVal(sec, 'pwa', false)));
       safeSetChecked('cfgFullscreen', isTrue(getVal(sec, 'fullscreen', false)));
       safeSetChecked('cfgAntiCheat', isTrue(getVal(sec, 'anticheat', false)));
-      
+
       // Default TRUE jika tidak ada data (undefined)
       const showExam = getVal(sec, 'showExamStatus', undefined);
       safeSetChecked('cfgShowExamStatus', showExam !== false && showExam !== "false" && showExam !== 0 && showExam !== "0");
-      
+
       const showSys = getVal(sec, 'showSystemInfo', undefined);
       safeSetChecked('cfgShowSystemInfo', showSys !== false && showSys !== "false" && showSys !== 0 && showSys !== "0");
-      
+
       safeSetValue('cfgMinTime', getVal(sec, 'minTime', 0));
       safeSetValue('cfgBypassCode', getVal(sec, 'bypassCode', ''));
 
@@ -382,7 +385,7 @@ window.loadAdminSettings = async function () {
       const idenSnap = await db.ref('/config/identity').once('value');
       const iden = idenSnap.val() || {};
       console.log("Admin: Data Identity diterima:", iden);
-      
+
       safeSetValue('cfgSchoolName', getVal(iden, 'name', 'SMP Negeri 1 Dander'));
       safeSetValue('cfgSchoolSub', getVal(iden, 'sub', 'MGMP INF/KKA BJN'));
 
@@ -405,10 +408,10 @@ window.loadAdminSettings = async function () {
       }
 
       console.log("Admin: Pengaturan berhasil dimuat dari Firebase ✅");
-      
+
       // Force UI alert for diagnostic purposes (User cannot see console)
       showCustomAlert('Diagnostic Info', `Data Security: ${JSON.stringify(sec).substring(0, 50)}...`, '✅');
-      
+
     } catch (dbErr) {
       console.error("Admin DB Query Error:", dbErr);
       if (dbErr.message.toLowerCase().includes('permission_denied') || dbErr.message.toLowerCase().includes('permission denied')) {
@@ -505,11 +508,11 @@ window.resetFirebaseConfig = function () {
   }
 };
 
-window.toggleAbsenMode = function() {
+window.toggleAbsenMode = function () {
   loadAdminDashboard();
 };
 
-window.promptBroadcast = async function(examId) {
+window.promptBroadcast = async function (examId) {
   const msg = prompt("Ketik pesan broadcast untuk siswa:");
   if (msg && msg.trim() !== '') {
     showLoading('Menyiarkan...');
@@ -522,10 +525,158 @@ window.promptBroadcast = async function(examId) {
   }
 };
 
-window.previewSoal = function(examId) {
+window.previewSoal = function (examId) {
   showAdminPreview(examId);
 };
 
-window.openSoalEditorPage = function(bankId) {
-  showCustomAlert('Info', 'Membuka Editor Soal untuk: ' + bankId, '📝');
+window.openSoalEditorPage = function (bankId) {
+  window.open('soal-editor.html?bank=' + bankId, '_blank');
+};
+
+window.deleteJadwal = async function (id) {
+  if (confirm(`Hapus jadwal "${id}"? Data hasil pengerjaan terkait jadwal ini mungkin akan tetap ada di database.`)) {
+    showLoading('Menghapus Jadwal...');
+    try {
+      if (window.dbConnectFast) await window.dbConnectFast();
+      await db.ref('/jadwal/' + id).remove();
+      showCustomAlert('Berhasil', 'Jadwal berhasil dihapus.', '✅');
+      loadAdminJadwal();
+    } catch (e) {
+      showCustomAlert('Gagal', 'Gagal menghapus: ' + e.message, '❌');
+    } finally {
+      if (window.dbDisconnect) window.dbDisconnect();
+      hideLoading();
+    }
+  }
+};
+
+window.deleteBankSoal = async function (bankId) {
+  if (confirm(`PERINGATAN: Hapus bank soal "${bankId}"? SELURUH butir soal di dalamnya akan terhapus secara permanen!`)) {
+    showLoading('Menghapus Bank Soal...');
+    try {
+      if (window.dbConnectFast) await window.dbConnectFast();
+      await db.ref('/soal/' + bankId).remove();
+      // Hapus juga kunci jawaban
+      await db.ref('/kunci/' + bankId).remove();
+      showCustomAlert('Berhasil', 'Bank soal berhasil dihapus.', '✅');
+      loadAdminSoal();
+    } catch (e) {
+      showCustomAlert('Gagal', 'Gagal menghapus: ' + e.message, '❌');
+    } finally {
+      if (window.dbDisconnect) window.dbDisconnect();
+      hideLoading();
+    }
+  }
+};
+
+window.deleteSiswa = async function (id) {
+  if (confirm(`Hapus data siswa dengan ID "${id}"?`)) {
+    showLoading('Menghapus Siswa...');
+    try {
+      if (window.dbConnectFast) await window.dbConnectFast();
+      await db.ref('/peserta/' + id).remove();
+      showCustomAlert('Berhasil', 'Siswa berhasil dihapus.', '✅');
+      loadAdminSiswa();
+    } catch (e) {
+      showCustomAlert('Gagal', 'Gagal menghapus: ' + e.message, '❌');
+    } finally {
+      if (window.dbDisconnect) window.dbDisconnect();
+      hideLoading();
+    }
+  }
+};
+
+let _editSiswaId = null;
+
+window.openSiswaModal = function (id = null) {
+  _editSiswaId = id;
+  const overlay = document.getElementById('siswa-overlay');
+  const modal = document.getElementById('siswa-modal');
+  if (!overlay || !modal) return;
+
+  overlay.classList.add('active');
+  modal.style.display = 'flex';
+  
+  if (id) {
+    document.getElementById('siswa-modal-title').innerText = 'Edit Siswa';
+    showLoading('Memuat data siswa...');
+    db.ref('/peserta/' + id).once('value').then(snap => {
+      const data = snap.val();
+      if (data) {
+        document.getElementById('siswaIdInput').value = id;
+        document.getElementById('siswaIdInput').readOnly = true;
+        document.getElementById('siswaNamaInput').value = data.nama || '';
+        document.getElementById('siswaKelasInput').value = data.kelas || '';
+      }
+      hideLoading();
+    }).catch(e => {
+      hideLoading();
+      showCustomAlert('Gagal', 'Gagal memuat data siswa.', '❌');
+    });
+  } else {
+    document.getElementById('siswa-modal-title').innerText = 'Tambah Siswa';
+    document.getElementById('siswaIdInput').value = '';
+    document.getElementById('siswaIdInput').readOnly = false;
+    document.getElementById('siswaNamaInput').value = '';
+    document.getElementById('siswaKelasInput').value = '';
+  }
+  
+  setTimeout(() => {
+    overlay.style.opacity = '1';
+    modal.style.opacity = '1';
+    modal.style.transform = 'translate(-50%, -50%) scale(1)';
+  }, 10);
+};
+
+window.closeSiswaModal = function () {
+  const overlay = document.getElementById('siswa-overlay');
+  const modal = document.getElementById('siswa-modal');
+  if (!overlay || !modal) return;
+
+  overlay.classList.remove('active');
+  modal.style.opacity = '0';
+  modal.style.transform = 'translate(-50%, -50%) scale(0.95)';
+  setTimeout(() => {
+    overlay.style.display = 'none';
+    modal.style.display = 'none';
+  }, 300);
+};
+
+window.editSiswa = function (id) {
+  openSiswaModal(id);
+};
+
+window.saveSiswa = async function () {
+  const idInput = document.getElementById('siswaIdInput');
+  const namaInput = document.getElementById('siswaNamaInput');
+  const kelasInput = document.getElementById('siswaKelasInput');
+  
+  if (!idInput || !namaInput || !kelasInput) return;
+
+  const id = idInput.value.trim();
+  const nama = namaInput.value.trim();
+  const kelas = kelasInput.value.trim();
+  
+  if (!id || !nama || !kelas) {
+    return showCustomAlert('Data Tidak Lengkap', 'Harap isi semua field.', '📝');
+  }
+  
+  showLoading('Menyimpan Data Siswa...');
+  try {
+    if (window.dbConnectFast) await window.dbConnectFast();
+    const payload = {
+      nama: nama,
+      nama_lower: nama.toLowerCase(),
+      kelas: kelas
+    };
+    await db.ref('/peserta/' + id).set(payload);
+    showCustomAlert('Berhasil', 'Data siswa berhasil disimpan.', '✅');
+    closeSiswaModal();
+    loadAdminSiswa();
+  } catch (e) {
+    showCustomAlert('Gagal', 'Gagal menyimpan: ' + e.message, '❌');
+  } finally {
+    if (window.dbDisconnect) window.dbDisconnect();
+    hideLoading();
+  }
 };
