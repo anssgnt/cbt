@@ -1,8 +1,7 @@
-const CACHE_NAME = 'cbt-cache-v7.1';
+const CACHE_NAME = 'cbt-cache-v6.2';
 const urlsToCache = [
   '/',
   '/index.html',
-  '/soal-editor.html',
   '/style.css',
   '/script.js',
   '/13.jpg'
@@ -19,9 +18,12 @@ self.addEventListener('install', event => {
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
   
-  // Bypass cache sepenuhnya untuk file admin agar selalu fresh
-  if (url.pathname.includes('admin-core.js')) {
-    event.respondWith(fetch(event.request));
+  // --- BYPASS CACHE UNTUK ADMIN (Armor 1000) ---
+  // File admin-core.js dan soal-editor.html harus selalu fresh dari network.
+  if (url.pathname.includes('admin-core.js') || url.pathname.includes('soal-editor.html')) {
+    event.respondWith(
+      fetch(event.request, { cache: 'no-store' }) // Paksa ambil dari network tanpa cache browser
+    );
     return;
   }
 
