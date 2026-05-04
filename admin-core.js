@@ -273,79 +273,92 @@ window.loadAdminSettings = async function () {
       await window.authPromise;
     }
 
+    // Cek status auth secara eksplisit
+    const currentUser = firebase.auth().currentUser;
+    if (!currentUser) {
+      console.error("Admin: User belum terautentikasi! Pastikan 'Anonymous Auth' aktif di Firebase Console.");
+      showCustomAlert('Auth Gagal', 'Sesi Firebase belum siap. Silakan refresh halaman.', '🔐');
+      return;
+    }
+    console.log("Admin: Auth OK (UID:", currentUser.uid, ")");
+
     // 2. Diagnosa Koneksi (Gunakan dbConnectFast agar admin tidak kena jitter 1.5 detik)
     console.log("Admin: Memulai koneksi database...");
     if (window.dbConnectFast) await window.dbConnectFast();
     
-    console.log("Admin: Mengambil data security...");
-    const snap = await db.ref('/config/security').once('value');
-    if (!snap.exists()) {
-      console.warn("Admin: Node /config/security tidak ditemukan di database!");
+    try {
+      console.log("Admin: Mengambil data security...");
+      const snap = await db.ref('/config/security').once('value');
+      
+      const sec = snap.val() || {};
+      console.log("Admin: Data Security diterima:", sec);
+
+      // Fungsi pembantu untuk mengambil nilai tanpa peduli huruf besar/kecil
+      const getVal = (obj, key, fallback) => {
+        if (!obj) return fallback;
+        if (obj[key] !== undefined) return obj[key];
+        const foundKey = Object.keys(obj).find(k => k.toLowerCase() === key.toLowerCase());
+        return foundKey ? obj[foundKey] : fallback;
+      };
+
+      const isTrue = (v) => v === true || v === "true" || v === 1 || v === "1";
+
+      // Bind ke UI dengan proteksi case-insensitive
+      safeSetChecked('cfgPWA', isTrue(getVal(sec, 'pwa', false)));
+      safeSetChecked('cfgFullscreen', isTrue(getVal(sec, 'fullscreen', false)));
+      safeSetChecked('cfgAntiCheat', isTrue(getVal(sec, 'anticheat', false)));
+      
+      // Default TRUE jika tidak ada data (undefined)
+      const showExam = getVal(sec, 'showExamStatus', undefined);
+      safeSetChecked('cfgShowExamStatus', showExam !== false && showExam !== "false" && showExam !== 0 && showExam !== "0");
+      
+      const showSys = getVal(sec, 'showSystemInfo', undefined);
+      safeSetChecked('cfgShowSystemInfo', showSys !== false && showSys !== "false" && showSys !== 0 && showSys !== "0");
+      
+      safeSetValue('cfgMinTime', getVal(sec, 'minTime', 0));
+      safeSetValue('cfgBypassCode', getVal(sec, 'bypassCode', ''));
+
+      // 3. Load Identity
+      console.log("Admin: Mengambil data identity...");
+      const idenSnap = await db.ref('/config/identity').once('value');
+      const iden = idenSnap.val() || {};
+      console.log("Admin: Data Identity diterima:", iden);
+      
+      safeSetValue('cfgSchoolName', getVal(iden, 'name', 'SMP Negeri 1 Dander'));
+      safeSetValue('cfgSchoolSub', getVal(iden, 'sub', 'MGMP INF/KKA BJN'));
+
+      const preview = document.getElementById('cfgLogoPreview');
+      if (preview) {
+        const logo = getVal(iden, 'logo', null);
+        preview.innerHTML = logo ? `<img src="${logo}" style="max-width:100%; max-height:100%; object-fit:contain;">` : '<span class="text-muted" style="font-size:0.7rem;">No Logo</span>';
+        window.adminState.tempLogoBase64 = logo;
+      }
+
+      // 4. Firebase Config (dari global firebaseConfig di script.js)
+      if (typeof firebaseConfig !== 'undefined') {
+        safeSetValue('fbApiKey', firebaseConfig.apiKey || '');
+        safeSetValue('fbAuthDomain', firebaseConfig.authDomain || '');
+        safeSetValue('fbDbUrl', firebaseConfig.databaseURL || '');
+        safeSetValue('fbProjectId', firebaseConfig.projectId || '');
+        safeSetValue('fbStorageBucket', firebaseConfig.storageBucket || '');
+        safeSetValue('fbMessagingId', firebaseConfig.messagingSenderId || '');
+        safeSetValue('fbAppId', firebaseConfig.appId || '');
+      }
+
+      console.log("Admin: Pengaturan berhasil dimuat dari Firebase ✅");
+    } catch (dbErr) {
+      console.error("Admin DB Query Error:", dbErr);
+      if (dbErr.message.toLowerCase().includes('permission_denied') || dbErr.message.toLowerCase().includes('permission denied')) {
+        showCustomAlert('Akses Ditolak', 'Firebase menolak akses (Permission Denied). Cek Rules di Firebase Console.', '🚫');
+      } else {
+        throw dbErr;
+      }
     }
-
-    const sec = snap.val() || {};
-    console.log("Admin: Data Security diterima:", sec);
-
-    // Fungsi pembantu untuk mengambil nilai tanpa peduli huruf besar/kecil
-    const getVal = (obj, key, fallback) => {
-      if (!obj) return fallback;
-      if (obj[key] !== undefined) return obj[key];
-      const foundKey = Object.keys(obj).find(k => k.toLowerCase() === key.toLowerCase());
-      return foundKey ? obj[foundKey] : fallback;
-    };
-
-    const isTrue = (v) => v === true || v === "true" || v === 1 || v === "1";
-
-    // Bind ke UI dengan proteksi case-insensitive
-    safeSetChecked('cfgPWA', isTrue(getVal(sec, 'pwa', false)));
-    safeSetChecked('cfgFullscreen', isTrue(getVal(sec, 'fullscreen', false)));
-    safeSetChecked('cfgAntiCheat', isTrue(getVal(sec, 'anticheat', false)));
-    
-    // Default TRUE jika tidak ada data (undefined)
-    const showExam = getVal(sec, 'showExamStatus', undefined);
-    safeSetChecked('cfgShowExamStatus', showExam !== false && showExam !== "false" && showExam !== 0 && showExam !== "0");
-    
-    const showSys = getVal(sec, 'showSystemInfo', undefined);
-    safeSetChecked('cfgShowSystemInfo', showSys !== false && showSys !== "false" && showSys !== 0 && showSys !== "0");
-    
-    safeSetValue('cfgMinTime', getVal(sec, 'minTime', 0));
-    safeSetValue('cfgBypassCode', getVal(sec, 'bypassCode', ''));
-
-    // 3. Load Identity
-    const idenSnap = await db.ref('/config/identity').once('value');
-    const iden = idenSnap.val() || {};
-    console.log("Admin: Data Identity dari Firebase:", iden);
-    
-    safeSetValue('cfgSchoolName', getVal(iden, 'name', 'SMP Negeri 1 Dander'));
-    safeSetValue('cfgSchoolSub', getVal(iden, 'sub', 'MGMP INF/KKA BJN'));
-
-    const preview = document.getElementById('cfgLogoPreview');
-    if (preview) {
-      const logo = getVal(iden, 'logo', null);
-      preview.innerHTML = logo ? `<img src="${logo}" style="max-width:100%; max-height:100%; object-fit:contain;">` : '<span class="text-muted" style="font-size:0.7rem;">No Logo</span>';
-      window.adminState.tempLogoBase64 = logo;
-    }
-
-    // 4. Firebase Config (dari global firebaseConfig di script.js)
-    if (typeof firebaseConfig !== 'undefined') {
-      safeSetValue('fbApiKey', firebaseConfig.apiKey || '');
-      safeSetValue('fbAuthDomain', firebaseConfig.authDomain || '');
-      safeSetValue('fbDbUrl', firebaseConfig.databaseURL || '');
-      safeSetValue('fbProjectId', firebaseConfig.projectId || '');
-      safeSetValue('fbStorageBucket', firebaseConfig.storageBucket || '');
-      safeSetValue('fbMessagingId', firebaseConfig.messagingSenderId || '');
-      safeSetValue('fbAppId', firebaseConfig.appId || '');
-    }
-
-    console.log("Admin: Pengaturan berhasil dimuat dari Firebase ✅");
   } catch (e) {
-    console.error("Admin Load Error:", e);
-    if (e.message && e.message.includes('permission_denied')) {
-      showCustomAlert('Akses Ditolak', 'Firebase menolak akses. Pastikan Rules Database sudah benar.', '❌');
-    } else {
-      showCustomAlert('Gagal Memuat', 'Gagal memuat pengaturan: ' + e.message, '❌');
-    }
+    console.error("Admin Load General Error:", e);
+    showCustomAlert('Gagal Memuat', 'Kesalahan sistem: ' + e.message, '❌');
   } finally {
+    if (window.dbDisconnect) window.dbDisconnect();
     hideLoading();
   }
 };
