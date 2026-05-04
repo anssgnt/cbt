@@ -290,6 +290,7 @@ async function loadAdminJadwal() {
               <code style="display:block; margin-top:4px; font-weight:bold; color:var(--danger);">${j.token || '-'}</code>
             </td>
             <td>
+              <button class="btn btn-outline" style="color:#2563EB" onclick="openPrintModal('${id}', '${j.nama}')">🖨️ Cetak</button>
               <button class="btn btn-outline" onclick="openJadwalModal('${id}')">📝 Edit</button>
               <button class="btn btn-outline" style="color:var(--danger)" onclick="deleteJadwal('${id}')">🗑️</button>
             </td>
