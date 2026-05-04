@@ -208,6 +208,21 @@ document.querySelectorAll('.admin-sidebar-btn').forEach(btn => {
   });
 });
 
+window.forceRefreshAdminTab = function() {
+  const activeTabBtn = document.querySelector('.admin-sidebar-btn.active');
+  if (!activeTabBtn || !activeTabBtn.dataset.tab) {
+    loadAdminDashboard();
+    return;
+  }
+  const tab = activeTabBtn.dataset.tab;
+  if (tab === 'tab-jadwal') loadAdminJadwal();
+  else if (tab === 'tab-siswa') loadAdminSiswa();
+  else if (tab === 'tab-soal') loadAdminSoal();
+  else if (tab === 'tab-settings') loadAdminSettings();
+  else if (tab === 'tab-hasil') loadAdminHasil(true);
+  else loadAdminDashboard();
+};
+
 async function loadAdminSiswa() {
   const tbody = document.getElementById('admin-siswa-tbody');
   tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted">Memuat...</td></tr>';
