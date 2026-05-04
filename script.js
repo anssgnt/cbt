@@ -3578,11 +3578,12 @@ window.executePrint = async function () {
     }
 
     // Handle Time
-    const manualJam = document.getElementById('printJam').value.trim();
-    let jamStr = manualJam || '-';
+    const manualStart = document.getElementById('printJamStart').value;
+    const manualEnd = document.getElementById('printJamEnd').value;
+    let jamStr = (manualStart && manualEnd) ? `${manualStart} - ${manualEnd}` : null;
     
     // Fallback ke jadwal jika kosong
-    if (!manualJam) {
+    if (!jamStr) {
       const jSnap = await db.ref('/jadwal/' + examId).once('value');
       const jData = jSnap.val() || {};
       if (jData.mulai && jData.selesai) {
@@ -3592,7 +3593,7 @@ window.executePrint = async function () {
         jamStr = `${pad(ms.getHours())}:${pad(ms.getMinutes())} s.d ${pad(me.getHours())}:${pad(me.getMinutes())}`;
       }
     }
-    safeSetText('pb-jam', jamStr);
+    safeSetText('pb-jam', jamStr || '-');
 
     safeSetText('pb-hari', days[today.getDay()]);
     safeSetText('pb-tanggal', tanggal);
