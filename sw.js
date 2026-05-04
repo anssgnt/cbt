@@ -17,6 +17,23 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('fetch', event => {
+  const url = event.request.url;
+  
+  // 🔥 JANGAN CACHE REQUEST FIREBASE!
+  // Ini adalah fix utama untuk masalah data tidak update
+  if (
+    url.includes('firebaseio.com') ||
+    url.includes('googleapis.com') ||
+    url.includes('firestore.googleapis.com') ||
+    url.includes('google.com/identitytoolkit') ||
+    url.includes('cloudfunctions.net')
+  ) {
+    // Langsung fetch tanpa cache untuk Firebase
+    event.respondWith(fetch(event.request));
+    return;
+  }
+  
+  // Untuk request lain (static files), gunakan Network First strategy
   event.respondWith(
     fetch(event.request)
       .then(response => {
