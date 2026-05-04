@@ -355,16 +355,18 @@ let searchTimeout = null;
 // tanpa ReferenceError (let tidak di-hoist seperti var).
 let activeDbRequests = 0;
 let dbDisconnectTimer = null;
+let connectionPromise = null;
 
 // --- KONEKSI CEPAT TANPA JITTER (khusus operasi interaktif) ---
-// Jitter 0-1500ms dirancang untuk bulk request serentak 1000 siswa.
-// Untuk pencarian nama yang dipicu satu user, jitter justru merusak UX.
 window.dbConnectFast = async function () {
   activeDbRequests++;
   if (activeDbRequests === 1) {
-    if (dbDisconnectTimer) clearTimeout(dbDisconnectTimer);
-    db.goOnline(); // Langsung online, tanpa delay
+    connectionPromise = (async () => {
+      if (dbDisconnectTimer) clearTimeout(dbDisconnectTimer);
+      db.goOnline();
+    })();
   }
+  if (connectionPromise) await connectionPromise;
 };
 
 window.dbOffline = function () {
@@ -976,11 +978,14 @@ db.goOffline(); // Matikan koneksi bawaan seketika!
 window.dbConnect = async function () {
   activeDbRequests++;
   if (activeDbRequests === 1) {
-    if (dbDisconnectTimer) clearTimeout(dbDisconnectTimer);
-    // Jitter: Delay acak 0-1500ms untuk memecah gelombang trafik simultan (Skala 1000)
-    await sleep(Math.floor(Math.random() * 1500));
-    db.goOnline();
+    connectionPromise = (async () => {
+      if (dbDisconnectTimer) clearTimeout(dbDisconnectTimer);
+      // Jitter: Delay acak 0-1500ms untuk memecah gelombang trafik simultan (Skala 1000)
+      await sleep(Math.floor(Math.random() * 1500));
+      db.goOnline();
+    })();
   }
+  if (connectionPromise) await connectionPromise;
 };
 
 window.dbDisconnect = function () {
@@ -1018,8 +1023,11 @@ window.withDB = async function (promiseFunc) {
 let isAuthReady = false;
 let authPromise = null;
 
+let _firebasePatched = false;
 function patchFirebase() {
+  if (_firebasePatched) return; // Cegah double-patching saat initPortal() dipanggil ulang
   if (typeof firebase === 'undefined' || !firebase.database) return;
+  _firebasePatched = true;
   const Ref = firebase.database.Reference.prototype;
   const methods = ['once', 'set', 'update', 'remove'];
   methods.forEach(m => {
@@ -1054,6 +1062,7 @@ function initAuth() {
       SystemStatus.auth = 'error';
       updateInitStatusDisplay();
     });
+  window.authPromise = authPromise; // Expose ke window agar admin-core.js bisa menunggu auth
 }
 
 async function gasRun(funcName, ...args) {
