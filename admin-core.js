@@ -265,40 +265,49 @@ function renderAdminHasilPage(page) {
 }
 
 window.loadAdminSettings = async function () {
-  showLoading('Memuat Pengaturan...');
+  const settingsTab = document.getElementById('tab-settings');
+  if (!settingsTab) return;
+
+  showLoading('Sinkronisasi Firebase...');
   try {
-    // 1. TUNGGU AUTH: Pastikan login anonim sudah siap sebelum membaca /config
+    // 1. Cek & Tunggu Auth (Hanya menunggu jika belum ready)
     if (window.authPromise) {
-      console.log("Waiting for Firebase Auth...");
+      console.log("Auth Status: Waiting for session...");
       await window.authPromise;
+      console.log("Auth Status: Ready!");
     }
 
-    // 2. KONEKSI CEPAT: Pastikan database Online
+    // 2. Paksa Online
     if (window.dbConnectFast) await window.dbConnectFast();
     
-    // Debug: Cek URL Database yang sedang digunakan
-    const currentDbUrl = (db && db.app && db.app.options) ? db.app.options.databaseURL : 'Unknown';
-    console.log("Fetching config from DB:", currentDbUrl);
-
-    // 3. AMBIL DATA SECURITY
-    console.log("Path: /config/security");
+    const dbUrl = (db && db.app && db.app.options) ? db.app.options.databaseURL : 'Unknown';
+    console.log("Firebase Connected to:", dbUrl);
+    
+    // 3. Ambil data Security
+    console.log("Requesting path: /config/security");
     const snap = await db.ref('/config/security').once('value');
-    const sec = snap.val() || {};
-    console.log("Data Security Received:", sec);
-
-    // Bind ke UI (dengan penanganan tipe data)
-    safeSetChecked('cfgPWA', sec.pwa === true || sec.pwa === "true" || sec.pwa === 1 || sec.pwa === "1");
-    safeSetChecked('cfgFullscreen', sec.fullscreen === true || sec.fullscreen === "true" || sec.fullscreen === 1 || sec.fullscreen === "1");
-    safeSetChecked('cfgAntiCheat', sec.anticheat === true || sec.anticheat === "true" || sec.anticheat === 1 || sec.anticheat === "1");
+    const sec = snap.val();
     
-    // Default TRUE jika tidak ada data (mencegah mati semua saat database baru)
-    safeSetChecked('cfgShowExamStatus', sec.showExamStatus !== false && sec.showExamStatus !== "false" && sec.showExamStatus !== 0 && sec.showExamStatus !== "0");
-    safeSetChecked('cfgShowSystemInfo', sec.showSystemInfo !== false && sec.showSystemInfo !== "false" && sec.showSystemInfo !== 0 && sec.showSystemInfo !== "0");
-    
-    safeSetValue('cfgMinTime', sec.minTime || 0);
-    safeSetValue('cfgBypassCode', sec.bypassCode || '');
+    if (sec === null) {
+      console.warn("Data /config/security tidak ditemukan (null). Menggunakan default UI.");
+    } else {
+      console.log("Data Security Received:", sec);
+    }
 
-    // 4. AMBIL DATA IDENTITAS
+    const s = sec || {};
+    safeSetChecked('cfgPWA', s.pwa === true || s.pwa === "true" || s.pwa === 1 || s.pwa === "1");
+    safeSetChecked('cfgFullscreen', s.fullscreen === true || s.fullscreen === "true" || s.fullscreen === 1 || s.fullscreen === "1");
+    safeSetChecked('cfgAntiCheat', s.anticheat === true || s.anticheat === "true" || s.anticheat === 1 || s.anticheat === "1");
+    
+    // Default TRUE jika data tidak ada
+    safeSetChecked('cfgShowExamStatus', s.showExamStatus !== false && s.showExamStatus !== "false" && s.showExamStatus !== 0);
+    safeSetChecked('cfgShowSystemInfo', s.showSystemInfo !== false && s.showSystemInfo !== "false" && s.showSystemInfo !== 0);
+    
+    safeSetValue('cfgMinTime', s.minTime || 0);
+    safeSetValue('cfgBypassCode', s.bypassCode || '');
+
+    // 4. Ambil data Identitas
+    console.log("Requesting path: /config/identity");
     const idenSnap = await db.ref('/config/identity').once('value');
     const iden = idenSnap.val() || {};
     console.log("Data Identity Received:", iden);
@@ -312,8 +321,8 @@ window.loadAdminSettings = async function () {
       window.adminState.tempLogoBase64 = iden.logo || null;
     }
 
-    // 5. ISI DATA FIREBASE (Untuk diedit jika perlu)
-    const cfg = window.firebaseConfig || {}; 
+    // 5. Update Firebase Config Fields (Untuk diedit)
+    const cfg = window.firebaseConfig || {};
     safeSetValue('fbApiKey', cfg.apiKey || '');
     safeSetValue('fbAuthDomain', cfg.authDomain || '');
     safeSetValue('fbDbUrl', cfg.databaseURL || '');
@@ -323,11 +332,11 @@ window.loadAdminSettings = async function () {
     safeSetValue('fbAppId', cfg.appId || '');
 
   } catch (e) {
-    console.error("CRITICAL ADMIN LOAD ERROR:", e);
+    console.error("Firebase Sync Error:", e);
     if (e.message && e.message.toLowerCase().includes('permission_denied')) {
-      showCustomAlert('Akses Ditolak', 'Firebase menolak akses. Pastikan Rules Firebase sudah benar.', '🔐');
+      showCustomAlert('Izin Ditolak', 'Database menolak akses. Cek Rules Firebase Anda.', '🔐');
     } else {
-      showCustomAlert('Gagal Memuat', 'Gagal: ' + e.message, '❌');
+      showCustomAlert('Gagal Sinkron', 'Gagal: ' + e.message, '❌');
     }
   } finally {
     if (window.dbDisconnect) window.dbDisconnect();
