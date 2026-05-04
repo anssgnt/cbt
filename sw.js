@@ -1,11 +1,10 @@
-const CACHE_NAME = 'cbt-cache-v4';
+const CACHE_NAME = 'cbt-cache-v5';
 const urlsToCache = [
   '/',
   '/index.html',
   '/soal-editor.html',
   '/style.css',
   '/script.js',
-  '/admin-core.js',
   '/13.jpg'
 ];
 
@@ -18,6 +17,14 @@ self.addEventListener('install', event => {
 });
 
 self.addEventListener('fetch', event => {
+  const url = new URL(event.request.url);
+  
+  // Bypass cache sepenuhnya untuk file admin agar selalu fresh
+  if (url.pathname.includes('admin-core.js')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
   event.respondWith(
     fetch(event.request)
       .then(response => {
