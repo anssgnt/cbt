@@ -378,15 +378,15 @@ window.loadAdminSettings = async function () {
         window.adminState.tempLogoBase64 = logo;
       }
 
-      // 4. Firebase Config (dari global fbConfig di script.js)
-      if (typeof fbConfig !== 'undefined') {
-        safeSetValue('fbApiKey', fbConfig.apiKey || '');
-        safeSetValue('fbAuthDomain', fbConfig.authDomain || '');
-        safeSetValue('fbDbUrl', fbConfig.databaseURL || '');
-        safeSetValue('fbProjectId', fbConfig.projectId || '');
-        safeSetValue('fbStorageBucket', fbConfig.storageBucket || '');
-        safeSetValue('fbMessagingId', fbConfig.messagingSenderId || '');
-        safeSetValue('fbAppId', fbConfig.appId || '');
+      // 4. Firebase Config (dari global firebaseConfig di script.js)
+      if (typeof firebaseConfig !== 'undefined') {
+        safeSetValue('fbApiKey', firebaseConfig.apiKey || '');
+        safeSetValue('fbAuthDomain', firebaseConfig.authDomain || '');
+        safeSetValue('fbDbUrl', firebaseConfig.databaseURL || '');
+        safeSetValue('fbProjectId', firebaseConfig.projectId || '');
+        safeSetValue('fbStorageBucket', firebaseConfig.storageBucket || '');
+        safeSetValue('fbMessagingId', firebaseConfig.messagingSenderId || '');
+        safeSetValue('fbAppId', firebaseConfig.appId || '');
       }
 
       console.log("Admin: Pengaturan berhasil dimuat dari Firebase ✅");
@@ -462,7 +462,7 @@ window.saveAdminSettings = async function () {
       appId: safeGetValue('fbAppId').trim()
     };
 
-    if (newFbConfig.apiKey && newFbConfig.apiKey !== fbConfig.apiKey) {
+    if (newFbConfig.apiKey && newFbConfig.apiKey !== firebaseConfig.apiKey) {
       if (confirm("Perubahan database memerlukan muat ulang. Lanjutkan?")) {
         localStorage.setItem('CBT_FB_CONFIG', JSON.stringify(newFbConfig));
         window.location.reload();
