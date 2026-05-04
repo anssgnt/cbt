@@ -1,4 +1,4 @@
-const CACHE_NAME = 'cbt-cache-v6.2';
+const CACHE_NAME = 'cbt-cache-v6.3';
 const urlsToCache = [
   '/',
   '/index.html',
