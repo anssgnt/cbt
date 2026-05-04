@@ -425,11 +425,24 @@ function setLoginError(msg) {
   else { el.style.display = 'none'; }
 }
 
-function showApp() {
+async function showApp() {
   isAuthed = true;
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('app').style.display = 'flex';
-  loadBankList();
+  await loadBankList();
+  
+  // Auto-load bank if specified in URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const bankId = urlParams.get('bank');
+  if (bankId) {
+    const sel = document.getElementById('sel-bank');
+    if (sel) {
+      sel.value = bankId;
+      if (sel.value === bankId) {
+        onBankChange();
+      }
+    }
+  }
 }
 
 function doLogout() {
