@@ -870,7 +870,6 @@
               </div>
               <div class="table-responsive">
                 <table class="admin-table" id="admin-jadwal-table">
-                  <thead>
                     <tr>
                       <th>Kode Ujian</th>
                       <th>Nama Ujian</th>
@@ -896,7 +895,10 @@
                 <h3 style="font-size:1.1rem;margin:0; font-weight: 800; display:flex; align-items:center; gap:12px;">
                   🏆 Hasil Pengerjaan Siswa
                 </h3>
-                <div style="display:flex; gap:8px;">
+                <div style="display:flex; gap:10px;">
+                  <button class="btn btn-outline"
+                    style="padding:10px 16px; font-size:0.8rem; color:#EF4444; border-color:#FECACA; border-radius: 10px;"
+                    onclick="hapusSemuaHasil()">🗑️ Hapus Semua Hasil</button>
                   <button class="btn btn-outline" style="padding:10px 16px; font-size:0.8rem; border-radius: 10px;"
                     onclick="loadAdminHasil()">↻ Refresh</button>
                   <button class="btn btn-outline"
