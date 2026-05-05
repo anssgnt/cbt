@@ -73,7 +73,8 @@ const State = {
   violations: 0,
   security: {},
   tempLogoBase64: null,
-  submissionFailed: false
+  submissionFailed: false,
+  submissionLocked: false
 };
 
 // --- School Logo & Identity Support ---
@@ -165,6 +166,11 @@ function safeSetChecked(id, bool) {
 function safeGetValue(id) {
   const el = document.getElementById(id);
   return el ? el.value : '';
+}
+
+function isSafeResourceUrl(url) {
+  const value = String(url || '').trim();
+  return /^https?:\/\//i.test(value) || /^data:image\//i.test(value);
 }
 
 function showAlert(msg, type = 'danger') {
@@ -565,9 +571,24 @@ async function getExamDataOptimized(examId, token, forceRefresh = false, skipTok
   if (!sch) throw new Error("Ujian tidak ditemukan");
 
   // Cache Versioning (Armor 1000)
-  // Gunakan timestamp mulai sebagai versi untuk invalidasi otomatis jika jadwal diubah
-  const ver = sch.mulai || 0;
+  // Prioritaskan versi eksplisit agar perubahan soal/kunci/token memaksa sync ulang.
+  const ver = getScheduleVersion(sch);
   const CACHE_KEY = `SOAL_${examId}_v${ver}`;
+
+  // Token harus divalidasi sebelum cache lokal dipakai agar sync H-1 tidak membypass token ujian.
+  if (!skipTokenCheck && sch.token) {
+    const inputToken = String(token || '').toUpperCase().trim();
+    const serverToken = String(sch.token).toUpperCase().trim();
+
+    if (serverToken !== inputToken) {
+      const offlineHash = localStorage.getItem(`CBT_TOKEN_HASH_${examId}`);
+      if (offlineHash && simpleHash(inputToken) === offlineHash) {
+        console.log("✅ Offline Token Verified");
+      } else {
+        throw new Error("Token salah!");
+      }
+    }
+  }
 
   if (!forceRefresh) {
     const cached = localStorage.getItem(CACHE_KEY);
@@ -583,23 +604,6 @@ async function getExamDataOptimized(examId, token, forceRefresh = false, skipTok
       } catch (e) {
         console.warn("Cache rusak, melakukan auto re-download...", e);
         showLoading('Memperbaiki Data yang Rusak...');
-      }
-    }
-  }
-
-  // Token check hanya dilakukan saat mau MENGERJAKAN (skipTokenCheck = false)
-  if (!skipTokenCheck && sch.token) {
-    const inputToken = String(token).toUpperCase().trim();
-    const serverToken = String(sch.token).toUpperCase().trim();
-
-    // Cek apakah token server cocok
-    if (serverToken !== inputToken) {
-      // Coba fallback offline token hash (jika internet mati dan token server tidak bisa diperbarui)
-      const offlineHash = localStorage.getItem(`CBT_TOKEN_HASH_${examId}`);
-      if (offlineHash && simpleHash(inputToken) === offlineHash) {
-        console.log("✅ Offline Token Verified");
-      } else {
-        throw new Error("Token salah!");
       }
     }
   }
@@ -629,11 +633,14 @@ async function getExamDataOptimized(examId, token, forceRefresh = false, skipTok
         nama_ujian: sch.nama,
         durasi: sch.durasi,
         end_ms: sch.selesai,
-        min_selesai: sch.min_selesai || 0  // wajib ada agar batas waktu minimal mengerjakan berlaku dari cache
+        min_selesai: sch.min_selesai || 0,  // wajib ada agar batas waktu minimal mengerjakan berlaku dari cache
+        shuffle_soal: sch.shuffle_soal,
+        shuffle_opsi: sch.shuffle_opsi,
+        versi_soal: ver
       },
       questions,
       keys: kData || {}, // Cache keys for client-side scoring
-      rawToken: sch.token // Sertakan token mentah agar bisa di-hash saat sync H-1
+      tokenHash: sch.token ? simpleHash(String(sch.token).toUpperCase().trim()) : null
     };
 
     safeSetLocalStorage(CACHE_KEY, JSON.stringify(result));
@@ -673,19 +680,28 @@ async function checkStorageQuota() {
 function cleanupOldCache() {
   if (!State.schedules || State.schedules.length === 0) return;
   const activeIds = new Set(State.schedules.map(s => s.id));
+  const activeCacheKeys = new Set(State.schedules.map(s => `SOAL_${s.id}_v${getScheduleVersion(s)}`));
   let count = 0;
 
-  // Cari item di localStorage dengan prefix CBT_SOAL_ atau CBT_KUNCI_
+  // Cari item cache soal/token lama dan hapus yang tidak lagi aktif/versinya berubah.
   for (let i = 0; i < localStorage.length; i++) {
     const key = localStorage.key(i);
-    if (key.startsWith('CBT_SOAL_') || key.startsWith('CBT_KUNCI_')) {
-      const id = key.replace('CBT_SOAL_', '').replace('CBT_KUNCI_', '');
-      if (!activeIds.has(id)) {
-        localStorage.removeItem(key);
-        count++;
-        // Karena item dihapus, index bergeser
-        i--;
-      }
+    let shouldRemove = false;
+
+    if (key.startsWith('SOAL_')) {
+      shouldRemove = !activeCacheKeys.has(key);
+    } else if (key.startsWith('CBT_TOKEN_HASH_')) {
+      const id = key.replace('CBT_TOKEN_HASH_', '');
+      shouldRemove = !activeIds.has(id);
+    } else if (key.startsWith('CBT_SOAL_') || key.startsWith('CBT_KUNCI_')) {
+      shouldRemove = true;
+    }
+
+    if (shouldRemove) {
+      localStorage.removeItem(key);
+      count++;
+      // Karena item dihapus, index bergeser
+      i--;
     }
   }
   if (count > 0) console.log(`🧹 Cache cleanup: ${count} item lama dihapus.`);
@@ -737,6 +753,11 @@ function simpleHash(str) {
   return 'OFF_' + Math.abs(hash).toString(36);
 }
 
+function getScheduleVersion(sch) {
+  if (!sch) return '0';
+  return String(sch.versi_soal || sch.updatedAt || sch.updated_at || sch.lastUpdated || sch.mulai || 0);
+}
+
 // --- H-1 PRE-SYNC LOGIC ---
 /**
  * Memindai semua soal dan menyimpan gambar eksternal ke CacheStorage (PWA)
@@ -749,15 +770,20 @@ async function cacheAllImages(questions) {
     const imageUrls = [];
 
     questions.forEach(q => {
+      if (q.gambar) imageUrls.push(q.gambar);
       if (q.image) imageUrls.push(q.image);
       if (q.opsi) {
         q.opsi.forEach(o => {
+          if (o.gambar) imageUrls.push(o.gambar);
           if (o.image) imageUrls.push(o.image);
         });
       }
       // Scan for img tags in text (jika ada)
       const imgRegex = /<img[^>]+src="([^">]+)"/g;
       let match;
+      if (q.pertanyaan) {
+        while ((match = imgRegex.exec(q.pertanyaan)) !== null) imageUrls.push(match[1]);
+      }
       if (q.soal) {
         while ((match = imgRegex.exec(q.soal)) !== null) imageUrls.push(match[1]);
       }
@@ -816,14 +842,17 @@ async function syncAllQuestions() {
 
   // Resume Mechanism
   const progressData = JSON.parse(localStorage.getItem('SYNC_PROGRESS') || '{}');
-  const completed = new Set(progressData.completed || []);
+  const completedMap = Array.isArray(progressData.completed)
+    ? progressData.completed.reduce((acc, id) => { acc[id] = true; return acc; }, {})
+    : (progressData.completed || {});
 
-  let count = completed.size;
+  let count = State.schedules.filter(s => completedMap[s.id] === getScheduleVersion(s)).length;
   const total = State.schedules.length;
 
   for (let i = 0; i < total; i++) {
     const sch = State.schedules[i];
-    if (completed.has(sch.id)) continue;
+    const schVersion = getScheduleVersion(sch);
+    if (completedMap[sch.id] === schVersion) continue;
 
     count++;
     const percent = Math.round((count / total) * 100);
@@ -839,13 +868,13 @@ async function syncAllQuestions() {
         await cacheAllImages(examData.questions);
       }
 
-      // Hash token for offline verification
-      if (examData && examData.rawToken) {
-        localStorage.setItem(`CBT_TOKEN_HASH_${sch.id}`, simpleHash(String(examData.rawToken).toUpperCase().trim()));
+      // Hash token for offline verification, tanpa menyimpan token mentah di cache.
+      if (examData && examData.tokenHash) {
+        localStorage.setItem(`CBT_TOKEN_HASH_${sch.id}`, examData.tokenHash);
       }
 
-      completed.add(sch.id);
-      localStorage.setItem('SYNC_PROGRESS', JSON.stringify({ completed: [...completed] }));
+      completedMap[sch.id] = schVersion;
+      localStorage.setItem('SYNC_PROGRESS', JSON.stringify({ completed: completedMap }));
       await new Promise(r => setTimeout(r, baseDelay));
     } catch (e) {
       console.warn("Gagal sync:", sch.id, e);
@@ -856,7 +885,7 @@ async function syncAllQuestions() {
   await toggleWakeLock(false);
 
   // Cek apakah semua benar-benar selesai
-  const isFullySynced = (completed.size >= total);
+  const isFullySynced = State.schedules.every(s => completedMap[s.id] === getScheduleVersion(s));
 
   // Laporkan ke Firebase bahwa siswa ini sudah sync
   try {
@@ -882,7 +911,8 @@ async function syncAllQuestions() {
     renderSchedules(); // Update tombol ujian di daftar jadwal
   } else {
     // Ada yang gagal
-    text.textContent = `Sinkron terhenti (${completed.size}/${total} berhasil).`;
+      const syncedCount = State.schedules.filter(s => completedMap[s.id] === getScheduleVersion(s)).length;
+      text.textContent = `Sinkron terhenti (${syncedCount}/${total} berhasil).`;
     btn.textContent = '🔄 Ulangi Bagian Gagal';
     btn.style.background = '#DC2626'; // Merah danger
     btn.disabled = false;
@@ -1249,11 +1279,21 @@ async function gasRun(funcName, ...args) {
         let q = sData[qId];
         q._index = idx++;
         if (!q.opsi) q.opsi = []; // ensure array
+        q.id = qId;
         questions.push(q);
       }
       return {
         success: true,
-        config: { id_ujian: examId, nama_ujian: sch.nama, durasi: sch.durasi, min_selesai: sch.min_selesai || 0, end_ms: sch.selesai },
+        config: {
+          id_ujian: examId,
+          nama_ujian: sch.nama,
+          durasi: sch.durasi,
+          min_selesai: sch.min_selesai || 0,
+          end_ms: sch.selesai,
+          shuffle_soal: sch.shuffle_soal,
+          shuffle_opsi: sch.shuffle_opsi,
+          versi_soal: getScheduleVersion(sch)
+        },
         questions
       };
     }
@@ -1265,6 +1305,11 @@ async function gasRun(funcName, ...args) {
 
       // Trust client score to avoid massive DB reads (Armor 1000)
       const finalScore = payload.score || 0;
+      const existingSnap = await db.ref(resultPath).once('value');
+      if (existingSnap.exists()) {
+        const existing = existingSnap.val() || {};
+        return { success: true, score: existing.skor, alreadySubmitted: true };
+      }
 
       await db.ref(resultPath).set({
         timestamp: firebase.database.ServerValue.TIMESTAMP,
@@ -1552,7 +1597,7 @@ function updatePreSyncUI(list) {
 
     let allCached = true;
     for (let sch of list) {
-      const ver = sch.mulai || 0;
+      const ver = getScheduleVersion(sch);
       const CACHE_KEY = `SOAL_${sch.id}_v${ver}`;
       if (!localStorage.getItem(CACHE_KEY)) {
         allCached = false;
@@ -1676,7 +1721,10 @@ async function loadSchedules() {
         // Cek lagi apakah sudah sync di tab lain
         if (localStorage.getItem('LAST_SYNC_DATE') !== TODAY) {
           await syncAllQuestions();
-          localStorage.setItem('LAST_SYNC_DATE', TODAY);
+          const progressData = JSON.parse(localStorage.getItem('SYNC_PROGRESS') || '{}');
+          const completed = progressData.completed || {};
+          const fullSynced = (State.schedules || []).every(s => completed[s.id] === getScheduleVersion(s));
+          if (fullSynced) localStorage.setItem('LAST_SYNC_DATE', TODAY);
         }
       }, delay);
     }
@@ -1716,34 +1764,42 @@ function renderSchedules() {
   }
 
   schedules.forEach(sch => {
-    let badge = `<span class="badge badge-wait">Belum Mulai</span>`;
+    let badgeClass = 'badge-wait';
+    let badgeText = 'Belum Mulai';
+    let badgeStyle = '';
     let btnDisabled = `disabled`;
     let btnText = `Belum Waktunya`;
     let curStatus = sch._lastRenderedStatus || sch.status;
 
     if (curStatus === 'SELESAI') {
-      badge = `<span class="badge badge-done">Selesai</span>`;
+      badgeClass = 'badge-done';
+      badgeText = 'Selesai';
       btnText = `Sudah Dikerjakan`;
     } else if (curStatus === 'TUTUP') {
-      badge = `<span class="badge badge-closed">Ditutup</span>`;
+      badgeClass = 'badge-closed';
+      badgeText = 'Ditutup';
       btnText = `Waktu Ujian Habis`;
     } else if (curStatus === 'AKTIF') {
       // Cek apakah soal sudah tersinkronisasi
-      const ver = sch.mulai || 0;
+      const ver = getScheduleVersion(sch);
       const CACHE_KEY = `SOAL_${sch.id}_v${ver}`;
       const isSynced = localStorage.getItem(CACHE_KEY) !== null;
 
       if (!isSynced) {
-        badge = `<span class="badge badge-wait" style="background:#FDE68A;color:#92400E">Belum Sinkron</span>`;
+        badgeClass = 'badge-wait';
+        badgeText = 'Belum Sinkron';
+        badgeStyle = 'background:#FDE68A;color:#92400E';
         btnDisabled = `disabled`;
         btnText = `Sinkronisasi Dulu`;
       } else {
-        badge = `<span class="badge badge-active">Sedang Aktif</span>`;
+        badgeClass = 'badge-active';
+        badgeText = 'Sedang Aktif';
         btnDisabled = ``;
         btnText = `Mulai Ujian`;
       }
     } else if (curStatus === 'NONAKTIF' || curStatus === 'NON-AKTIF') {
-      badge = `<span class="badge badge-closed">Non-Aktif</span>`;
+      badgeClass = 'badge-closed';
+      badgeText = 'Non-Aktif';
       btnText = `Belum Dibuka`;
     }
 
@@ -1760,17 +1816,48 @@ function renderSchedules() {
     const card = document.createElement('div');
     card.className = 'card';
     card.style.padding = '16px';
-    card.innerHTML = `
-      <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px;">
-        <h3 style="font-size: 1.1rem; margin:0; line-height: 1.3;">${sch.nama}</h3>
-        <div>${badge}</div>
-      </div>
-      <div style="font-size: 0.85rem; font-weight: 600; color: var(--primary); margin-bottom: 8px;">📅 ${dateStr}</div>
-      <p class="text-muted" style="font-size: 0.9rem; margin-bottom: 16px;">⏰ ${timeStr} | ⏳ ${sch.durasi} Menit</p>
-      <button class="btn btn-primary" style="width: 100%;" ${btnDisabled}>${btnText}</button>
-    `;
+    const header = document.createElement('div');
+    header.style.display = 'flex';
+    header.style.justifyContent = 'space-between';
+    header.style.alignItems = 'flex-start';
+    header.style.marginBottom = '8px';
+    const title = document.createElement('h3');
+    title.style.fontSize = '1.1rem';
+    title.style.margin = '0';
+    title.style.lineHeight = '1.3';
+    title.textContent = sch.nama || '';
+    const badgeWrap = document.createElement('div');
+    const badgeEl = document.createElement('span');
+    badgeEl.className = `badge ${badgeClass}`;
+    if (badgeStyle) badgeEl.setAttribute('style', badgeStyle);
+    badgeEl.textContent = badgeText;
+    badgeWrap.appendChild(badgeEl);
+    header.appendChild(title);
+    header.appendChild(badgeWrap);
 
-    const btn = card.querySelector('button');
+    const dateEl = document.createElement('div');
+    dateEl.style.fontSize = '0.85rem';
+    dateEl.style.fontWeight = '600';
+    dateEl.style.color = 'var(--primary)';
+    dateEl.style.marginBottom = '8px';
+    dateEl.textContent = `📅 ${dateStr}`;
+
+    const meta = document.createElement('p');
+    meta.className = 'text-muted';
+    meta.style.fontSize = '0.9rem';
+    meta.style.marginBottom = '16px';
+    meta.textContent = `⏰ ${timeStr} | ⏳ ${sch.durasi} Menit`;
+
+    const btn = document.createElement('button');
+    btn.className = 'btn btn-primary';
+    btn.style.width = '100%';
+    btn.disabled = !!btnDisabled;
+    btn.textContent = btnText;
+
+    card.appendChild(header);
+    card.appendChild(dateEl);
+    card.appendChild(meta);
+    card.appendChild(btn);
     if (!btnDisabled) {
       btn.onclick = () => {
         // Show Token Modal
@@ -1895,6 +1982,7 @@ async function loadDashboard(examId, token) {
 // --- Exam Flow ---
 safeAddListener('btnStartExam', 'click', () => {
   State.examActive = true;
+  State.submissionLocked = false;
   State.pingOffset = Math.floor(Math.random() * 600); // Random offset for pings (0-10 min)
   document.getElementById('exam-title').textContent = State.config.nama_ujian;
   document.getElementById('exam-user-info').textContent = State.user.name + " (" + State.user.kelas + ")";
@@ -2108,12 +2196,18 @@ function renderQuestion(index) {
 
   // Render Image
   const imgContainer = document.getElementById('q-image-container');
-  if (q.gambar && q.gambar.trim() !== '') {
-    imgContainer.innerHTML = `<img src="${q.gambar.trim()}" class="q-image" loading="lazy" onclick="openZoomModal('${q.gambar.trim()}')" alt="Gambar Soal" />`;
+  imgContainer.innerHTML = '';
+  if (q.gambar && q.gambar.trim() !== '' && isSafeResourceUrl(q.gambar)) {
+    const img = document.createElement('img');
+    img.src = q.gambar.trim();
+    img.className = 'q-image';
+    img.loading = 'lazy';
+    img.alt = 'Gambar Soal';
+    img.onclick = () => openZoomModal(q.gambar.trim());
+    imgContainer.appendChild(img);
     imgContainer.style.display = 'block';
   } else {
     imgContainer.style.display = 'none';
-    imgContainer.innerHTML = '';
   }
 
   renderOptions(q);
@@ -2136,30 +2230,47 @@ function renderOptions(q) {
   container.innerHTML = '';
 
   const currentAnswer = State.answers[q.id];
+  const isLocked = State.submissionLocked;
 
   if (q.tipe === 'PG' || q.tipe === 'BS') {
     const labels = ['A', 'B', 'C', 'D', 'E'];
-    q.opsi.forEach((opt, idx) => {
+    const opsi = Array.isArray(q.opsi) ? q.opsi : [];
+    opsi.forEach((opt, idx) => {
       const isSelected = currentAnswer === opt.id || currentAnswer === opt.text;
       const displayLabel = labels[idx] || (idx + 1);
 
       const div = document.createElement('div');
       div.className = `modern-option ${isSelected ? 'selected' : ''}`;
+      if (isLocked) div.style.pointerEvents = 'none';
 
-      let imgHTML = '';
-      if (opt.gambar) {
-        imgHTML = `<img src="${opt.gambar}" class="q-image" loading="lazy" style="max-height:140px; margin-top:8px; display:block;" onclick="openZoomModal('${opt.gambar}'); event.stopPropagation();" />`;
+      const circle = document.createElement('div');
+      circle.className = 'option-circle';
+      const label = document.createElement('div');
+      label.className = 'option-label';
+      label.textContent = `${displayLabel}.`;
+      const textWrap = document.createElement('div');
+      textWrap.className = 'option-text-container';
+      textWrap.style.flex = '1';
+      const optText = document.createElement('div');
+      optText.className = 'option-text';
+      optText.textContent = opt.text || '';
+      textWrap.appendChild(optText);
+      if (opt.gambar && isSafeResourceUrl(opt.gambar)) {
+        const img = document.createElement('img');
+        img.src = opt.gambar;
+        img.className = 'q-image';
+        img.loading = 'lazy';
+        img.style.maxHeight = '140px';
+        img.style.marginTop = '8px';
+        img.style.display = 'block';
+        img.onclick = (e) => { e.stopPropagation(); openZoomModal(opt.gambar); };
+        textWrap.appendChild(img);
       }
-
-      div.innerHTML = `
-        <div class="option-circle"></div>
-        <div class="option-label">${displayLabel}.</div>
-        <div class="option-text-container" style="flex:1;">
-           <div class="option-text">${opt.text}</div>
-           ${imgHTML}
-        </div>
-      `;
+      div.appendChild(circle);
+      div.appendChild(label);
+      div.appendChild(textWrap);
       div.onclick = () => {
+        if (State.submissionLocked) return;
         State.answers[q.id] = opt.id;
         // Optimization: Update classes instead of rebuilding DOM for snappy performance
         container.querySelectorAll('.modern-option').forEach(el => el.classList.remove('selected'));
@@ -2172,26 +2283,43 @@ function renderOptions(q) {
   else if (q.tipe === 'KOMPLEKS') {
     const selectedArr = currentAnswer || [];
     const labels = ['A', 'B', 'C', 'D', 'E'];
-    q.opsi.forEach((opt, idx) => {
+    const opsi = Array.isArray(q.opsi) ? q.opsi : [];
+    opsi.forEach((opt, idx) => {
       const isSelected = selectedArr.includes(opt.id) || selectedArr.includes(opt.text);
       const displayLabel = labels[idx] || (idx + 1);
       const div = document.createElement('div');
       div.className = `modern-option ${isSelected ? 'selected' : ''}`;
+      if (isLocked) div.style.pointerEvents = 'none';
 
-      let imgHTML = '';
-      if (opt.gambar) {
-        imgHTML = `<img src="${opt.gambar}" class="q-image" loading="lazy" style="max-height:140px; margin-top:8px; display:block;" onclick="openZoomModal('${opt.gambar}'); event.stopPropagation();" />`;
+      const circle = document.createElement('div');
+      circle.className = 'option-circle';
+      circle.style.borderRadius = '4px';
+      const label = document.createElement('div');
+      label.className = 'option-label';
+      label.textContent = `${displayLabel}.`;
+      const textWrap = document.createElement('div');
+      textWrap.className = 'option-text-container';
+      textWrap.style.flex = '1';
+      const optText = document.createElement('div');
+      optText.className = 'option-text';
+      optText.textContent = opt.text || '';
+      textWrap.appendChild(optText);
+      if (opt.gambar && isSafeResourceUrl(opt.gambar)) {
+        const img = document.createElement('img');
+        img.src = opt.gambar;
+        img.className = 'q-image';
+        img.loading = 'lazy';
+        img.style.maxHeight = '140px';
+        img.style.marginTop = '8px';
+        img.style.display = 'block';
+        img.onclick = (e) => { e.stopPropagation(); openZoomModal(opt.gambar); };
+        textWrap.appendChild(img);
       }
-
-      div.innerHTML = `
-        <div class="option-circle" style="border-radius: 4px;"></div>
-        <div class="option-label">${displayLabel}.</div>
-        <div class="option-text-container" style="flex:1;">
-           <div class="option-text">${opt.text}</div>
-           ${imgHTML}
-        </div>
-      `;
+      div.appendChild(circle);
+      div.appendChild(label);
+      div.appendChild(textWrap);
       div.onclick = (e) => {
+        if (State.submissionLocked) return;
         e.preventDefault();
         let arr = State.answers[q.id] || [];
         if (arr.includes(opt.id) || arr.includes(opt.text)) {
@@ -2210,11 +2338,14 @@ function renderOptions(q) {
   }
   else if (q.tipe === 'ISIAN') {
     const div = document.createElement('div');
-    div.innerHTML = `
-      <textarea class="essay-textarea" placeholder="Ketik jawaban Anda...">${currentAnswer || ''}</textarea>
-    `;
-    const textarea = div.querySelector('textarea');
+    const textarea = document.createElement('textarea');
+    textarea.className = 'essay-textarea';
+    textarea.placeholder = 'Ketik jawaban Anda...';
+    textarea.value = currentAnswer || '';
+    div.appendChild(textarea);
+    textarea.disabled = isLocked;
     textarea.oninput = (e) => {
+      if (State.submissionLocked) return;
       const val = e.target.value.trim();
       if (val) State.answers[q.id] = val;
       else delete State.answers[q.id];
@@ -2224,8 +2355,10 @@ function renderOptions(q) {
   }
   else if (q.tipe === 'JODOH') {
     const selectedObj = currentAnswer || {}; // { "leftItem": "rightItem" }
+    const kiri = Array.isArray(q.kiri) ? q.kiri : [];
+    const kanan = Array.isArray(q.kanan) ? q.kanan : [];
 
-    q.kiri.forEach(leftText => {
+    kiri.forEach(leftText => {
       const row = document.createElement('div');
       row.className = 'matching-row';
 
@@ -2235,12 +2368,21 @@ function renderOptions(q) {
 
       const sel = document.createElement('select');
       sel.className = 'matching-right';
-      sel.innerHTML = `<option value="">-- Pilih --</option>`;
-      q.kanan.forEach(rightText => {
-        sel.innerHTML += `<option value="${rightText}" ${selectedObj[leftText] === rightText ? 'selected' : ''}>${rightText}</option>`;
+      sel.disabled = isLocked;
+      const emptyOption = document.createElement('option');
+      emptyOption.value = '';
+      emptyOption.textContent = '-- Pilih --';
+      sel.appendChild(emptyOption);
+      kanan.forEach(rightText => {
+        const optEl = document.createElement('option');
+        optEl.value = rightText;
+        optEl.textContent = rightText;
+        optEl.selected = selectedObj[leftText] === rightText;
+        sel.appendChild(optEl);
       });
 
       sel.onchange = (e) => {
+        if (State.submissionLocked) return;
         if (!State.answers[q.id]) State.answers[q.id] = {};
         const val = e.target.value;
         if (val) {
@@ -2452,6 +2594,7 @@ async function gasRunWithRetry(funcName, args, maxRetries = 10, retryDelayMs = 5
 }
 
 async function submitExam(isAutoSubmit) {
+  const lockAnswersOnFailure = isAutoSubmit || State.timeRemaining <= 0;
   State.examActive = false;
   clearInterval(State.timerInterval);
 
@@ -2556,10 +2699,12 @@ async function submitExam(isAutoSubmit) {
   } catch (err) {
     // Gagal total setelah 3x retry — beri tahu siswa
     showCustomAlert('Koneksi Terputus', 'Jawaban Anda AMAN di perangkat. Tekan tombol Kirim Ulang.', '📡');
-    State.examActive = true;
+    State.examActive = !lockAnswersOnFailure;
+    State.submissionLocked = lockAnswersOnFailure;
     State.submissionFailed = true;
     updateNavButtons();
     hideLoading();
+    renderQuestion(State.currentIndex);
     showView('exam-view');
   }
 }
