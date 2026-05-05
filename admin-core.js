@@ -139,11 +139,15 @@ function renderAdminDashboard(data = window.adminState.monitor) {
     const rRaw = data.peserta.map(p => {
       let d = 'BELUM';
       let badgeClass = 'status-belum';
+      let actionBtn = '';
       const isOnline = (data.onlines && data.onlines[ex.id] && (p.id in data.onlines[ex.id]));
       if (completedSet.has(p.id)) { d = 'SELESAI'; badgeClass = 'status-selesai'; selesai++; }
-      else if (isOnline) { d = 'MENGERJAKAN'; badgeClass = 'status-online'; mengerjakan++; }
+      else if (isOnline) { 
+        d = 'MENGERJAKAN'; badgeClass = 'status-online'; mengerjakan++; 
+        actionBtn = `<button class="btn btn-outline" style="padding:2px 6px; font-size:0.65rem; color:var(--danger); border-color:#FECACA;" onclick="resetSiswaLogin('${p.id}', '${ex.id}')">🔄 Reset</button>`;
+      }
       else { blmSelesai++; }
-      return { html: `<tr><td>${p.nama}</td><td>${p.kelas}</td><td><span class="status-badge ${badgeClass}">${d}</span></td></tr>`, stat: d };
+      return { html: `<tr><td>${p.nama}</td><td>${p.kelas}</td><td><div style="display:flex; align-items:center; gap:8px;"><span class="status-badge ${badgeClass}">${d}</span>${actionBtn}</div></td></tr>`, stat: d };
     });
     const absenMode = document.getElementById('chkAbsenMode') ? document.getElementById('chkAbsenMode').checked : false;
     const filterRows = rRaw.filter(x => !absenMode || x.stat === 'BELUM');
@@ -152,10 +156,13 @@ function renderAdminDashboard(data = window.adminState.monitor) {
     const slicedRows = filterRows.slice((page - 1) * perPage, page * perPage).map(x => x.html).join('');
     return `
        <div class="admin-exam-card">
-         <h4 style="display:flex; justify-content:space-between; align-items:center;">
-           <span>${ex.nama}</span>
-           <button class="btn btn-outline" style="border-color:#38BDF8; color:#0284C7; padding:4px 10px; font-size:0.75rem;" onclick="promptBroadcast('${ex.id}')">📢 Kirim Pesan</button>
-         </h4>
+          <h4 style="display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap;">
+            <span>${ex.nama}</span>
+            <div style="display:flex; gap:6px;">
+              <button class="btn btn-outline" style="border-color:#38BDF8; color:#0284C7; padding:4px 10px; font-size:0.75rem;" onclick="promptBroadcast('${ex.id}')">📢 Pesan</button>
+              <button class="btn btn-outline" style="border-color:#F87171; color:#B91C1C; padding:4px 10px; font-size:0.75rem;" onclick="forceSelesaiSemua('${ex.id}')">⚡ Selesaikan Semua</button>
+            </div>
+          </h4>
          <div class="admin-table-wrap">
            <table class="admin-table">
              <thead><tr><th>Nama</th><th>Kelas</th><th>Status</th></tr></thead>
@@ -409,6 +416,9 @@ window.loadAdminSettings = async function () {
       const showSys = getVal(sec, 'showSystemInfo', undefined);
       safeSetChecked('cfgShowSystemInfo', showSys !== false && showSys !== "false" && showSys !== 0 && showSys !== "0");
 
+      const showBadge = getVal(sec, 'showSyncBadge', undefined);
+      safeSetChecked('cfgShowSyncBadge', showBadge !== false && showBadge !== "false" && showBadge !== 0 && showBadge !== "0");
+
       safeSetValue('cfgMinTime', getVal(sec, 'minTime', 0));
       safeSetValue('cfgBypassCode', getVal(sec, 'bypassCode', ''));
 
@@ -490,6 +500,7 @@ window.saveAdminSettings = async function () {
       anticheat: document.getElementById('cfgAntiCheat') ? document.getElementById('cfgAntiCheat').checked : false,
       showExamStatus: document.getElementById('cfgShowExamStatus') ? document.getElementById('cfgShowExamStatus').checked : true,
       showSystemInfo: document.getElementById('cfgShowSystemInfo') ? document.getElementById('cfgShowSystemInfo').checked : true,
+      showSyncBadge: document.getElementById('cfgShowSyncBadge') ? document.getElementById('cfgShowSyncBadge').checked : true,
       minTime: parseInt(safeGetValue('cfgMinTime')) || 0,
       bypassCode: safeGetValue('cfgBypassCode').trim().toUpperCase() || null
     };
@@ -709,6 +720,71 @@ window.saveSiswa = async function () {
     showCustomAlert('Gagal', 'Gagal menyimpan: ' + e.message, '❌');
   } finally {
     if (window.dbDisconnect) window.dbDisconnect();
+    hideLoading();
+  }
+};
+
+window.resetSiswaLogin = async function (pesertaId, examId) {
+  if (!confirm('Reset login siswa ini? Gunakan jika siswa mendapatkan pesan "Akun sedang digunakan".')) return;
+  showLoading('Mereset Sesi...');
+  try {
+    if (window.dbConnectFast) await window.dbConnectFast();
+    await db.ref(`/onlines/${examId}/${pesertaId}`).remove();
+    showCustomAlert('Berhasil', 'Sesi siswa berhasil direset.', '✅');
+    loadAdminDashboard();
+  } catch (e) {
+    showCustomAlert('Gagal', e.message, '❌');
+  } finally {
+    hideLoading();
+  }
+};
+
+window.forceSelesaiSemua = async function (examId) {
+  if (!confirm('Paksa SELESAI semua siswa yang sedang mengerjakan ujian ini?')) return;
+  showLoading('Memproses...');
+  try {
+    if (window.dbConnectFast) await window.dbConnectFast();
+    const snap = await db.ref(`/onlines/${examId}`).once('value');
+    const onlines = snap.val() || {};
+    const ids = Object.keys(onlines);
+    if (ids.length === 0) {
+      showCustomAlert('Info', 'Tidak ada siswa yang sedang mengerjakan.', 'ℹ️');
+      return;
+    }
+
+    const updates = {};
+    const now = new Date().toISOString();
+    ids.forEach(id => {
+      updates[`/completions/${examId}/${id}`] = now;
+      updates[`/onlines/${examId}/${id}`] = null;
+    });
+
+    await db.ref().update(updates);
+    showCustomAlert('Berhasil', `${ids.length} siswa berhasil diselesaikan.`, '✅');
+    loadAdminDashboard();
+  } catch (e) {
+    showCustomAlert('Gagal', e.message, '❌');
+  } finally {
+    hideLoading();
+  }
+};
+
+window.hapusSemuaHasil = async function () {
+  const code = prompt('Ketik "HAPUS" untuk menghapus seluruh Data Hasil & Log Pelanggaran:');
+  if (code !== 'HAPUS') return;
+
+  showLoading('Membersihkan Database...');
+  try {
+    if (window.dbConnectFast) await window.dbConnectFast();
+    await db.ref('/completions').remove();
+    await db.ref('/pelanggaran').remove();
+    await db.ref('/onlines').remove();
+    
+    showCustomAlert('Berhasil', 'Database Hasil & Log berhasil dibersihkan.', '✅');
+    loadAdminHasil(true);
+  } catch (e) {
+    showCustomAlert('Gagal', e.message, '❌');
+  } finally {
     hideLoading();
   }
 };
