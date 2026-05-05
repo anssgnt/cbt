@@ -392,19 +392,22 @@ window.dbOffline = function () {
 // --- CACHE PESERTA PERSISTENT (localStorage, 30 menit) ---
 const PESERTA_CACHE_KEY = 'CBT_CACHE_PESERTA';
 const PESERTA_CACHE_TIME_KEY = 'CBT_CACHE_PESERTA_TIME';
-const PESERTA_CACHE_TTL = 30 * 60 * 1000; // 30 menit
+const PESERTA_CACHE_TTL = 10 * 60 * 1000; // 10 menit
+let cachedPeserta = null;
 
-async function loadPesertaCache() {
+async function loadPesertaCache(force = false) {
   // Cek apakah cache masih valid
   try {
-    const cachedTime = localStorage.getItem(PESERTA_CACHE_TIME_KEY);
-    if (cachedTime && (Date.now() - parseInt(cachedTime)) < PESERTA_CACHE_TTL) {
-      const cached = localStorage.getItem(PESERTA_CACHE_KEY);
-      if (cached) {
-        cachedPeserta = JSON.parse(cached);
-        SystemStatus.peserta = 'success';
-        updateInitStatusDisplay();
-        return cachedPeserta;
+    if (!force) {
+      const cachedTime = localStorage.getItem(PESERTA_CACHE_TIME_KEY);
+      if (cachedTime && (Date.now() - parseInt(cachedTime)) < PESERTA_CACHE_TTL) {
+        const cached = localStorage.getItem(PESERTA_CACHE_KEY);
+        if (cached) {
+          cachedPeserta = JSON.parse(cached);
+          SystemStatus.peserta = 'success';
+          updateInitStatusDisplay();
+          return cachedPeserta;
+        }
       }
     }
   } catch (e) { /* cache rusak, lanjut fetch */ }
@@ -443,8 +446,29 @@ async function loadPesertaCache() {
   }
 }
 
-async function syncAllDataForPortal() {
-  showLoading('Singkronisasi Data Ujian...');
+async function syncAllDataForPortal(force = false) {
+  if (force) {
+    const input = prompt("Masukkan Kode Sinkron (Hanya untuk Proktor/Pengawas):");
+    if (!input) return;
+    
+    showLoading('Memverifikasi Kode...');
+    try {
+      await dbConnectFast();
+      const snap = await db.ref('/config/security/bypassCode').once('value');
+      const validCode = snap.val();
+      if (!validCode || input.toUpperCase() !== String(validCode).toUpperCase()) {
+        showCustomAlert('Akses Ditolak', 'Kode sinkron tidak valid!', '🔐');
+        return;
+      }
+    } catch (e) {
+      showCustomAlert('Error', 'Gagal memverifikasi kode.', '❌');
+      return;
+    } finally {
+      hideLoading();
+    }
+  }
+
+  showLoading('Sinkronisasi Data Ujian...');
   try {
     await dbConnectFast();
     // 1. Fetch Identity
@@ -456,7 +480,7 @@ async function syncAllDataForPortal() {
     }
 
     // 2. Fetch Peserta
-    await loadPesertaCache();
+    await loadPesertaCache(force);
 
     // 3. Fetch Jadwal (Preview)
     const jSnap = await db.ref('/jadwal').once('value');
@@ -468,8 +492,19 @@ async function syncAllDataForPortal() {
     dbOffline();
     hideLoading();
 
-    const badge = document.getElementById('sync-badge');
-    if (badge) badge.style.display = 'block';
+    const badge = document.getElementById('landing-sync-badge');
+    const dot = document.getElementById('top-sync-dot');
+    const text = document.getElementById('top-sync-text');
+    
+    if (badge) {
+      badge.style.background = '#D1FAE5';
+      badge.style.color = '#065F46';
+      badge.style.cursor = 'pointer';
+      badge.title = 'Klik untuk sinkron ulang data terbaru';
+      badge.onclick = () => syncAllDataForPortal(true);
+    }
+    if (dot) dot.style.background = '#10B981';
+    if (text) text.textContent = 'Data Ter-Sinkron';
 
     SystemStatus.portal = 'success';
     updateInitStatusDisplay();
@@ -1432,7 +1467,7 @@ async function gasRun(funcName, ...args) {
 const userNameInput = document.getElementById('userName');
 const autoList = document.getElementById('autocomplete-list');
 let tempSelectedUser = null;
-let cachedPeserta = null;
+
 let fetchPesertaPromise = null;
 
 if (userNameInput) {
