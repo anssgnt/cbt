@@ -1825,6 +1825,7 @@ async function loadDashboard(examId, token) {
     const res = await getExamDataOptimized(examId, token);
     if (res.success) {
       State.config = res.config;
+      State.config.keys = res.keys || {};
 
       // SHUFFLE ALGORITHM (Seeded per User + Exam)
       const seedStr = State.user.id + "_" + State.config.id_ujian;
