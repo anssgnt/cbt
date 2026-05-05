@@ -73,10 +73,10 @@
             </div>
           </div>
           <div class="centric-identity" style="text-align: left;">
-            <h1 id="portal-school-sub"
+            <h1 id="portal-school-name"
               style="font-size: 1.4rem; margin-bottom: 0; color: #FFFFFF; text-shadow: 0 2px 4px rgba(0,0,0,0.1);">SMP
               Negeri 7</h1>
-            <p
+            <p id="portal-school-sub"
               style="font-size: 0.85rem; color: rgba(255,255,255,0.9); margin: 0; text-shadow: 0 1px 2px rgba(0,0,0,0.1);">
               Computer Based Test Portal v.2</p>
           </div>
@@ -85,7 +85,7 @@
         <div class="landing-welcome-card stagger-2">
           <div
             style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; width: 100%;">
-            <div
+            <div id="landing-sync-badge"
               style="background: #F3F4F6; padding: 6px 12px; border-radius: 20px; font-size: 0.75rem; font-weight: 600; color: #111827; display: flex; align-items: center; gap: 6px;">
               <span id="top-sync-dot"
                 style="width:8px; height:8px; background:#EF4444; border-radius:50%; display:inline-block;"></span>
@@ -1038,6 +1038,44 @@
                   </div>
                   <label class="toggle-switch">
                     <input type="checkbox" id="cfgAntiCheat">
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+
+                <div class="setting-item"
+                  style="display:flex; justify-content:space-between; align-items:center; padding: 12px 0; border-bottom: 1px solid #F1F5F9;">
+                  <div style="flex:1; padding-right: 16px;">
+                    <div style="font-weight:600; color:var(--adm-text-main);">Tampilkan Status Ujian</div>
+                    <div style="font-size:0.75rem; color:var(--adm-text-muted); margin-top:4px;">Munculkan daftar ujian
+                      aktif di halaman landing.</div>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="cfgShowExamStatus">
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+
+                <div class="setting-item"
+                  style="display:flex; justify-content:space-between; align-items:center; padding: 12px 0; border-bottom: 1px solid #F1F5F9;">
+                  <div style="flex:1; padding-right: 16px;">
+                    <div style="font-weight:600; color:var(--adm-text-main);">Tampilkan Info Sistem</div>
+                    <div style="font-size:0.75rem; color:var(--adm-text-muted); margin-top:4px;">Munculkan status koneksi
+                      & server di halaman landing.</div>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="cfgShowSystemInfo">
+                    <span class="slider round"></span>
+                  </label>
+                </div>
+
+                <div class="setting-item"
+                  style="display:flex; justify-content:space-between; align-items:center; padding: 12px 0; border-bottom: 1px solid #F1F5F9;">
+                  <div style="flex:1; padding-right: 16px;">
+                    <div style="font-weight:600; color:var(--adm-text-main);">Tampilkan Badge Sinkron</div>
+                    <div style="font-size:0.75rem; color:var(--adm-text-muted); margin-top:4px;">Munculkan indikator sinkronisasi di bagian atas.</div>
+                  </div>
+                  <label class="toggle-switch">
+                    <input type="checkbox" id="cfgShowSyncBadge">
                     <span class="slider round"></span>
                   </label>
                 </div>
