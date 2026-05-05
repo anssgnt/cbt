@@ -85,7 +85,7 @@ function applySchoolIdentity(iden) {
     safeSetText('ph-sekolah', iden.name);
     safeSetText('ph-sekolah-2', iden.name);
     safeSetText('ph-sekolah-print', iden.name);
-    safeSetText('portal-school-sub', iden.name);
+    safeSetText('portal-school-name', iden.name);
   }
 
   if (iden.sub) {
@@ -2526,8 +2526,11 @@ function initPortal() {
       // Toggle Landing Page Features
       const examCard = document.getElementById('landing-exam-status-card');
       const sysCard = document.getElementById('landing-system-info-card');
+      const syncBadge = document.getElementById('landing-sync-badge');
+
       if (examCard) examCard.style.display = (State.security.showExamStatus !== false) ? 'block' : 'none';
       if (sysCard) sysCard.style.display = (State.security.showSystemInfo !== false) ? 'block' : 'none';
+      if (syncBadge) syncBadge.style.display = (State.security.showSyncBadge !== false) ? 'flex' : 'none';
 
       // PWA Enforcer Check
       if (State.security.pwa) {
