@@ -729,7 +729,7 @@ window.resetSiswaLogin = async function (pesertaId, examId) {
   showLoading('Mereset Sesi...');
   try {
     if (window.dbConnectFast) await window.dbConnectFast();
-    await db.ref(`/onlines/${examId}/${pesertaId}`).remove();
+    await db.ref(`/online_status/${examId}/${pesertaId}`).remove();
     showCustomAlert('Berhasil', 'Sesi siswa berhasil direset.', '✅');
     loadAdminDashboard();
   } catch (e) {
@@ -744,7 +744,7 @@ window.forceSelesaiSemua = async function (examId) {
   showLoading('Memproses...');
   try {
     if (window.dbConnectFast) await window.dbConnectFast();
-    const snap = await db.ref(`/onlines/${examId}`).once('value');
+    const snap = await db.ref(`/online_status/${examId}`).once('value');
     const onlines = snap.val() || {};
     const ids = Object.keys(onlines);
     if (ids.length === 0) {
@@ -755,8 +755,17 @@ window.forceSelesaiSemua = async function (examId) {
     const updates = {};
     const now = new Date().toISOString();
     ids.forEach(id => {
-      updates[`/completions/${examId}/${id}`] = now;
-      updates[`/onlines/${examId}/${id}`] = null;
+      // Mengikuti struktur hasil Anda (mungkin butuh userId & examId)
+      const resKey = db.ref('/hasil').push().key;
+      updates[`/hasil/${resKey}`] = {
+        userId: id,
+        examId: examId,
+        waktu: now,
+        skor: 'F-SUBMIT', // Mark as forced submit
+        nama: 'Siswa', // Fallback, script.js usually handles this
+        ujian: 'Ujian'
+      };
+      updates[`/online_status/${examId}/${id}`] = null;
     });
 
     await db.ref().update(updates);
@@ -776,9 +785,9 @@ window.hapusSemuaHasil = async function () {
   showLoading('Membersihkan Database...');
   try {
     if (window.dbConnectFast) await window.dbConnectFast();
-    await db.ref('/completions').remove();
+    await db.ref('/hasil').remove();
     await db.ref('/pelanggaran').remove();
-    await db.ref('/onlines').remove();
+    await db.ref('/online_status').remove();
     
     showCustomAlert('Berhasil', 'Database Hasil & Log berhasil dibersihkan.', '✅');
     loadAdminHasil(true);
