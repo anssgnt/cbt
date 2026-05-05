@@ -635,6 +635,13 @@
             </svg>
             Hasil & Radar
           </button>
+          <button class="admin-sidebar-btn" data-tab="tab-analisis"
+            onclick="document.getElementById('admin-page-title').innerText='Analisis Soal'; document.getElementById('admin-page-subtitle').innerText='Analisis butir soal tersulit dan statistik ujian';">
+            <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+            </svg>
+            Analisis Soal
+          </button>
           <button class="admin-sidebar-btn" data-tab="tab-settings"
             onclick="document.getElementById('admin-page-title').innerText='Pengaturan'; document.getElementById('admin-page-subtitle').innerText='Konfigurasi keamanan dan identitas server';">
             <svg class="nav-icon" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
@@ -955,6 +962,22 @@
                 </table>
               </div>
               <div id="admin-radar-pagination" class="pagination-controls" style="margin-top: 16px;"></div>
+            </div>
+          </div>
+
+          <!-- TAB 7: ANALISIS -->
+          <div id="tab-analisis" class="admin-tab-content" style="display:none;flex-direction:column;gap:18px;">
+            <div class="admin-card">
+              <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                <h3 style="font-size:1.1rem;margin:0; font-weight: 800;">Analisis Butir Soal</h3>
+                <button class="btn btn-primary" onclick="startItemAnalysis()" style="padding:10px 16px; font-size:0.8rem; border-radius: 10px;">📊 Mulai Analisis</button>
+              </div>
+              <p class="text-muted" style="font-size:0.85rem; margin-bottom:20px;">Menghitung persentase jawaban salah per nomor soal untuk menentukan soal tersulit.</p>
+              <div id="analisis-container" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:15px;">
+                <div style="grid-column:1/-1; text-align:center; padding:40px; color:var(--text-muted);">
+                  Silakan tekan tombol "Mulai Analisis" untuk memproses data.
+                </div>
+              </div>
             </div>
           </div>
 
@@ -1398,6 +1421,49 @@
     </div>
   </div>
 
+  <!-- Broadcast Notification Modal (Student View) -->
+  <div class="overlay" id="broadcast-overlay" style="z-index:9999;"></div>
+  <div class="card modal-card" id="broadcast-modal" style="
+  position:fixed;top:50%;left:50%;
+  transform:translate(-50%,-50%) scale(0.95);
+  z-index:10000;display:none;flex-direction:column;
+  width:90%;max-width:400px;
+  opacity:0;transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  border: 2px solid var(--primary);
+  ">
+    <div style="text-align:center;margin-bottom:16px;">
+      <div style="width:48px;height:48px;background:var(--primary-light);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 10px;color:var(--primary);">
+        <svg style="width:24px;height:24px;" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M11 5.882V19.297A1.707 1.707 0 019.312 21c-.496 0-.974-.247-1.21-.679L4.851 14H3.5A1.5 1.5 0 012 12.5v-1A1.5 1.5 0 013.5 10h1.351l3.251-6.321A1.332 1.332 0 019.312 3c.932 0 1.688.753 1.688 1.682zM15.5 12c0-1.5-.5-2.5-1.5-3v6c1-.5 1.5-1.5 1.5-3zm3 0c0-3.5-1.5-6-4.5-7.5v15c3-1.5 4.5-4 4.5-7.5z"/></svg>
+      </div>
+      <h3 style="margin:0;">Pesan Pengawas</h3>
+    </div>
+    <div id="broadcast-text" style="font-size:1.1rem; text-align:center; margin-bottom:20px; font-weight:500; color:var(--text-dark);">
+      ...
+    </div>
+    <button class="btn btn-primary" onclick="closeBroadcastModal()">Saya Mengerti</button>
+  </div>
+
+  <!-- Item Analysis Modal (Admin View) -->
+  <div class="overlay" id="analisis-overlay" style="z-index:1005;"></div>
+  <div class="card modal-card" id="analisis-modal" style="
+  position:fixed;top:50%;left:50%;
+  transform:translate(-50%,-50%) scale(0.95);
+  z-index:1006;display:none;flex-direction:column;
+  width:95%;max-width:700px; max-height:85vh;
+  opacity:0;transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);
+  ">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+      <h3 style="margin:0;">Analisis Butir Soal</h3>
+      <button class="btn btn-outline" style="padding:4px 8px; font-size:0.8rem;" onclick="closeAnalisisModal()">Tutup</button>
+    </div>
+    <div style="font-size:0.85rem; color:var(--text-muted); margin-bottom:12px;">
+      Mengidentifikasi soal yang paling sering salah dijawab oleh siswa.
+    </div>
+    <div id="analisis-content" style="overflow-y:auto; flex:1; padding-right:5px;">
+      <div style="text-align:center; padding:40px;">Memuat analisis...</div>
+    </div>
+  </div>
+
   <!-- Soal Quick Edit Modal -->
   <div class="overlay" id="soal-edit-overlay" style="z-index:1009;"></div>
   <div class="card modal-card" id="soal-edit-modal" style="
@@ -1499,7 +1565,7 @@
   opacity:0;transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);
   max-height:90vh; overflow-y:auto;
   ">
-    <h3 style="margin-bottom:12px;">Buat Jadwal Ujian Baru</h3>
+    <h3 style="margin-bottom:12px;" id="jadwal-modal-title">Buat Jadwal Ujian Baru</h3>
 
     <div class="form-group">
       <label>Kode Ujian (Tanpa Spasi)</label>
@@ -1523,19 +1589,39 @@
         <input type="number" id="jMinSelesai" class="form-control" value="0" placeholder="0 = bebas">
       </div>
     </div>
-    <div style="display:flex; gap:10px;">
-      <div class="form-group" style="flex:1;">
-        <label>Waktu Mulai</label>
-        <input type="datetime-local" id="jMulai" class="form-control">
-      </div>
-      <div class="form-group" style="flex:1;">
-        <label>Waktu Selesai</label>
-        <input type="datetime-local" id="jSelesai" class="form-control">
-      </div>
+    <div class="form-group">
+      <label>Waktu Mulai</label>
+      <input type="datetime-local" id="jMulai" class="form-control">
     </div>
     <div class="form-group">
-      <label>Target Kelas (Pisahkan dengan Koma)</label>
+      <label>Waktu Selesai</label>
+      <input type="datetime-local" id="jSelesai" class="form-control">
+    </div>
+    <div class="form-group">
       <input type="text" id="jKelas" class="form-control" placeholder="Kosongkan untuk semua kelas">
+    </div>
+
+    <div style="display:flex; gap:15px; margin: 10px 0; padding: 12px; background: #F8FAFC; border-radius: 10px; border: 1px solid #E2E8F0; flex-wrap:wrap;">
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.85rem; font-weight:600; color:var(--adm-text-main);">
+        <input type="checkbox" id="jShuffleSoal" checked style="width:16px; height:16px; cursor:pointer;">
+        Acak Nomor Soal
+      </label>
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.85rem; font-weight:600; color:var(--adm-text-main);">
+        <input type="checkbox" id="jShuffleOpsi" checked style="width:16px; height:16px; cursor:pointer;">
+        Acak Pilihan Opsi
+      </label>
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:0.85rem; font-weight:600; color:var(--primary);">
+        <input type="checkbox" id="jAktif" checked style="width:16px; height:16px; cursor:pointer;">
+        Jadwal Aktif
+      </label>
+    </div>
+
+    <div class="form-group">
+      <label>Token Ujian (Otomatis)</label>
+      <div style="display:flex; gap:10px;">
+        <input type="text" id="jToken" class="form-control" style="font-family:monospace; letter-spacing:2px; font-weight:700; text-transform:uppercase;" placeholder="TOKEN">
+        <button class="btn btn-outline" onclick="document.getElementById('jToken').value = Math.random().toString(36).substring(2, 8).toUpperCase()" style="white-space:nowrap; font-size:0.75rem;">🔄 Baru</button>
+      </div>
     </div>
 
     <div style="display:flex;gap:10px; margin-top:10px;">
@@ -1797,6 +1883,7 @@
   </div>
 
   <script defer src="script.js"></script>
+  <script defer src="admin-core.js"></script>
   <script>
     if ('serviceWorker' in navigator && (window.location.protocol === 'http:' || window.location.protocol === 'https:')) {
       window.addEventListener('load', () => {
