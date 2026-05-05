@@ -293,7 +293,7 @@ async function loadAdminJadwal() {
     let html = '';
     for (let id in data) {
       const j = data[id];
-      const isAktif = j.aktif;
+      const isAktif = j.aktif !== false;
       const isForce = j.force_aktif;
       const color = isAktif ? '#059669' : '#DC2626';
       html += `
@@ -378,7 +378,7 @@ window.openJadwalModal = async function (editId = null) {
       document.getElementById('jMinSelesai').value = data.min_selesai || 0;
       document.getElementById('jMulai').value = toLocalISO(data.mulai);
       document.getElementById('jSelesai').value = toLocalISO(data.selesai);
-      document.getElementById('jKelas').value = data.kelas || '';
+      document.getElementById('jKelas').value = data.target_kelas || data.kelas || '';
       document.getElementById('jShuffleSoal').checked = data.shuffle_soal !== false;
       document.getElementById('jShuffleOpsi').checked = data.shuffle_opsi !== false;
       document.getElementById('jAktif').checked = data.aktif !== false;
@@ -468,7 +468,8 @@ window.saveJadwal = async function () {
       min_selesai: parseInt(minS) || 0,
       mulai: mulaiMs,
       selesai: selesaiMs,
-      kelas: kelas,
+      target_kelas: kelas,
+      kelas: kelas, // Keep both for safety
       shuffle_soal: document.getElementById('jShuffleSoal').checked,
       shuffle_opsi: document.getElementById('jShuffleOpsi').checked,
       aktif: document.getElementById('jAktif').checked,
@@ -603,8 +604,8 @@ window.loadAdminSettings = async function () {
       const iden = idenSnap.val() || {};
       console.log("Admin: Data Identity diterima:", iden);
 
-      safeSetValue('cfgSchoolName', getVal(iden, 'name', 'SMP Negeri 1 Dander'));
-      safeSetValue('cfgSchoolSub', getVal(iden, 'sub', 'MGMP INF/KKA BJN'));
+      safeSetValue('cfgSchoolName', getVal(iden, 'name', 'NAMA SEKOLAH'));
+      safeSetValue('cfgSchoolSub', getVal(iden, 'sub', 'Computer Based Portal v.2'));
 
       const preview = document.getElementById('cfgLogoPreview');
       if (preview) {
